@@ -43,16 +43,15 @@ Paper: McNally et al., *DeepDarts* (arXiv:2105.09880).
   angles for **20/5, 6/13, 3/17, 11/8** on the unit circle.
 - Tip score only after mapping to board plane. **Never** polar in raw image pixels.
 
-### 2. Calibration UX (simple)
-Exactly **4 clicks** per camera (Autodarts/DeepDarts style):
+### 2. Calibration UX
+**Default: fully automatic (no clicks)** — `v2-auto-calibrate`
 
-1. Outer double at **20–5** wire (top of board)  
-2. Outer double at **6–13** wire (right)  
-3. Outer double at **3–17** wire (bottom)  
-4. Outer double at **11–8** wire (left)  
+1. Grab frame  
+2. **Grok vision** (if `XAI_API_KEY`) returns outer-double points at 20, 6, 3, 11  
+3. Else **OpenCV** outer ellipse + 4 cardinals (20 ≈ image-up)  
+4. Homography → validate → save  
 
-Then show **warped circular board overlay**. If it looks round and 20 is up → save.  
-Optional later: auto-detect the 4 points (template/YOLO).
+Manual 4-click remains as fallback: `v2-calibrate`.
 
 ### 3. Detection
 1. Lock empty-board background (B).  

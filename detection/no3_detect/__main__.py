@@ -129,6 +129,41 @@ def cmd_v2_calibrate(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_v2_auto_calibrate(args: argparse.Namespace) -> None:
+    """No-click auto calibration (Grok optional + OpenCV)."""
+    import os
+
+    from .v2.auto_calibrate import DEFAULT_VISION_MODEL, auto_calibrate_camera
+
+    model = args.model or os.environ.get("XAI_VISION_MODEL") or DEFAULT_VISION_MODEL
+    sources = args.cameras if args.cameras else [args.camera]
+    ids = args.ids if args.ids else [args.id]
+    if len(ids) < len(sources):
+        ids = [f"cam{i}" for i in range(len(sources))]
+
+    outdir = Path(args.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    for src, cid in zip(sources, ids):
+        out = outdir / f"{cid}.json" if args.cameras else Path(args.out)
+        console.print(f"\n[bold]Auto-calibrate {cid} ← {src}[/bold]")
+        try:
+            auto_calibrate_camera(
+                source=src,
+                camera_id=cid,
+                out_path=out,
+                api_key=args.api_key or None,
+                model=model,
+                prefer_grok=not args.opencv_only,
+                show_preview=not args.yes,
+                auto_save=args.yes,
+            )
+        except Exception as e:
+            console.print(f"[red]{cid} failed: {e}[/red]")
+            if not args.continue_on_error:
+                sys.exit(1)
+
+
 def cmd_v2_run(args: argparse.Namespace) -> None:
     from .v2.pipeline import V2Config, V2Pipeline
 
@@ -265,12 +300,38 @@ def main(argv: list[str] | None = None) -> None:
 
     p_v2c = sub.add_parser(
         "v2-calibrate",
-        help="v2: 4-click outer-double calib (Autodarts/DeepDarts style)",
+        help="v2: manual 4-click calib (optional; prefer v2-auto-calibrate)",
     )
     p_v2c.add_argument("--camera", default="0")
     p_v2c.add_argument("--id", default="cam0")
     p_v2c.add_argument("--out", default="./calib/cam0.json")
     p_v2c.set_defaults(func=cmd_v2_calibrate)
+
+    p_v2a = sub.add_parser(
+        "v2-auto-calibrate",
+        help="v2: FULLY AUTO calib — no mouse clicks (Grok optional + OpenCV)",
+    )
+    p_v2a.add_argument("--camera", default="0", help="Single camera")
+    p_v2a.add_argument("--cameras", nargs="+", default=None, help="e.g. 0 1 2")
+    p_v2a.add_argument("--id", default="cam0")
+    p_v2a.add_argument("--ids", nargs="+", default=None)
+    p_v2a.add_argument("--out", default="./calib/cam0.json")
+    p_v2a.add_argument("--outdir", default="./calib")
+    p_v2a.add_argument("--api-key", default="", help="xAI key or env XAI_API_KEY")
+    p_v2a.add_argument("--model", default=None, help="default grok-build-0.1")
+    p_v2a.add_argument(
+        "--opencv-only",
+        action="store_true",
+        help="Skip Grok; OpenCV ellipse only",
+    )
+    p_v2a.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Auto-save without y/n prompt",
+    )
+    p_v2a.add_argument("--continue-on-error", action="store_true")
+    p_v2a.set_defaults(func=cmd_v2_auto_calibrate)
 
     p_v2r = sub.add_parser("v2-run", help="v2: board-plane multi-cam detection (recommended)")
     p_v2r.add_argument("--config", default="config.yaml")

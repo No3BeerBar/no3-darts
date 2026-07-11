@@ -36,21 +36,20 @@ if errorlevel 1 (
 )
 
 echo.
-echo Auto ellipse is often BAD on dartboards.
-echo Recommended: CLICK-FIT on the outer double wire.
-echo.
-echo Launching click calibrate for cam 0, 1, 2 ...
-echo   Click 8-12 points on OUTER DOUBLE, press F, then T on 20, then S
+echo Running FULLY AUTO v2 calibrate (no mouse clicks)...
 echo.
 
 if not exist "calib" mkdir calib
 
-"%VENVPY%" -m no3_detect calibrate --camera 0 --id cam0 --out .\calib\cam0.json
-"%VENVPY%" -m no3_detect calibrate --camera 1 --id cam1 --out .\calib\cam1.json
-"%VENVPY%" -m no3_detect calibrate --camera 2 --id cam2 --out .\calib\cam2.json
+if "%XAI_API_KEY%"=="" (
+  "%VENVPY%" -m no3_detect v2-auto-calibrate --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir .\calib --opencv-only -y --continue-on-error
+) else (
+  if "%XAI_VISION_MODEL%"=="" set XAI_VISION_MODEL=grok-build-0.1
+  "%VENVPY%" -m no3_detect v2-auto-calibrate --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir .\calib --model %XAI_VISION_MODEL% -y --continue-on-error
+)
 
 echo.
 echo Done. Next: scripts\run-detector.bat
-echo Or re-do one cam: scripts\calibrate-click.bat
+echo Manual 4-click only if auto fails: scripts\calibrate-v2.bat
 pause
 exit /b 0
