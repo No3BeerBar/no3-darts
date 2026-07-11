@@ -28,6 +28,41 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_calibrate_vision(args: argparse.Namespace) -> None:
+    """Calibrate with Grok vision and/or OpenCV auto."""
+    import os
+
+    from .vision_calibrate import DEFAULT_VISION_MODEL, run_vision_calibrate
+
+    method = args.method
+    model = args.model or os.environ.get("XAI_VISION_MODEL") or DEFAULT_VISION_MODEL
+    cams = args.cameras if args.cameras else [args.camera]
+    ids = args.ids if args.ids else ([args.id] if len(cams) == 1 else [f"cam{i}" for i in range(len(cams))])
+    if len(ids) != len(cams):
+        console.print("[red]--ids count must match --cameras[/red]")
+        sys.exit(1)
+
+    Path(args.outdir).mkdir(parents=True, exist_ok=True)
+
+    for cam, cid in zip(cams, ids):
+        out = args.out if len(cams) == 1 else str(Path(args.outdir) / f"{cid}.json")
+        console.print(f"\n[bold]Calibrating {cid} (source={cam}) method={method}[/bold]")
+        try:
+            run_vision_calibrate(
+                source=cam,
+                camera_id=cid,
+                out_path=out,
+                api_key=args.api_key or None,
+                model=model,
+                method=method,
+                confirm=not args.yes,
+            )
+        except Exception as e:
+            console.print(f"[red]{cid} failed: {e}[/red]")
+            if not args.continue_on_error:
+                sys.exit(1)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     from .pipeline import DetectionPipeline, PipelineConfig
 
@@ -119,11 +154,46 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_cal = sub.add_parser("calibrate", help="Interactive board calibration")
+    p_cal = sub.add_parser("calibrate", help="Interactive board calibration (mouse/keys)")
     p_cal.add_argument("--camera", default="0", help="Device index or stream URL")
     p_cal.add_argument("--id", default="cam0", help="Camera id")
     p_cal.add_argument("--out", default="./calib/cam0.json", help="Output JSON path")
     p_cal.set_defaults(func=cmd_calibrate)
+
+    p_vis = sub.add_parser(
+        "calibrate-vision",
+        help="Calibrate with Grok vision (XAI_API_KEY) or OpenCV auto",
+    )
+    p_vis.add_argument("--camera", default="0", help="Single camera source")
+    p_vis.add_argument(
+        "--cameras",
+        nargs="+",
+        default=None,
+        help="Multiple sources e.g. --cameras 0 1 2",
+    )
+    p_vis.add_argument("--id", default="cam0", help="Camera id (single)")
+    p_vis.add_argument("--ids", nargs="+", default=None, help="Ids matching --cameras")
+    p_vis.add_argument("--out", default="./calib/cam0.json", help="Output for single cam")
+    p_vis.add_argument("--outdir", default="./calib", help="Output dir for multi-cam")
+    p_vis.add_argument(
+        "--method",
+        choices=["vision", "auto", "vision-or-auto"],
+        default="vision-or-auto",
+        help="vision=Grok only, auto=OpenCV only, vision-or-auto=try Grok then OpenCV",
+    )
+    p_vis.add_argument("--api-key", default="", help="xAI API key (or env XAI_API_KEY)")
+    p_vis.add_argument(
+        "--model",
+        default=None,
+        help="Vision model (default grok-2-vision-1212 or XAI_VISION_MODEL)",
+    )
+    p_vis.add_argument("-y", "--yes", action="store_true", help="Skip preview confirm")
+    p_vis.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Keep going if one camera fails",
+    )
+    p_vis.set_defaults(func=cmd_calibrate_vision)
 
     p_run = sub.add_parser("run", help="Run live detection loop")
     p_run.add_argument("--config", default="config.yaml")

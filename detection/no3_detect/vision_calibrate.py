@@ -1,0 +1,367 @@
+"""
+Board calibration via Grok vision (xAI API) or improved OpenCV auto-detect.
+
+Set XAI_API_KEY (or pass --api-key) for Grok vision.
+Falls back to OpenCV circle detection if vision is unavailable.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import math
+import os
+import re
+from pathlib import Path
+from typing import Any, Optional, Tuple
+
+import cv2
+import numpy as np
+import requests
+from rich.console import Console
+
+from .calibration import BoardCalibration, _open_source, auto_detect_board_circle
+
+console = Console()
+
+DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-2-vision-1212")
+XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
+
+
+def grab_frame(source: int | str, warm: int = 8) -> Tuple[np.ndarray, int, int]:
+    cap = _open_source(source)
+    frame = None
+    for _ in range(warm):
+        ok, frame = cap.read()
+        if not ok:
+            break
+    cap.release()
+    if frame is None:
+        raise RuntimeError(f"Could not grab frame from camera {source}")
+    h, w = frame.shape[:2]
+    return frame, w, h
+
+
+def frame_to_jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1280) -> str:
+    h, w = frame_bgr.shape[:2]
+    scale = min(1.0, max_side / max(h, w))
+    if scale < 1.0:
+        frame_bgr = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)))
+    ok, buf = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+    if not ok:
+        raise RuntimeError("JPEG encode failed")
+    return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+VISION_PROMPT = """You are calibrating a steel-tip dartboard for automatic scoring.
+
+Look at this camera image of a dartboard. Return ONLY valid JSON (no markdown) with:
+
+{
+  "center_x": <pixel x of bullseye / board center>,
+  "center_y": <pixel y of bullseye / board center>,
+  "outer_double_x": <pixel x of any point on the OUTER double wire (outer scoring ring edge)>,
+  "outer_double_y": <pixel y of that point>,
+  "twenty_x": <pixel x of the center of the number "20" label OR middle of the 20 segment>,
+  "twenty_y": <pixel y of that point>,
+  "confidence": <0.0 to 1.0 how sure you are>,
+  "notes": "<short note>"
+}
+
+Coordinates must be in image pixel space with origin at top-left (x right, y down).
+The board may be slightly elliptical; approximate with a circle.
+If the board is not fully visible, estimate as best you can and lower confidence.
+"""
+
+
+def _parse_json_loose(text: str) -> dict[str, Any]:
+    text = text.strip()
+    # strip markdown fences if present
+    if "```" in text:
+        m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+        if m:
+            text = m.group(1).strip()
+    # find first { ... }
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start : end + 1]
+    return json.loads(text)
+
+
+def calibrate_with_grok_vision(
+    frame_bgr: np.ndarray,
+    camera_id: str,
+    api_key: str,
+    model: str = DEFAULT_VISION_MODEL,
+) -> BoardCalibration:
+    """Call xAI Grok vision to locate board landmarks."""
+    h, w = frame_bgr.shape[:2]
+    b64 = frame_to_jpeg_b64(frame_bgr)
+    data_url = f"data:image/jpeg;base64,{b64}"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    body = {
+        "model": model,
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
+                    {"type": "text", "text": VISION_PROMPT},
+                ],
+            }
+        ],
+    }
+
+    console.print(f"[cyan]Asking Grok vision ({model}) to find the board…[/cyan]")
+    r = requests.post(XAI_CHAT_URL, headers=headers, json=body, timeout=90)
+    if r.status_code >= 400:
+        raise RuntimeError(f"xAI API {r.status_code}: {r.text[:500]}")
+
+    data = r.json()
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"Unexpected xAI response: {data}") from e
+
+    if isinstance(content, list):
+        # some APIs return content parts
+        content = " ".join(
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
+        )
+
+    parsed = _parse_json_loose(str(content))
+    cx = float(parsed["center_x"])
+    cy = float(parsed["center_y"])
+    ox = float(parsed["outer_double_x"])
+    oy = float(parsed["outer_double_y"])
+    tx = float(parsed.get("twenty_x", cx))
+    ty = float(parsed.get("twenty_y", cy - 50))
+    conf = float(parsed.get("confidence", 0.7))
+    notes = str(parsed.get("notes", ""))
+
+    radius = float(math.hypot(ox - cx, oy - cy))
+    # rotation: angle of 20 from top, clockwise
+    rotation = float(math.degrees(math.atan2(tx - cx, -(ty - cy))) % 360.0)
+
+    # Clamp to image bounds sanity
+    cx = float(np.clip(cx, 0, w - 1))
+    cy = float(np.clip(cy, 0, h - 1))
+    radius = float(np.clip(radius, min(w, h) * 0.1, min(w, h) * 0.6))
+
+    console.print(
+        f"[green]Grok vision result[/green] conf={conf:.2f} center=({cx:.0f},{cy:.0f}) "
+        f"R={radius:.0f} rot={rotation:.1f}°"
+    )
+    if notes:
+        console.print(f"  notes: {notes}")
+
+    return BoardCalibration(
+        camera_id=camera_id,
+        center_x=cx,
+        center_y=cy,
+        radius_px=radius,
+        rotation_deg=rotation,
+        image_width=w,
+        image_height=h,
+    )
+
+
+def calibrate_auto_opencv(
+    frame_bgr: np.ndarray,
+    camera_id: str,
+    rotation_deg: float = 0.0,
+) -> BoardCalibration:
+    """
+    OpenCV-only auto calibration (circle detection).
+    Rotation defaults to 0 (assumes 20 is near the top of the image).
+    """
+    h, w = frame_bgr.shape[:2]
+    detected = auto_detect_board_circle_improved(frame_bgr)
+    if detected is None:
+        raise RuntimeError(
+            "OpenCV could not find a board circle. "
+            "Improve lighting / board visibility, or use Grok vision / manual calibrate."
+        )
+    cx, cy, radius = detected
+    console.print(
+        f"[green]OpenCV auto[/green] center=({cx:.0f},{cy:.0f}) R={radius:.0f} "
+        f"rot={rotation_deg:.1f}° (assumes 20 toward top unless set)"
+    )
+    return BoardCalibration(
+        camera_id=camera_id,
+        center_x=cx,
+        center_y=cy,
+        radius_px=radius,
+        rotation_deg=rotation_deg,
+        image_width=w,
+        image_height=h,
+    )
+
+
+def auto_detect_board_circle_improved(
+    frame_bgr: np.ndarray,
+) -> Optional[Tuple[float, float, float]]:
+    """Stronger multi-pass Hough + contour circle estimate."""
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (9, 9), 0)
+    h, w = gray.shape
+    candidates: list[Tuple[float, float, float, float]] = []  # cx,cy,r,score
+
+    for param2 in (50, 40, 30, 25):
+        circles = cv2.HoughCircles(
+            gray,
+            cv2.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=min(h, w) // 3,
+            param1=100,
+            param2=param2,
+            minRadius=min(h, w) // 10,
+            maxRadius=min(h, w) // 2,
+        )
+        if circles is None:
+            continue
+        for c in circles[0]:
+            cx, cy, r = float(c[0]), float(c[1]), float(c[2])
+            # prefer larger, more centered circles
+            dist_center = math.hypot(cx - w / 2, cy - h / 2)
+            score = r - dist_center * 0.15
+            candidates.append((cx, cy, r, score))
+
+    # Contour fallback: largest circular-ish contour
+    edges = cv2.Canny(gray, 40, 120)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < (min(h, w) ** 2) * 0.02:
+            continue
+        (cx, cy), r = cv2.minEnclosingCircle(cnt)
+        circ = area / (math.pi * r * r + 1e-6)
+        if circ < 0.55 or r < min(h, w) / 10:
+            continue
+        score = float(r) * circ
+        candidates.append((float(cx), float(cy), float(r), score))
+
+    if not candidates:
+        # last resort: original helper
+        return auto_detect_board_circle(frame_bgr)
+
+    cx, cy, r, _ = max(candidates, key=lambda t: t[3])
+    return cx, cy, r
+
+
+def preview_and_confirm(
+    frame_bgr: np.ndarray,
+    calib: BoardCalibration,
+    window: str = "No3 calib preview — y=save n=discard",
+) -> bool:
+    """Show overlay; return True if user presses y/s."""
+    vis = frame_bgr.copy()
+    cx, cy, r = int(calib.center_x), int(calib.center_y), int(calib.radius_px)
+    cv2.circle(vis, (cx, cy), r, (0, 200, 255), 2)
+    cv2.circle(vis, (cx, cy), 5, (0, 255, 0), -1)
+    theta = math.radians(calib.rotation_deg)
+    ex = int(cx + r * math.sin(theta))
+    ey = int(cy - r * math.cos(theta))
+    cv2.line(vis, (cx, cy), (ex, ey), (0, 255, 0), 2)
+    cv2.putText(vis, "20", (ex + 6, ey), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    cv2.putText(
+        vis,
+        "y/s=save  n/q=discard  (or auto-save if no window)",
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (240, 240, 240),
+        1,
+    )
+    try:
+        cv2.imshow(window, vis)
+        while True:
+            key = cv2.waitKey(50) & 0xFF
+            if key in (ord("y"), ord("s"), 13):
+                cv2.destroyWindow(window)
+                return True
+            if key in (ord("n"), ord("q"), 27):
+                cv2.destroyWindow(window)
+                return False
+    except cv2.error:
+        # headless — auto accept
+        return True
+
+
+def run_vision_calibrate(
+    source: int | str,
+    camera_id: str,
+    out_path: str | Path,
+    api_key: Optional[str] = None,
+    model: str = DEFAULT_VISION_MODEL,
+    method: str = "vision",  # vision | auto | vision-or-auto
+    confirm: bool = True,
+) -> BoardCalibration:
+    """
+    Capture one frame and calibrate.
+
+    method:
+      - vision: Grok vision only (needs API key)
+      - auto: OpenCV only
+      - vision-or-auto: try Grok, fall back to OpenCV
+    """
+    if isinstance(source, str) and source.isdigit():
+        source = int(source)
+
+    frame, _, _ = grab_frame(source)
+    key = api_key or os.environ.get("XAI_API_KEY") or os.environ.get("GROK_API_KEY") or ""
+
+    calib: Optional[BoardCalibration] = None
+    err: Optional[Exception] = None
+
+    if method in ("vision", "vision-or-auto"):
+        if not key:
+            if method == "vision":
+                raise RuntimeError(
+                    "No XAI_API_KEY. Set env XAI_API_KEY or pass --api-key. "
+                    "Get a key at https://console.x.ai/"
+                )
+            console.print("[yellow]No XAI_API_KEY — using OpenCV auto[/yellow]")
+        else:
+            try:
+                calib = calibrate_with_grok_vision(frame, camera_id, key, model=model)
+            except Exception as e:
+                err = e
+                console.print(f"[yellow]Grok vision failed: {e}[/yellow]")
+                if method == "vision":
+                    raise
+                console.print("[yellow]Falling back to OpenCV auto…[/yellow]")
+
+    if calib is None and method in ("auto", "vision-or-auto"):
+        calib = calibrate_auto_opencv(frame, camera_id)
+
+    if calib is None:
+        raise RuntimeError(f"Calibration failed: {err}")
+
+    if confirm:
+        ok = preview_and_confirm(frame, calib)
+        if not ok:
+            raise SystemExit("Calibration discarded")
+
+    path = Path(out_path)
+    calib.save(path)
+    # also save a debug snapshot next to calib
+    snap = path.with_suffix(".jpg")
+    vis = frame.copy()
+    cv2.circle(
+        vis,
+        (int(calib.center_x), int(calib.center_y)),
+        int(calib.radius_px),
+        (0, 200, 255),
+        2,
+    )
+    cv2.imwrite(str(snap), vis)
+    console.print(f"[green]Saved[/green] {path}  (preview {snap})")
+    return calib
