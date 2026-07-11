@@ -35,11 +35,12 @@ class PipelineConfig:
     camera_api_key: str = ""
     room_id: str = "Board 1"
     debounce_ms: int = 1200
-    min_confidence: float = 0.55
-    motion_threshold: int = 28
-    min_blob_area: int = 40
-    max_blob_area: int = 12000
-    settle_frames: int = 4
+    min_confidence: float = 0.45
+    motion_threshold: int = 18
+    min_blob_area: int = 25
+    max_blob_area: int = 25000
+    settle_frames: int = 6
+    min_motion_pixels: int = 80
     preview: bool = True
     dry_run: bool = False
     cameras: List[Dict[str, Any]] = field(default_factory=list)
@@ -67,6 +68,7 @@ class DetectionPipeline:
             min_blob_area=config.min_blob_area,
             max_blob_area=config.max_blob_area,
             settle_frames=config.settle_frames,
+            min_motion_pixels=config.min_motion_pixels,
         )
 
     def open_cameras(self) -> None:
@@ -146,8 +148,16 @@ class DetectionPipeline:
                         frame_hits.append(result.hit)
 
                 if frame_hits:
-                    fused = fuse_hits(frame_hits, min_confidence=0.35)
-                    if fused and fused.confidence >= self.config.min_confidence:
+                    fused = fuse_hits(frame_hits, min_confidence=0.3)
+                    if fused is None:
+                        console.print(f"[dim]hits ignored (low conf): {len(frame_hits)} cam(s)[/dim]")
+                    elif fused.confidence < self.config.min_confidence:
+                        console.print(
+                            f"[yellow]hit below min_confidence "
+                            f"({fused.confidence:.2f} < {self.config.min_confidence}) "
+                            f"→ {fused.kind} {fused.number}[/yellow]"
+                        )
+                    else:
                         self._maybe_post(fused)
 
                 if self.config.preview:
@@ -160,7 +170,11 @@ class DetectionPipeline:
                             ok, frame = cam.cap.read()
                             if ok:
                                 cam.detector.reset_background(frame)
-                        console.print("[blue]Background reset[/blue]")
+                        console.print("[blue]Background reset — board should be EMPTY[/blue]")
+                    if key == ord("d"):
+                        # toggle dry-run logging help
+                        self.config.dry_run = not self.config.dry_run
+                        console.print(f"[blue]dry_run={self.config.dry_run}[/blue]")
                 else:
                     time.sleep(0.01)
         finally:

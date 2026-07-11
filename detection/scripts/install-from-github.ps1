@@ -279,11 +279,12 @@ camera_api_key: "$CameraApiKey"
 room_id: "$RoomId"
 
 debounce_ms: 1200
-min_confidence: 0.55
-motion_threshold: 28
-min_blob_area: 40
-max_blob_area: 12000
-settle_frames: 4
+min_confidence: 0.45
+motion_threshold: 18
+min_motion_pixels: 80
+min_blob_area: 25
+max_blob_area: 25000
+settle_frames: 6
 
 preview: true
 dry_run: false

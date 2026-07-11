@@ -7,9 +7,6 @@ Approach (classic DIY / open-source style):
   3. Foreground mask → largest elongated blob near the board.
   4. Tip ≈ point on the contour closest to the board center
      (dart points inward from the rim / stands in the sisal).
-
-This is a solid v1. Production bars later add multi-cam triangulation
-and optional ML tip refinement.
 """
 
 from __future__ import annotations
@@ -26,13 +23,15 @@ from .calibration import BoardCalibration
 
 @dataclass
 class DetectorConfig:
-    motion_threshold: int = 28
-    min_blob_area: int = 40
-    max_blob_area: int = 12000
-    settle_frames: int = 4
-    bg_learn_rate_idle: float = 0.02
+    motion_threshold: int = 18  # lower = more sensitive (was 28)
+    min_blob_area: int = 25
+    max_blob_area: int = 25000
+    settle_frames: int = 6
+    bg_learn_rate_idle: float = 0.01
     # Only search inside slightly larger than double wire
-    roi_scale: float = 1.12
+    roi_scale: float = 1.15
+    # Absolute foreground pixel count to treat as motion (NOT mean fraction)
+    min_motion_pixels: int = 80
 
 
 @dataclass
@@ -48,14 +47,17 @@ class MotionDartDetector:
         self.calib = calib
         self.config = config or DetectorConfig()
         self._bg: Optional[np.ndarray] = None
+        self._bg_frozen: Optional[np.ndarray] = None  # snapshot before motion
         self._motion_streak = 0
         self._quiet_streak = 0
         self._pending = False
         self._last_motion = 0.0
+        self._last_fg_pixels = 0
 
     def reset_background(self, frame_bgr: np.ndarray) -> None:
         gray = self._prep(frame_bgr)
         self._bg = gray.astype(np.float32)
+        self._bg_frozen = None
         self._motion_streak = 0
         self._quiet_streak = 0
         self._pending = False
@@ -72,7 +74,7 @@ class MotionDartDetector:
         cv2.circle(
             mask,
             (int(self.calib.center_x), int(self.calib.center_y)),
-            r,
+            max(r, 10),
             255,
             -1,
         )
@@ -93,17 +95,21 @@ class MotionDartDetector:
             self._bg = gray.astype(np.float32)
             return None, overlay
 
-        diff = cv2.absdiff(gray, cv2.convertScaleAbs(self._bg))
+        bg_u8 = cv2.convertScaleAbs(self._bg)
+        diff = cv2.absdiff(gray, bg_u8)
         roi = self._roi_mask(gray.shape)
         diff = cv2.bitwise_and(diff, diff, mask=roi)
         _, th = cv2.threshold(diff, cfg.motion_threshold, 255, cv2.THRESH_BINARY)
         th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
 
+        fg_pixels = int(np.count_nonzero(th))
+        self._last_fg_pixels = fg_pixels
+        # Fraction only for display
         motion_score = float(np.mean(th[roi > 0]) / 255.0) if np.any(roi) else 0.0
         self._last_motion = motion_score
 
-        # Draw ROI
+        # Draw ROI (calibration circle)
         cv2.circle(
             overlay,
             (int(self.calib.center_x), int(self.calib.center_y)),
@@ -111,35 +117,46 @@ class MotionDartDetector:
             (80, 80, 80),
             1,
         )
+        cv2.circle(
+            overlay,
+            (int(self.calib.center_x), int(self.calib.center_y)),
+            4,
+            (0, 255, 0),
+            -1,
+        )
 
-        active = motion_score > 0.002  # any meaningful motion in ROI
+        # Use ABSOLUTE pixel count — mean fraction is far too small for a dart on HD frames
+        active = fg_pixels >= cfg.min_motion_pixels
 
         if active:
+            if not self._pending:
+                # Freeze background as of just before this motion burst
+                self._bg_frozen = self._bg.copy()
             self._motion_streak += 1
             self._quiet_streak = 0
             self._pending = True
         else:
             self._quiet_streak += 1
             self._motion_streak = 0
-            # slowly adapt background when idle and not pending
             if not self._pending:
                 cv2.accumulateWeighted(gray, self._bg, cfg.bg_learn_rate_idle)
 
         result: Optional[DetectionResult] = None
 
-        # After motion, wait for settle then measure tip against pre-motion bg
+        # After motion, wait for settle then measure tip vs frozen pre-motion bg
         if self._pending and self._quiet_streak >= cfg.settle_frames:
-            tip = self._find_tip(th if np.count_nonzero(th) > 0 else diff, gray)
-            # Prefer mask from current high-res diff vs frozen bg
-            diff2 = cv2.absdiff(gray, cv2.convertScaleAbs(self._bg))
+            ref = self._bg_frozen if self._bg_frozen is not None else self._bg
+            ref_u8 = cv2.convertScaleAbs(ref)
+            diff2 = cv2.absdiff(gray, ref_u8)
             diff2 = cv2.bitwise_and(diff2, diff2, mask=roi)
-            _, th2 = cv2.threshold(diff2, cfg.motion_threshold, 255, cv2.THRESH_BINARY)
-            th2 = cv2.morphologyEx(th2, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+            _, th2 = cv2.threshold(diff2, max(10, cfg.motion_threshold - 6), 255, cv2.THRESH_BINARY)
+            th2 = cv2.morphologyEx(th2, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+            th2 = cv2.morphologyEx(th2, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
             tip = self._find_tip(th2, gray)
 
             if tip is not None:
                 tx, ty = tip
-                conf = self._confidence(th2, tip, motion_score)
+                conf = self._confidence(th2, tip, float(fg_pixels))
                 hit = self.calib.hit_at_pixel(tx, ty, confidence=conf)
                 result = DetectionResult(
                     hit=hit,
@@ -147,37 +164,42 @@ class MotionDartDetector:
                     motion_score=motion_score,
                     camera_id=self.calib.camera_id,
                 )
-                cv2.circle(overlay, (int(tx), int(ty)), 8, (0, 255, 255), 2)
+                cv2.circle(overlay, (int(tx), int(ty)), 10, (0, 255, 255), 2)
                 cv2.putText(
                     overlay,
-                    f"{hit.kind} {hit.number} ({hit.confidence:.2f})",
+                    f"{hit.kind} {hit.number} conf={hit.confidence:.2f}",
                     (int(tx) + 10, int(ty)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.6,
                     (0, 255, 255),
                     2,
                 )
-                # lock new background including the dart (for next dart)
+                # Lock background INCLUDING the dart so next dart is incremental
                 self._bg = gray.astype(np.float32)
             else:
-                # false motion – keep adapting
-                cv2.accumulateWeighted(gray, self._bg, 0.1)
+                # Motion but no tip — soft adapt, don't fully lock
+                cv2.accumulateWeighted(gray, self._bg, 0.15)
 
             self._pending = False
             self._quiet_streak = 0
+            self._bg_frozen = None
 
-        # debug motion tint
+        # debug motion tint (red = foreground)
         color_m = cv2.cvtColor(th, cv2.COLOR_GRAY2BGR)
         color_m[:, :, 0] = 0
         color_m[:, :, 1] = 0
-        overlay = cv2.addWeighted(overlay, 1.0, color_m, 0.25, 0)
+        overlay = cv2.addWeighted(overlay, 1.0, color_m, 0.35, 0)
+        status = (
+            f"{self.calib.camera_id} fg={fg_pixels} thr={cfg.min_motion_pixels} "
+            f"pending={self._pending} quiet={self._quiet_streak}"
+        )
         cv2.putText(
             overlay,
-            f"{self.calib.camera_id} motion={motion_score:.3f} pending={self._pending}",
+            status,
             (10, 28),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (220, 220, 220),
+            0.55,
+            (0, 255, 0) if active or self._pending else (220, 220, 220),
             1,
         )
 
@@ -205,37 +227,44 @@ class MotionDartDetector:
             area = cv2.contourArea(cnt)
             if area < cfg.min_blob_area or area > cfg.max_blob_area:
                 continue
-            # Tip heuristic: point on contour nearest to board center
             pts = cnt.reshape(-1, 2).astype(np.float32)
             d = np.hypot(pts[:, 0] - cx, pts[:, 1] - cy)
             i = int(np.argmin(d))
             tip = (float(pts[i, 0]), float(pts[i, 1]))
-            # Prefer blobs with some elongation (shaft-like)
             if len(cnt) >= 5:
-                (_, _), (ma, mi), _ = cv2.fitEllipse(cnt) if len(cnt) >= 5 else ((0, 0), (1, 1), 0)
-                elong = max(ma, mi) / max(min(ma, mi), 1e-3)
+                try:
+                    (_, _), (ma, mi), _ = cv2.fitEllipse(cnt)
+                    elong = max(ma, mi) / max(min(ma, mi), 1e-3)
+                except cv2.error:
+                    elong = 1.0
             else:
                 elong = 1.0
-            # score: closer to board, reasonable area, elongated
             r_norm = d[i] / max(self.calib.radius_px, 1)
-            if r_norm > 1.15:
+            if r_norm > 1.2:
                 continue
-            score = (1.2 - r_norm) * min(elong, 4.0) * np.log1p(area)
+            score = (1.25 - r_norm) * min(elong, 5.0) * np.log1p(area)
             if score > best_score:
                 best_score = score
                 best_tip = tip
 
+        # Fallback: largest contour centroid if tip heuristic fails
+        if best_tip is None and contours:
+            cnt = max(contours, key=cv2.contourArea)
+            area = cv2.contourArea(cnt)
+            if area >= cfg.min_blob_area:
+                M = cv2.moments(cnt)
+                if M["m00"] > 0:
+                    best_tip = (float(M["m10"] / M["m00"]), float(M["m01"] / M["m00"]))
+
         return best_tip
 
     def _confidence(
-        self, mask: np.ndarray, tip: Tuple[float, float], motion_score: float
+        self, mask: np.ndarray, tip: Tuple[float, float], fg_pixels: float
     ) -> float:
         area = float(np.count_nonzero(mask))
-        # Map area + motion into 0.4–0.95
-        a = np.clip(area / 800.0, 0.0, 1.0)
-        m = np.clip(motion_score * 20.0, 0.0, 1.0)
-        conf = 0.4 + 0.35 * a + 0.25 * m
-        # Inside board boost
+        a = np.clip(area / 600.0, 0.0, 1.0)
+        m = np.clip(fg_pixels / 400.0, 0.0, 1.0)
+        conf = 0.45 + 0.35 * a + 0.2 * m
         r, _ = self.calib.to_polar(tip[0], tip[1])
         if r <= 1.0:
             conf = min(0.98, conf + 0.05)
