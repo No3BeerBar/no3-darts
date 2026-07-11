@@ -24,7 +24,9 @@ from .calibration import BoardCalibration, _open_source, auto_detect_board_circl
 
 console = Console()
 
-DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-2-vision-1212")
+# Current image-capable chat models (grok-2-vision-* is retired → 400 invalid argument)
+DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-4.5")
+XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"
 XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
 
 
@@ -89,6 +91,131 @@ def _parse_json_loose(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
+def _api_error_message(status: int, body: str) -> str:
+    """Human-readable API errors. 401 = bad key; 400 = bad request/model."""
+    snippet = (body or "")[:600]
+    if status == 401:
+        return (
+            f"xAI API 401 Unauthorized — API key is missing or wrong. "
+            f"Check XAI_API_KEY at https://console.x.ai/\n{snippet}"
+        )
+    if status == 403:
+        return (
+            f"xAI API 403 Forbidden — key lacks permission for this endpoint/model.\n{snippet}"
+        )
+    if status == 400:
+        return (
+            f"xAI API 400 Bad Request — usually wrong model name or image payload, "
+            f"not the API key. (Wrong keys are typically 401.)\n{snippet}"
+        )
+    return f"xAI API {status}: {snippet}"
+
+
+def _extract_text_from_responses(data: dict[str, Any]) -> str:
+    """Parse /v1/responses body → assistant text."""
+    if isinstance(data.get("output_text"), str) and data["output_text"].strip():
+        return data["output_text"]
+    parts: list[str] = []
+    for item in data.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") in (None, "message") or item.get("role") == "assistant":
+            content = item.get("content")
+            if isinstance(content, str):
+                parts.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") in (
+                        "output_text",
+                        "text",
+                    ):
+                        parts.append(str(part.get("text", "")))
+                    elif isinstance(part, str):
+                        parts.append(part)
+    text = "\n".join(p for p in parts if p).strip()
+    if text:
+        return text
+    raise RuntimeError(f"Unexpected xAI responses body: {str(data)[:400]}")
+
+
+def _extract_text_from_chat(data: dict[str, Any]) -> str:
+    """Parse /v1/chat/completions body → assistant text."""
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"Unexpected xAI chat response: {data}") from e
+    if isinstance(content, list):
+        content = " ".join(
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
+        )
+    return str(content)
+
+
+def _call_xai_vision(api_key: str, model: str, data_url: str) -> str:
+    """
+    Ask Grok to describe board landmarks from an image.
+    Prefers /v1/responses (current image-understanding path), then chat completions.
+    """
+    key = api_key.strip()
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+
+    # Current documented image understanding format
+    responses_body = {
+        "model": model,
+        "temperature": 0.1,
+        "store": False,  # docs: avoid storing image request history
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_image",
+                        "image_url": data_url,
+                        "detail": "high",
+                    },
+                    {"type": "input_text", "text": VISION_PROMPT},
+                ],
+            }
+        ],
+    }
+
+    console.print(f"[cyan]Asking Grok vision ({model}) via /v1/responses…[/cyan]")
+    r = requests.post(XAI_RESPONSES_URL, headers=headers, json=responses_body, timeout=120)
+    if r.status_code < 400:
+        return _extract_text_from_responses(r.json())
+
+    first_err = _api_error_message(r.status_code, r.text)
+    # Fallback: OpenAI-style chat completions (still supported for some keys/models)
+    chat_body = {
+        "model": model,
+        "temperature": 0.1,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": data_url, "detail": "high"},
+                    },
+                    {"type": "text", "text": VISION_PROMPT},
+                ],
+            }
+        ],
+    }
+    console.print(
+        f"[yellow]Responses API failed ({r.status_code}); trying /v1/chat/completions…[/yellow]"
+    )
+    r2 = requests.post(XAI_CHAT_URL, headers=headers, json=chat_body, timeout=120)
+    if r2.status_code >= 400:
+        raise RuntimeError(
+            f"{first_err}\n--- chat fallback ---\n{_api_error_message(r2.status_code, r2.text)}"
+        )
+    return _extract_text_from_chat(r2.json())
+
+
 def calibrate_with_grok_vision(
     frame_bgr: np.ndarray,
     camera_id: str,
@@ -100,41 +227,7 @@ def calibrate_with_grok_vision(
     b64 = frame_to_jpeg_b64(frame_bgr)
     data_url = f"data:image/jpeg;base64,{b64}"
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    body = {
-        "model": model,
-        "temperature": 0.1,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}},
-                    {"type": "text", "text": VISION_PROMPT},
-                ],
-            }
-        ],
-    }
-
-    console.print(f"[cyan]Asking Grok vision ({model}) to find the board…[/cyan]")
-    r = requests.post(XAI_CHAT_URL, headers=headers, json=body, timeout=90)
-    if r.status_code >= 400:
-        raise RuntimeError(f"xAI API {r.status_code}: {r.text[:500]}")
-
-    data = r.json()
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as e:
-        raise RuntimeError(f"Unexpected xAI response: {data}") from e
-
-    if isinstance(content, list):
-        # some APIs return content parts
-        content = " ".join(
-            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
-        )
-
+    content = _call_xai_vision(api_key, model, data_url)
     parsed = _parse_json_loose(str(content))
     cx = float(parsed["center_x"])
     cy = float(parsed["center_y"])

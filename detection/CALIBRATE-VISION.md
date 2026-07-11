@@ -13,6 +13,16 @@ You no longer have to click center / radius / 20 by hand (though that still work
 
 Grok vision looks at a snapshot and returns bull center, outer double wire, and where **20** is — same landmarks the scoring math needs.
 
+Uses model **`grok-4.5`** via `https://api.x.ai/v1/responses` (image understanding). Override with env `XAI_VISION_MODEL` if needed.
+
+### API error codes
+
+| Code | Meaning |
+|------|---------|
+| **401** | Wrong or missing API key |
+| **400** | Bad request (old/retired model name, bad image payload) — **not** usually the key |
+| **403** | Key lacks access to that model/endpoint |
+
 ---
 
 ## Mini PC (Windows)
