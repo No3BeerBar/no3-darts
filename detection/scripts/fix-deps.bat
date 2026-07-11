@@ -1,88 +1,108 @@
 @echo off
-REM Install/repair Python packages into detection\.venv (fixes: no module named cv2 / rich)
+REM Install cv2 + deps into detection\.venv ONLY
+REM Usage: double-click OR: scripts\fix-deps.bat
+REM        scripts\fix-deps.bat nopause   (for use from other bats)
 setlocal EnableExtensions
 cd /d "%~dp0.."
 
+set NOPAUSE=0
+if /I "%~1"=="nopause" set NOPAUSE=1
+
 echo.
 echo ========================================
-echo  No3 detector - fix Python deps
-echo  Folder: %CD%
+echo  No3 - fix deps (cv2 / rich)
+echo  Working dir: %CD%
 echo ========================================
 echo.
 
-where python >nul 2>&1
-if errorlevel 1 (
-  where py >nul 2>&1
-  if errorlevel 1 (
-    echo ERROR: Python not found.
-    pause
-    exit /b 1
-  )
-  set PYLAUNCH=py -3
-) else (
-  set PYLAUNCH=python
+REM --- find a bootstrap Python to create venv ---
+set PYBOOT=
+where python >nul 2>&1 && set PYBOOT=python
+if not defined PYBOOT (
+  where py >nul 2>&1 && set PYBOOT=py
+)
+if not defined PYBOOT (
+  echo ERROR: No system Python on PATH.
+  echo Install from https://www.python.org/downloads/windows/
+  echo Tick: Add python.exe to PATH
+  goto :fail
 )
 
 if not exist ".venv\Scripts\python.exe" (
-  echo Creating .venv ...
-  %PYLAUNCH% -m venv .venv
+  echo Creating .venv with %PYBOOT% ...
+  if /I "%PYBOOT%"=="py" (
+    py -3 -m venv .venv
+  ) else (
+    python -m venv .venv
+  )
 )
 
-set VENVPY=%CD%\.venv\Scripts\python.exe
-if not exist "%VENVPY%" (
-  echo ERROR: missing %VENVPY%
-  pause
-  exit /b 1
+if not exist ".venv\Scripts\python.exe" (
+  echo ERROR: .venv\Scripts\python.exe was not created.
+  goto :fail
 )
 
-echo Using: %VENVPY%
-"%VENVPY%" --version
-
-echo.
-echo Upgrading pip ...
-"%VENVPY%" -m pip install --upgrade pip
-
-echo.
-echo Installing base requirements ...
-"%VENVPY%" -m pip install -r requirements.txt
+REM Always use absolute path into THIS folder's venv
+set "VENVPY=%CD%\.venv\Scripts\python.exe"
+echo VENV python:
+"%VENVPY%" -c "import sys; print(sys.executable); print(sys.version)"
 if errorlevel 1 goto :fail
 
 echo.
-echo Installing OpenCV (cv2) - GUI package first ...
-REM Install GUI build WITHOUT removing headless first (avoids leaving zero cv2)
-"%VENVPY%" -m pip install --upgrade "opencv-python>=4.9.0"
-if errorlevel 1 (
-  echo GUI opencv-python failed - installing headless fallback ...
-  "%VENVPY%" -m pip install --upgrade "opencv-python-headless>=4.9.0"
+echo [1/4] pip upgrade
+"%VENVPY%" -m pip install --upgrade pip setuptools wheel
+if errorlevel 1 goto :fail
+
+echo.
+echo [2/4] requirements.txt
+if exist "requirements.txt" (
+  "%VENVPY%" -m pip install -r requirements.txt
   if errorlevel 1 goto :fail
-) else (
-  REM Safe to drop headless only after GUI works
-  "%VENVPY%" -m pip uninstall -y opencv-python-headless >nul 2>&1
 )
 
 echo.
-echo Installing rich requests PyYAML numpy pydantic ...
+echo [3/4] force-install OpenCV as cv2
+REM Do NOT uninstall anything first - avoids ending with zero opencv
+"%VENVPY%" -m pip install --upgrade --force-reinstall "opencv-python>=4.9.0"
+if errorlevel 1 (
+  echo opencv-python failed, trying headless ...
+  "%VENVPY%" -m pip install --upgrade --force-reinstall "opencv-python-headless>=4.9.0"
+  if errorlevel 1 goto :fail
+)
+
+echo.
+echo [4/4] other packages
 "%VENVPY%" -m pip install --upgrade "rich>=13.7.0" "requests>=2.31.0" "PyYAML>=6.0.1" "numpy>=1.26.0" "pydantic>=2.6.0" "pydantic-settings>=2.2.0"
 if errorlevel 1 goto :fail
 
 echo.
-echo Verifying imports with venv python ...
-"%VENVPY%" -c "import sys; print(sys.executable); import cv2, rich, numpy, yaml, requests; print('cv2', cv2.__version__); print('rich', rich.__version__); print('ALL OK')"
-if errorlevel 1 goto :fail
+echo --- pip show opencv ---
+"%VENVPY%" -m pip show opencv-python opencv-python-headless 2>nul
 
 echo.
-echo SUCCESS - always run with:
-echo   .venv\Scripts\python.exe -m no3_detect ...
-echo or:
-echo   scripts\run-detector.bat
-echo   scripts\setup-and-calibrate.bat
+echo --- import test (must use venv) ---
+"%VENVPY%" -c "import sys; print('exe=', sys.executable); import cv2; print('cv2=', cv2.__version__); import rich; print('rich=OK'); print('SUCCESS')"
+if errorlevel 1 (
+  echo.
+  echo import cv2 FAILED even after install.
+  echo If error mentions DLL: install Microsoft Visual C++ Redistributable
+  echo   https://aka.ms/vs/17/release/vc_redist.x64.exe
+  goto :fail
+)
+
 echo.
-pause
+echo ========================================
+echo  DEPS OK
+echo  ALWAYS run commands like this:
+echo    %CD%\.venv\Scripts\python.exe -m no3_detect ...
+echo  NOT bare:  python -m no3_detect ...
+echo ========================================
+echo.
+if %NOPAUSE%==0 pause
 exit /b 0
 
 :fail
 echo.
-echo FAILED. Copy the error text above.
-echo Common fix: run THIS bat only, not bare "python".
-pause
+echo FAILED.
+if %NOPAUSE%==0 pause
 exit /b 1

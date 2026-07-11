@@ -1,22 +1,36 @@
 @echo off
-REM Calibrate all cameras with Grok vision (or OpenCV auto fallback)
+setlocal EnableExtensions
 cd /d "%~dp0.."
 
-if not exist ".venv\Scripts\python.exe" (
-  echo Virtual env missing. Run install-from-github.ps1 first.
+set "VENVPY=%CD%\.venv\Scripts\python.exe"
+
+if not exist "%VENVPY%" (
+  call "%~dp0fix-deps.bat" nopause
+)
+
+"%VENVPY%" -c "import cv2" 1>nul 2>nul
+if errorlevel 1 (
+  call "%~dp0fix-deps.bat" nopause
+)
+
+if not exist "%VENVPY%" (
+  echo ERROR: no venv python
+  pause
+  exit /b 1
+)
+
+echo Using:
+"%VENVPY%" -c "import sys,cv2; print(sys.executable); print('cv2', cv2.__version__)"
+if errorlevel 1 (
+  echo ERROR: cv2 not importable. Run scripts\fix-deps.bat
   pause
   exit /b 1
 )
 
 if "%XAI_API_KEY%"=="" (
-  echo.
-  echo Optional: set XAI_API_KEY for Grok vision calibration.
-  echo   setx XAI_API_KEY "xai-..."
-  echo Without a key, OpenCV auto-calibration will be used.
-  echo.
+  echo XAI_API_KEY not set - OpenCV auto fallback may be used.
 )
 
-echo Calibrating cameras 0 1 2 with vision-or-auto...
-".venv\Scripts\python.exe" -m no3_detect calibrate-vision --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir .\calib --method vision-or-auto --continue-on-error
-echo.
+echo Calibrating 0 1 2 ...
+"%VENVPY%" -m no3_detect calibrate-vision --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir .\calib --method vision-or-auto --continue-on-error
 pause

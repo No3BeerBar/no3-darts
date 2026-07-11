@@ -1,10 +1,8 @@
 """
 CLI entrypoint:
 
-  python -m no3_detect calibrate --camera 0 --id cam0 --out ./calib/cam0.json
-  python -m no3_detect run --config config.yaml
-  python -m no3_detect simulate --url http://localhost:3000 --180
-  python -m no3_detect test-geometry
+  .venv\\Scripts\\python.exe -m no3_detect calibrate --camera 0 --id cam0 --out ./calib/cam0.json
+  .venv\\Scripts\\python.exe -m no3_detect run --config config.yaml
 """
 
 from __future__ import annotations
@@ -13,7 +11,46 @@ import argparse
 import sys
 from pathlib import Path
 
-from rich.console import Console
+
+def _check_deps() -> None:
+    """Fail fast with the exact fix command if cv2/rich missing."""
+    missing = []
+    try:
+        import cv2  # noqa: F401
+    except ImportError:
+        missing.append("cv2 (package: opencv-python)")
+    try:
+        import rich  # noqa: F401
+    except ImportError:
+        missing.append("rich")
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        missing.append("yaml (package: PyYAML)")
+    try:
+        import requests  # noqa: F401
+    except ImportError:
+        missing.append("requests")
+    if not missing:
+        return
+    exe = sys.executable
+    print("=" * 60, file=sys.stderr)
+    print("Missing Python packages:", ", ".join(missing), file=sys.stderr)
+    print(f"This Python is: {exe}", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Fix (from the detection folder):", file=sys.stderr)
+    print("  scripts\\fix-deps.bat", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Then always use the venv python, not bare 'python':", file=sys.stderr)
+    print("  .venv\\Scripts\\python.exe -m no3_detect ...", file=sys.stderr)
+    print("  scripts\\run-detector.bat", file=sys.stderr)
+    print("=" * 60, file=sys.stderr)
+    sys.exit(1)
+
+
+_check_deps()
+
+from rich.console import Console  # noqa: E402
 
 console = Console()
 
