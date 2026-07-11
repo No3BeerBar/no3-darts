@@ -29,12 +29,18 @@ After calibration, check the overlay: you should see an **ellipse** on the outer
 
 ## Mini PC (Windows)
 
-### 1. Pull latest code
+### 1. Pull + setup + calibrate (recommended)
 ```powershell
 cd C:\No3Darts\no3-darts
 git pull
 cd detection
-.\.venv\Scripts\Activate.ps1
+.\scripts\setup-and-calibrate.bat
+```
+That creates `.venv`, installs `rich` / OpenCV / deps, then runs vision calibrate on cams 0–1–2.
+
+Setup only (no calibrate):
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-and-calibrate.ps1 -SkipCalibrate
 ```
 
 ### 2. Set your xAI key (for Grok vision)
