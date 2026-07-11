@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> None:
     p_vis.add_argument(
         "--model",
         default=None,
-        help="Vision model (default grok-4.5 or XAI_VISION_MODEL)",
+        help="Vision model (default grok-build-0.1 or XAI_VISION_MODEL)",
     )
     p_vis.add_argument("-y", "--yes", action="store_true", help="Skip preview confirm")
     p_vis.add_argument(
