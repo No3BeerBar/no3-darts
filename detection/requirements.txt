@@ -1,7 +1,10 @@
 # No3 Darts – local computer-vision detector
 # Run on a bar PC / NUC / Raspberry Pi next to the board (not on Railway).
+#
+# Windows mini-PC: use scripts\fix-deps.bat (installs opencv-python with GUI).
+# Headless servers can: pip install opencv-python-headless
 
-opencv-python-headless>=4.9.0
+opencv-python>=4.9.0
 numpy>=1.26.0
 requests>=2.31.0
 pydantic>=2.6.0
