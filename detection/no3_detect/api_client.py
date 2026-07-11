@@ -72,6 +72,12 @@ class No3Client:
         except Exception:
             data = {"raw": r.text}
         if r.status_code >= 400:
+            err = data.get("error") if isinstance(data, dict) else data
+            if r.status_code == 404 or "No active match" in str(err):
+                raise RuntimeError(
+                    f"API {r.status_code}: {err} — "
+                    f"Start a game on the iPad for room '{self.room_id}' and leave it open."
+                )
             raise RuntimeError(f"API {r.status_code}: {data}")
         return data
 

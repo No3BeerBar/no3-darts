@@ -327,8 +327,15 @@ class DetectionPipeline:
         try:
             resp = self.client.post_dart(hit, dry_run=self.config.dry_run)
             self._last_post_ms = now
+            callout = resp.get("callout") if isinstance(resp, dict) else None
+            turn = resp.get("currentTurnDarts") if isinstance(resp, dict) else None
+            n_turn = len(turn) if isinstance(turn, list) else "?"
             console.print(
-                f"[bold green]POST dart[/bold green] {hit.kind} {hit.number} → {resp}"
+                f"[bold green]POST OK[/bold green] {hit.kind} {hit.number} "
+                f"callout={callout!r} turn_darts={n_turn} match={resp.get('matchId') if isinstance(resp, dict) else '?'}"
+            )
+            console.print(
+                "[dim]iPad/TV should update within ~1s if a match is open for this room[/dim]"
             )
         except Exception as e:
             console.print(f"[red]POST failed: {e}[/red]")

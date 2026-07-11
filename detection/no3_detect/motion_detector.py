@@ -53,6 +53,8 @@ class MotionDartDetector:
         self.calib = calib
         self.config = config or DetectorConfig()
         self._bg: Optional[np.ndarray] = None
+        # Snapshot from last B press (true empty board) — used by force T
+        self._bg_empty: Optional[np.ndarray] = None
         self._bg_frozen: Optional[np.ndarray] = None
         self._prev_gray: Optional[np.ndarray] = None
         self._motion_streak = 0
@@ -71,6 +73,7 @@ class MotionDartDetector:
     def reset_background(self, frame_bgr: np.ndarray) -> None:
         gray = self._prep(frame_bgr)
         self._bg = gray.astype(np.float32)
+        self._bg_empty = gray.astype(np.float32)  # keep pure empty for force-T
         self._bg_frozen = None
         self._prev_gray = gray.copy()
         self._motion_streak = 0
@@ -81,24 +84,35 @@ class MotionDartDetector:
 
     def force_detect(self, frame_bgr: np.ndarray) -> Tuple[Optional[DetectionResult], np.ndarray]:
         """
-        Immediate tip find vs current locked background (press T).
-        Ignores settle state — use with empty-board B, then stick a dart, then T.
+        Immediate tip find vs empty-board background from last B.
+        Order: B (empty) → stick dart → T.
         """
         gray = self._prep(frame_bgr)
         overlay = frame_bgr.copy()
         if self._bg is None:
             self.reset_background(frame_bgr)
-            self._last_event = "force_detect: no bg yet, locked now — throw then press T again"
+            self._last_event = (
+                "FORCE: no empty bg yet — board locked as empty NOW. "
+                "Stick a dart, then press T again."
+            )
             return None, self._annotate(overlay, gray, None, force=True)
 
-        tip, th, fg = self._measure_tip(gray, self._bg)
+        # Prefer true empty-board snapshot so T still works after an auto-hit
+        ref = self._bg_empty if self._bg_empty is not None else self._bg
+        tip, th, fg = self._measure_tip(gray, ref)
+        # If empty-board ref is too noisy/empty, try working bg
+        if tip is None and self._bg is not None and ref is not self._bg:
+            tip2, th2, fg2 = self._measure_tip(gray, self._bg)
+            if tip2 is not None or fg2 > fg:
+                tip, th, fg = tip2, th2, fg2
+
         self._last_fg_pixels = fg
         self._last_mask = th
         result = None
-        if tip is not None:
+        if tip is not None and fg >= max(8, self._scaled_min_fg // 3):
             tx, ty = tip
             conf = self._confidence(th, tip, float(fg))
-            conf = max(conf, 0.55)  # force path: trust the measurement
+            conf = max(conf, 0.55)
             hit = self.calib.hit_at_pixel(tx, ty, confidence=conf)
             result = DetectionResult(
                 hit=hit,
@@ -110,7 +124,7 @@ class MotionDartDetector:
                 f"FORCE HIT {hit.kind} {hit.number} conf={hit.confidence:.2f} "
                 f"tip=({tx:.0f},{ty:.0f}) fg={fg}"
             )
-            # Include dart in bg so next force/throw is incremental
+            # Working bg includes dart; empty snapshot stays for next force if user removes
             self._bg = gray.astype(np.float32)
             cv2.circle(overlay, (int(tx), int(ty)), 12, (0, 255, 255), 2)
             cv2.putText(
@@ -123,7 +137,10 @@ class MotionDartDetector:
                 2,
             )
         else:
-            self._last_event = f"FORCE no tip found fg={fg} (empty board? bad ROI? press B first)"
+            self._last_event = (
+                f"FORCE no tip fg={fg} — do: empty board + B, THEN stick dart, THEN T. "
+                f"(If you already auto-detected, remove dart, B, re-stick, T)"
+            )
         return result, self._annotate(overlay, gray, th, force=True)
 
     def _update_scales(self, shape: Tuple[int, int]) -> None:

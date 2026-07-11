@@ -14,9 +14,29 @@ const byRoom = new Map<string, string>(); // roomId -> matchId
 const listeners = new Set<Listener>();
 
 export function upsertServerMatch(state: GameState): void {
+  const existing = matches.get(state.id);
+  // Never let a stale tablet heartbeat wipe newer camera darts.
+  // Heartbeats re-push local state every ~2.5s; if the camera scored first,
+  // existing.updatedAt is ahead and we must keep the server copy.
+  if (existing && (existing.updatedAt ?? 0) > (state.updatedAt ?? 0)) {
+    return;
+  }
+  // Same timestamp: prefer the state with more progress (more darts / later turn)
+  if (existing && (existing.updatedAt ?? 0) === (state.updatedAt ?? 0)) {
+    const existN = countProgress(existing);
+    const nextN = countProgress(state);
+    if (existN > nextN) return;
+  }
   matches.set(state.id, state);
   if (state.roomId) byRoom.set(state.roomId, state.id);
   emit({ type: "match_update", data: state });
+}
+
+/** Rough progress score so we don't clobber camera-applied turns. */
+function countProgress(s: GameState): number {
+  const turn = s.currentTurnDarts?.length ?? 0;
+  const thrown = (s.playerStates ?? []).reduce((a, p) => a + (p.dartsThrown ?? 0), 0);
+  return thrown * 10 + turn + (s.legNumber ?? 0) * 100;
 }
 
 export function getServerMatch(id: string): GameState | undefined {
