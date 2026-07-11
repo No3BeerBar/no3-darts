@@ -29,15 +29,16 @@ from .calibration import (
 
 console = Console()
 
-# Prefer env override; otherwise try several current image-capable models.
+# Prefer env override; otherwise try several image-capable models.
 # xAI retires model slugs often → 400 "invalid argument" if wrong.
-DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-4.5")
+# grok-build-0.1 supports vision (confirmed working for board calib).
+DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-build-0.1")
 VISION_MODEL_CANDIDATES = [
     m.strip()
     for m in os.environ.get(
         "XAI_VISION_MODELS",
-        # Order: flagship vision, then cheaper chat, then older aliases
-        "grok-4.5,grok-4.3,grok-4,grok-2-vision-1212,grok-2-vision-latest",
+        # Order: build (vision OK), then chat flagships, then older aliases
+        "grok-build-0.1,grok-4.5,grok-4.3,grok-4,grok-2-vision-1212,grok-2-vision-latest",
     ).split(",")
     if m.strip()
 ]
