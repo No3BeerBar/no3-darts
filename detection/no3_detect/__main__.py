@@ -119,6 +119,31 @@ def cmd_run(args: argparse.Namespace) -> None:
     pipeline.run()
 
 
+def cmd_v2_calibrate(args: argparse.Namespace) -> None:
+    from .v2.calibrate_ui import interactive_calibrate_v2
+
+    interactive_calibrate_v2(
+        source=args.camera,
+        camera_id=args.id,
+        out_path=args.out,
+    )
+
+
+def cmd_v2_run(args: argparse.Namespace) -> None:
+    from .v2.pipeline import V2Config, V2Pipeline
+
+    cfg_path = Path(args.config)
+    if not cfg_path.exists():
+        console.print(f"[red]Config not found: {cfg_path}[/red]")
+        sys.exit(1)
+    config = V2Config.load(cfg_path)
+    if args.dry_run:
+        config.dry_run = True
+    if args.no_preview:
+        config.preview = False
+    V2Pipeline(config).run()
+
+
 def cmd_simulate(args: argparse.Namespace) -> None:
     from .api_client import No3Client
     from .simulate import classic_180_sequence, run_simulation
@@ -232,11 +257,26 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_vis.set_defaults(func=cmd_calibrate_vision)
 
-    p_run = sub.add_parser("run", help="Run live detection loop")
+    p_run = sub.add_parser("run", help="Run live detection loop (legacy v1)")
     p_run.add_argument("--config", default="config.yaml")
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--no-preview", action="store_true")
     p_run.set_defaults(func=cmd_run)
+
+    p_v2c = sub.add_parser(
+        "v2-calibrate",
+        help="v2: 4-click outer-double calib (Autodarts/DeepDarts style)",
+    )
+    p_v2c.add_argument("--camera", default="0")
+    p_v2c.add_argument("--id", default="cam0")
+    p_v2c.add_argument("--out", default="./calib/cam0.json")
+    p_v2c.set_defaults(func=cmd_v2_calibrate)
+
+    p_v2r = sub.add_parser("v2-run", help="v2: board-plane multi-cam detection (recommended)")
+    p_v2r.add_argument("--config", default="config.yaml")
+    p_v2r.add_argument("--dry-run", action="store_true")
+    p_v2r.add_argument("--no-preview", action="store_true")
+    p_v2r.set_defaults(func=cmd_v2_run)
 
     p_sim = sub.add_parser("simulate", help="Post fake darts to No3 API")
     p_sim.add_argument("--url", default="http://localhost:3000")
