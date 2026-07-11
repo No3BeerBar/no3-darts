@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# detection (Windows mini-PC local runtime)
+detection/.venv/
+detection/config.yaml
+detection/calib/*.json
+!detection/calib/.gitkeep
+detection/**/__pycache__/
+detection/.DS_Store

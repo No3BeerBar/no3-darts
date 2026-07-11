@@ -1,0 +1,46 @@
+# Copy to config.yaml and edit for your board.
+
+# Where No3 Darts is running (local LAN or Railway URL)
+no3_api_url: "http://localhost:3000"
+camera_api_key: ""          # same as CAMERA_API_KEY if set on the server
+room_id: "Board 1"
+
+# Debounce: ignore further detections for N ms after a hit
+debounce_ms: 1200
+
+# Minimum confidence (0–1) before posting a dart
+min_confidence: 0.55
+
+# Motion threshold (pixel intensity) – raise if lights flicker
+motion_threshold: 28
+
+# Minimum contour area (pixels) to count as a dart shaft/tip blob
+min_blob_area: 40
+max_blob_area: 12000
+
+# Settle: wait this many quiet frames after motion before measuring tip
+settle_frames: 4
+
+# Cameras (1–3). Use device index or RTSP/HTTP URL.
+# For best accuracy use 2–3 fixed cameras ~120° apart around the board.
+# Windows: use python -m no3_detect list-cameras to map USB indices.
+# Keep cameras in the same USB ports after setup.
+cameras:
+  - id: cam0
+    source: 0                 # 0 = first USB cam; or "rtsp://..."
+    enabled: true
+    calibration: "./calib/cam0.json"
+  - id: cam1
+    source: 1
+    enabled: true
+    calibration: "./calib/cam1.json"
+  - id: cam2
+    source: 2
+    enabled: true
+    calibration: "./calib/cam2.json"
+
+# Display OpenCV preview windows (disable on headless Pi)
+preview: true
+
+# Dry-run: detect but do not POST to API
+dry_run: false
