@@ -15,10 +15,12 @@ echo ========================================
 echo  CLICK-FIT calibration (oblique cams)
 echo ========================================
 echo  For EACH camera:
-echo    1. Click 8-12 points on the OUTER DOUBLE wire
-echo    2. Press F to fit ellipse
-echo    3. Move mouse to middle of 20, press T
-echo    4. Press S to save
+echo    1. Mouse on BULLSEYE (dead center), press B
+echo    2. Click 8-12 points on the OUTER DOUBLE wire
+echo    3. Press F to fit (green dot must stay on bull)
+echo    4. Mouse on middle of 20 segment, press T
+echo    5. Press S to save
+echo    If bull wrong after F: B on bull again, then F
 echo    U=undo  C=clear  Q=quit
 echo ========================================
 echo.

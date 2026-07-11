@@ -124,8 +124,14 @@ def _open_source(source: int | str) -> cv2.VideoCapture:
 
 def fit_ellipse_from_points(
     pts: List[Tuple[float, float]],
+    fixed_center: Optional[Tuple[float, float]] = None,
 ) -> Optional[Tuple[float, float, float, float, float]]:
-    """Fit ellipse to user-clicked outer-double points. Returns (cx,cy,sa,sb,angle)."""
+    """
+    Fit ellipse to outer-double click points.
+    If fixed_center is set (true bullseye), center is locked there and axes
+    are estimated around it — fixes "ellipse center nowhere near the bull".
+    Returns (cx, cy, sa, sb, angle_deg).
+    """
     if len(pts) < 5:
         return None
     arr = np.array(pts, dtype=np.float32).reshape(-1, 1, 2)
@@ -136,7 +142,38 @@ def fit_ellipse_from_points(
     sa, sb = ma / 2.0, mi / 2.0
     if sa < 10 or sb < 10:
         return None
-    return float(ecx), float(ecy), float(sa), float(sb), float(ang)
+
+    if fixed_center is None:
+        return float(ecx), float(ecy), float(sa), float(sb), float(ang)
+
+    # Lock center to real bull; re-estimate semi-axes from outer points
+    cx, cy = float(fixed_center[0]), float(fixed_center[1])
+    th = math.radians(float(ang))
+    c, s = math.cos(th), math.sin(th)
+    # In ellipse-aligned frame, points should lie near (xr/a)^2+(yr/b)^2 = 1
+    # Estimate a,b by max extent first, then scale so mean radius on ellipse ≈ 1
+    xrs: List[float] = []
+    yrs: List[float] = []
+    for px, py in pts:
+        dx, dy = px - cx, py - cy
+        xr = c * dx + s * dy
+        yr = -s * dx + c * dy
+        xrs.append(xr)
+        yrs.append(yr)
+    a0 = max(abs(x) for x in xrs) or 1.0
+    b0 = max(abs(y) for y in yrs) or 1.0
+    # Refine: geometric mean of r_ell = sqrt((xr/a)^2+(yr/b)^2) should be 1
+    rs = [
+        math.sqrt((xr / a0) ** 2 + (yr / b0) ** 2)
+        for xr, yr in zip(xrs, yrs)
+    ]
+    mean_r = sum(rs) / max(len(rs), 1)
+    if mean_r < 1e-6:
+        mean_r = 1.0
+    sa = a0 * mean_r
+    sb = b0 * mean_r
+    # Keep angle from free fit (outer ring orientation)
+    return cx, cy, float(sa), float(sb), float(ang)
 
 
 def fit_board_ellipse(
@@ -405,9 +442,9 @@ def _draw_calib_overlay(
 
     lines = [
         status,
-        f"points={len(pts)}  center=({cx},{cy})  rot={rot:.1f}",
-        "CLICK outer double (8+ pts)  F=fit  T=mark 20  U=undo  C=clear  S=save  Q=quit",
-        "Or: 1 click bull + 4 clicks outer at 20/6/3/11 then F",
+        f"points={len(pts)}  bull/center=({cx},{cy})  rot={rot:.1f}",
+        "1) B = click BULLSEYE first  2) click outer double 8+ times  3) F=fit",
+        "T=mark 20  U=undo  C=clear  S=save  Q=quit",
     ]
     y0 = 24
     for line in lines:
@@ -460,12 +497,15 @@ def interactive_calibrate(
 
     print(
         "\n=== CLICK-FIT calibration (best for angled cameras) ===\n"
-        "  1. Click 8–12 points around the OUTER DOUBLE wire (not the numbers)\n"
-        "  2. Press F to fit ellipse — should hug the outer scoring ring\n"
-        "  3. Move mouse to middle of 20, press T\n"
-        "  4. Press S to save\n"
-        "  U=undo point  C=clear  A=auto edge fit  Q=quit\n"
+        "  1. Move mouse to the BULLSEYE (dead center of board), press B\n"
+        "  2. Click 8–12 points around the OUTER DOUBLE wire\n"
+        "  3. Press F to fit — ellipse should hug outer double, green dot on bull\n"
+        "  4. Move mouse to middle of the 20 segment, press T\n"
+        "  5. Press S to save\n"
+        "  U=undo  C=clear  A=auto  Q=quit\n"
+        "  If bull is still wrong after F: put mouse on bull, press B again, then F\n"
     )
+    state["status"] = "Step 1: mouse on BULLSEYE, press B"
 
     calib: Optional[BoardCalibration] = None
     last_frame = None
@@ -493,23 +533,45 @@ def interactive_calibrate(
         cv2.imshow(win, vis)
         key = cv2.waitKey(1) & 0xFF
 
-        if key == ord("u"):
+        if key == ord("b"):
+            # Explicit bullseye — do this first; F will lock center here
+            state["cx"] = float(state["mx"])
+            state["cy"] = float(state["my"])
+            state["status"] = (
+                f"BULL set at ({state['cx']:.0f},{state['cy']:.0f}) — "
+                f"now click outer double 8+ times, then F"
+            )
+            print(state["status"])
+            # If we already have points, refit axes around new bull
+            if len(state["pts"]) >= 5:
+                ell = fit_ellipse_from_points(
+                    state["pts"], fixed_center=(state["cx"], state["cy"])
+                )
+                if ell is not None:
+                    state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
+                    state["status"] = (
+                        f"BULL + refit OK — check green dot is on bullseye, then T on 20"
+                    )
+        elif key == ord("u"):
             if state["pts"]:
                 state["pts"].pop()
                 state["status"] = f"Undid point — {len(state['pts'])} left"
         elif key == ord("c"):
             state["pts"] = []
             state["cx"] = state["cy"] = state["sa"] = state["sb"] = None
-            state["status"] = "Cleared — click outer double again"
+            state["status"] = "Cleared — press B on bullseye, then click outer double"
         elif key == ord("f"):
-            ell = fit_ellipse_from_points(state["pts"])
+            fixed = None
+            if state["cx"] is not None and state["cy"] is not None:
+                fixed = (float(state["cx"]), float(state["cy"]))
+            ell = fit_ellipse_from_points(state["pts"], fixed_center=fixed)
             if ell is None:
-                state["status"] = "Need at least 5 points on outer double, then F"
+                state["status"] = "Need B on bullseye + at least 5 outer-double points, then F"
                 print(state["status"])
             else:
                 state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
                 state["status"] = (
-                    f"FIT OK  center=({ell[0]:.0f},{ell[1]:.0f}) "
+                    f"FIT OK  bull=({ell[0]:.0f},{ell[1]:.0f}) "
                     f"axes=({ell[2]:.0f},{ell[3]:.0f}) — press T on 20, then S"
                 )
                 print(state["status"])
@@ -524,30 +586,31 @@ def interactive_calibrate(
             hint_r = state["sa"] or min(w, h) * 0.3
             ell = fit_board_ellipse(last_frame, center_hint=hint_c, radius_hint=hint_r)
             if ell is None:
-                state["status"] = "Auto fit failed — use clicks instead"
+                state["status"] = "Auto fit failed — use B + clicks + F instead"
             else:
-                state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
-                state["status"] = "Auto fit applied — check overlay; refine with clicks+F if bad"
+                # Keep user bull if already set
+                if state["cx"] is not None and state["cy"] is not None:
+                    _, _, sa, sb, eang = ell
+                    state["sa"], state["sb"], state["eang"] = sa, sb, eang
+                    state["status"] = "Auto size only — bull kept; press F if you have points"
+                else:
+                    state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
+                    state["status"] = "Auto fit — VERIFY bull with B if green dot is wrong"
                 print(state["status"])
         elif key == ord("t"):
             if state["cx"] is None:
-                state["status"] = "Fit ellipse first (F) before setting 20"
+                state["status"] = "Set bull (B) and fit (F) before setting 20"
             else:
                 dx = state["mx"] - state["cx"]
                 dy = state["my"] - state["cy"]
-                # Image angle of mouse from center
                 img_ang = math.degrees(math.atan2(dx, -dy)) % 360.0
-                # For ellipse model, rotation_deg is board offset in ellipse-normalized space.
-                # Approx: use image angle as rotation so this point becomes board 0.
                 if state["sa"] and state["sb"]:
                     th = math.radians(state["eang"])
                     c, s = math.cos(th), math.sin(th)
-                    # point in ellipse-aligned frame
                     xr = c * dx + s * dy
                     yr = -s * dx + c * dy
                     u = xr / max(state["sa"], 1e-6)
                     v = yr / max(state["sb"], 1e-6)
-                    # angle in unit disk (0 at top)
                     board_img = math.degrees(math.atan2(u, -v)) % 360.0
                     state["rot"] = board_img
                 else:
@@ -556,7 +619,7 @@ def interactive_calibrate(
                 print(state["status"])
         elif key == ord("s"):
             if state["cx"] is None or not state["sa"] or not state["sb"]:
-                state["status"] = "Need a fitted ellipse (F) before save"
+                state["status"] = "Need B (bull) + F (fit) before save"
                 print(state["status"])
                 continue
             calib = calibration_from_ellipse(
