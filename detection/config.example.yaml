@@ -1,6 +1,9 @@
 # Copy to config.yaml and edit for your board.
 
-# Where No3 Darts is running (local LAN or Railway URL)
+# Where No3 Darts is running — site ROOT only (https, no /tv /api /play)
+# Good:  https://no3-darts-production.up.railway.app
+# Bad:   http://...  (redirects can cause API 405)
+# Bad:   https://.../tv  or  https://.../api
 no3_api_url: "https://no3-darts-production.up.railway.app"
 camera_api_key: ""          # same as CAMERA_API_KEY if set on the server
 room_id: "Board 1"

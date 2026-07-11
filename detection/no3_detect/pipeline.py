@@ -171,9 +171,13 @@ class DetectionPipeline:
         console.print()
         console.rule("[bold]No3 detector[/bold]")
         console.print(
-            f"API  → [cyan]{self.config.no3_api_url}[/cyan]  "
+            f"API  → [cyan]{self.client.base_url}[/cyan]  "
+            f"POST [cyan]{self.client.dart_url}[/cyan]"
+        )
+        console.print(
             f"room=[cyan]{self.config.room_id}[/cyan]  "
-            f"dry_run={self.config.dry_run}"
+            f"dry_run={self.config.dry_run}  "
+            f"(config raw: {self.config.no3_api_url!r})"
         )
         console.print(
             f"Sensitivity → thr={self.config.motion_threshold}  "
