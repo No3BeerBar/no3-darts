@@ -23,7 +23,7 @@ echo.
 echo ============================================================
 echo  No3 detector v2 (board-plane / Autodarts-style)
 echo  Python: %VENVPY%
-echo  Need v2 calib: scripts\calibrate-v2.bat  (4 clicks per cam)
+echo  Need v2 calib first: scripts\calibrate-auto-v2.bat  (NO clicks)
 echo  Keys: B=empty board  N=next visit  Q=quit
 echo ============================================================
 echo.

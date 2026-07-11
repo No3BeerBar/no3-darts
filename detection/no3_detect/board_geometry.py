@@ -88,7 +88,10 @@ def polar_to_segment(
     r = max(0.0, float(radius))
     ang = float(angle_deg) % 360.0
 
-    if miss_outside and r > 1.05:
+    # Small epsilon so float r≈1.0 still scores as double (not miss)
+    R_MISS = 1.06
+
+    if miss_outside and r > R_MISS:
         return SegmentHit("miss", 0, 0, ang, r, confidence * 0.5)
 
     if r <= R_BULL:
@@ -100,12 +103,12 @@ def polar_to_segment(
 
     if R_TRIPLE_INNER <= r <= R_TRIPLE_OUTER:
         kind: SegmentKind = "triple"
-    elif R_DOUBLE_INNER <= r <= R_DOUBLE_OUTER:
+    elif R_DOUBLE_INNER <= r <= R_DOUBLE_OUTER + 0.04:
+        # include slightly outside wire as double (float / tip error)
         kind = "double"
     elif r < R_TRIPLE_INNER or (R_TRIPLE_OUTER < r < R_DOUBLE_INNER):
         kind = "single"
     else:
-        # slightly past double wire
         if miss_outside:
             return SegmentHit("miss", 0, 0, ang, r, confidence * 0.6)
         kind = "double"

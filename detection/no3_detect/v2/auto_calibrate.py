@@ -69,7 +69,11 @@ def grab_frame(source: int | str, warm: int = 10) -> np.ndarray:
     return frame
 
 
-def _jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1024) -> str:
+def _jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1280) -> Tuple[str, float]:
+    """
+    Return (base64_jpeg, scale) where scale = sent_size / original_size.
+    Grok returns coords in sent image space; multiply by 1/scale for full-res.
+    """
     h, w = frame_bgr.shape[:2]
     scale = min(1.0, max_side / max(h, w))
     if scale < 1.0:
@@ -77,7 +81,7 @@ def _jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1024) -> str:
     ok, buf = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
     if not ok:
         raise RuntimeError("JPEG encode failed")
-    return base64.b64encode(buf.tobytes()).decode("ascii")
+    return base64.b64encode(buf.tobytes()).decode("ascii"), float(scale)
 
 
 def _parse_json_loose(text: str) -> dict[str, Any]:
@@ -97,7 +101,7 @@ def _points_from_grok(
 ) -> Optional[List[Tuple[float, float]]]:
     """Return 4 image points (20,6,3,11) or None."""
     h, w = frame_bgr.shape[:2]
-    b64 = _jpeg_b64(frame_bgr)
+    b64, scale = _jpeg_b64(frame_bgr)
     data_url = f"data:image/jpeg;base64,{b64}"
     headers = {
         "Authorization": f"Bearer {api_key.strip()}",
@@ -119,7 +123,6 @@ def _points_from_grok(
     try:
         r = requests.post(XAI_RESPONSES_URL, headers=headers, json=body, timeout=90)
         if r.status_code >= 400:
-            # chat fallback once
             chat = {
                 "model": model,
                 "messages": [
@@ -134,13 +137,15 @@ def _points_from_grok(
             }
             r = requests.post(XAI_CHAT_URL, headers=headers, json=chat, timeout=90)
         if r.status_code >= 400:
-            console.print(f"[yellow]Grok auto-cal failed HTTP {r.status_code}[/yellow]")
+            console.print(
+                f"[yellow]Grok auto-cal failed HTTP {r.status_code}: "
+                f"{(r.text or '')[:180]}[/yellow]"
+            )
             return None
         data = r.json()
         if "choices" in data:
             content = data["choices"][0]["message"]["content"]
         else:
-            # responses API
             content = ""
             if isinstance(data.get("output_text"), str):
                 content = data["output_text"]
@@ -161,19 +166,20 @@ def _points_from_grok(
             lab = str(p.get("label", "")).strip()
             by_label[lab] = (float(p["x"]), float(p["y"]))
         ordered = []
+        # Coords are in the *sent* image; map back to full-res if we scaled
+        inv = 1.0 / scale if scale > 1e-9 else 1.0
         for lab in ("20", "6", "3", "11"):
             if lab not in by_label:
-                # try numeric
                 console.print(f"[yellow]Grok missing point {lab}[/yellow]")
                 return None
             x, y = by_label[lab]
-            # scale if model returned coords for resized image
-            # (we sent max 1024; if coords > frame, skip scale)
-            if x > w * 1.2 or y > h * 1.2:
+            x, y = x * inv, y * inv
+            if x < -10 or y < -10 or x > w + 10 or y > h + 10:
+                console.print(f"[yellow]Grok point {lab} out of bounds ({x:.0f},{y:.0f})[/yellow]")
                 return None
             ordered.append((float(np.clip(x, 0, w - 1)), float(np.clip(y, 0, h - 1))))
         conf = float(parsed.get("confidence", 0.7))
-        console.print(f"[green]Grok landmarks OK[/green] conf={conf:.2f}")
+        console.print(f"[green]Grok landmarks OK[/green] conf={conf:.2f} scale={scale:.3f}")
         return ordered
     except Exception as e:
         console.print(f"[yellow]Grok auto-cal error: {e}[/yellow]")

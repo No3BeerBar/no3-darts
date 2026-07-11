@@ -51,5 +51,5 @@ cameras:
     calibration: "./calib/cam2.json"
 
 preview: true
-show_mask: true
+show_mask: false
 dry_run: false

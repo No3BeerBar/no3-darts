@@ -35,6 +35,7 @@ class TipDetector:
         self.calib = calib
         self.cfg = config or TipConfig()
         self._bg: Optional[np.ndarray] = None
+        self._bg_frozen: Optional[np.ndarray] = None
         self._prev: Optional[np.ndarray] = None
         self._pending = False
         self._quiet = 0
@@ -46,6 +47,7 @@ class TipDetector:
     def reset_background(self, frame_bgr: np.ndarray) -> None:
         g = self._gray(frame_bgr)
         self._bg = g.astype(np.float32)
+        self._bg_frozen = None
         self._prev = g.copy()
         self._pending = False
         self._quiet = 0
@@ -87,6 +89,7 @@ class TipDetector:
         moving = f2f >= cfg.settle_f2f_pixels
 
         if new_obj and not self._pending:
+            self._bg_frozen = self._bg.copy() if self._bg is not None else None
             self._pending = True
             self._quiet = 0
             self._streak = 1
@@ -105,7 +108,20 @@ class TipDetector:
         if self._pending and (
             self._quiet >= cfg.settle_frames or self._streak >= cfg.max_pending
         ):
-            tip = self._find_tip(th)
+            # Measure tip vs pre-throw background
+            ref = self._bg_frozen if self._bg_frozen is not None else self._bg
+            if ref is not None:
+                ref_u8 = cv2.convertScaleAbs(ref)
+                diff2 = cv2.absdiff(g, ref_u8)
+                _, th2 = cv2.threshold(
+                    diff2, max(8, cfg.motion_threshold - 2), 255, cv2.THRESH_BINARY
+                )
+                th2 = cv2.morphologyEx(th2, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+                th2 = cv2.morphologyEx(th2, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+                tip = self._find_tip(th2)
+                th = th2
+            else:
+                tip = self._find_tip(th)
             if tip is not None:
                 u, v = tip
                 bx, by = self.calib.image_to_board(u, v)

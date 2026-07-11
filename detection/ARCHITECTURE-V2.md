@@ -78,15 +78,20 @@ Manual 4-click remains as fallback: `v2-calibrate`.
 detection/no3_detect/v2/
   board_plane.py    # WDF radii, score from board (x,y)
   cam_calib.py      # 4-pt H, save/load JSON
-  calibrate_ui.py   # 4-click UI + warp preview
+  auto_calibrate.py # NO-CLICK auto (Grok + OpenCV)
+  calibrate_ui.py   # optional 4-click UI + warp preview
   tip_detect.py     # background diff → tip pixel
   pipeline.py       # multi-cam loop, fuse, takeout, POST
 ```
 
 CLI:
 ```
-python -m no3_detect v2-calibrate --camera 0 --id cam0 --out calib/cam0.json
+# Recommended (autonomous, no clicks):
+python -m no3_detect v2-auto-calibrate --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir ./calib -y
 python -m no3_detect v2-run --config config.yaml
+
+# Optional manual 4-click fallback:
+python -m no3_detect v2-calibrate --camera 0 --id cam0 --out calib/cam0.json
 ```
 
 ## Migration

@@ -77,7 +77,7 @@ class V2Pipeline:
                 raw = Path(path).read_text()
                 if '"version": 2' not in raw and "H_image_to_board" not in raw:
                     console.print(
-                        f"[yellow]Skip {cid}: not v2 calib (re-run v2-calibrate 4-click)[/yellow]"
+                        f"[yellow]Skip {cid}: not v2 calib — run scripts\\calibrate-auto-v2.bat[/yellow]"
                     )
                     continue
                 calib = CamCalib.load(path)
@@ -93,6 +93,7 @@ class V2Pipeline:
             if not cap.isOpened():
                 console.print(f"[red]Cannot open {cid}[/red]")
                 continue
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             for _ in range(6):
                 cap.read()
             det = TipDetector(calib, TipConfig())
@@ -103,7 +104,8 @@ class V2Pipeline:
             console.print(f"[green]v2 opened {cid}[/green]")
         if not self.cams:
             raise RuntimeError(
-                "No v2 cameras. Calibrate with: python -m no3_detect v2-calibrate --camera 0 --id cam0 --out ./calib/cam0.json"
+                "No v2 cameras. Run: scripts\\calibrate-auto-v2.bat  "
+                "(or: python -m no3_detect v2-auto-calibrate --cameras 0 1 2 -y)"
             )
 
     def close(self) -> None:
