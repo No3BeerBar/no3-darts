@@ -1,7 +1,7 @@
 # Copy to config.yaml and edit for your board.
 
 # Where No3 Darts is running (local LAN or Railway URL)
-no3_api_url: "http://localhost:3000"
+no3_api_url: "https://no3-darts-production.up.railway.app"
 camera_api_key: ""          # same as CAMERA_API_KEY if set on the server
 room_id: "Board 1"
 
@@ -9,31 +9,34 @@ room_id: "Board 1"
 debounce_ms: 1200
 
 # Minimum confidence (0–1) before posting a dart
-min_confidence: 0.35
+min_confidence: 0.30
 
-# Motion threshold (pixel intensity 0–255) – LOWER if darts not seen; RAISE if lights flicker
-motion_threshold: 12
+# --- Sensitivity (LOWER thresholds = more detections) ---
+# Intensity threshold 0–255
+motion_threshold: 8
 
-# Absolute foreground pixels vs empty board to count as "new object" (dart stuck)
-min_motion_pixels: 40
+# New pixels on board vs empty background
+min_motion_pixels: 25
 
-# Frame-to-frame pixels still counting as "moving" (hand/throw) — wait until BELOW this
-settle_motion_pixels: 120
+# Frame-to-frame "still moving" cutoff (hand withdrawing)
+settle_motion_pixels: 80
 
-# Minimum contour area (pixels) to count as a dart shaft/tip blob
-min_blob_area: 15
-max_blob_area: 40000
+# Frame-to-frame spike that starts a cycle even if bg adapted
+spike_motion_pixels: 150
 
-# Quiet frames (low frame-to-frame motion) before measuring tip
-settle_frames: 4
+# Contour size for dart blob
+min_blob_area: 10
+max_blob_area: 80000
 
-# Cameras (1–3). Use device index or RTSP/HTTP URL.
-# For best accuracy use 2–3 fixed cameras ~120° apart around the board.
-# Windows: use python -m no3_detect list-cameras to map USB indices.
-# Keep cameras in the same USB ports after setup.
+# Quiet frames before measuring tip
+settle_frames: 3
+
+# Measure tip after this many frames even if still a bit noisy
+max_pending_frames: 25
+
 cameras:
   - id: cam0
-    source: 0                 # 0 = first USB cam; or "rtsp://..."
+    source: 0
     enabled: true
     calibration: "./calib/cam0.json"
   - id: cam1
@@ -45,8 +48,9 @@ cameras:
     enabled: true
     calibration: "./calib/cam2.json"
 
-# Display OpenCV preview windows (disable on headless Pi)
+# Show OpenCV preview + binary motion mask windows
 preview: true
+show_mask: true
 
-# Dry-run: detect but do not POST to API
+# true = detect only, do not POST
 dry_run: false

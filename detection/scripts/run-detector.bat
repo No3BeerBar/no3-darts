@@ -17,8 +17,13 @@ if not exist "config.yaml" (
 echo.
 echo ============================================================
 echo  No3 detector — keep THIS black window open
-echo  Camera pictures are separate; scores print HERE.
-echo  Click a camera window, empty the board, press B, then throw.
+echo  Camera windows are separate (video + mask).
+echo.
+echo  FORCE TEST:
+echo    1. Click a camera window
+echo    2. Empty board, press B
+echo    3. Stick a dart in, press T
+echo    4. Look HERE for FORCE HIT / POST dart
 echo ============================================================
 echo.
 ".venv\Scripts\python.exe" -m no3_detect run --config config.yaml
