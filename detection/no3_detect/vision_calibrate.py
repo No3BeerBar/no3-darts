@@ -20,7 +20,12 @@ import numpy as np
 import requests
 from rich.console import Console
 
-from .calibration import BoardCalibration, _open_source, auto_detect_board_circle
+from .calibration import (
+    BoardCalibration,
+    _open_source,
+    auto_detect_board_circle,
+    build_calibration,
+)
 
 console = Console()
 
@@ -56,23 +61,31 @@ def frame_to_jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1280) -> str:
 
 
 VISION_PROMPT = """You are calibrating a steel-tip dartboard for automatic scoring.
+Cameras are often OBLIQUE (side-on), so the board looks like an ellipse, not a circle.
 
-Look at this camera image of a dartboard. Return ONLY valid JSON (no markdown) with:
+Return ONLY valid JSON (no markdown) with:
 
 {
-  "center_x": <pixel x of bullseye / board center>,
-  "center_y": <pixel y of bullseye / board center>,
-  "outer_double_x": <pixel x of any point on the OUTER double wire (outer scoring ring edge)>,
+  "center_x": <pixel x of bullseye / geometric board center>,
+  "center_y": <pixel y of bullseye / geometric board center>,
+  "outer_double_x": <pixel x of any point on the OUTER double wire>,
   "outer_double_y": <pixel y of that point>,
-  "twenty_x": <pixel x of the center of the number "20" label OR middle of the 20 segment>,
+  "twenty_x": <pixel x of the center of the printed "20" OR middle of the 20 segment>,
   "twenty_y": <pixel y of that point>,
-  "confidence": <0.0 to 1.0 how sure you are>,
-  "notes": "<short note>"
+  "double_at_20_x": <pixel x where OUTER double wire meets the middle of segment 20>,
+  "double_at_20_y": <pixel y of that point>,
+  "double_at_6_x": <pixel x where OUTER double meets middle of segment 6>,
+  "double_at_6_y": <pixel y>,
+  "double_at_3_x": <pixel x where OUTER double meets middle of segment 3>,
+  "double_at_3_y": <pixel y>,
+  "double_at_11_x": <pixel x where OUTER double meets middle of segment 11>,
+  "double_at_11_y": <pixel y>,
+  "confidence": <0.0 to 1.0>,
+  "notes": "<short note about camera angle / occlusion>"
 }
 
-Coordinates must be in image pixel space with origin at top-left (x right, y down).
-The board may be slightly elliptical; approximate with a circle.
-If the board is not fully visible, estimate as best you can and lower confidence.
+Coordinates: image pixels, origin top-left (x right, y down).
+If a landmark is unclear, estimate and lower confidence.
 """
 
 
@@ -239,30 +252,61 @@ def calibrate_with_grok_vision(
     notes = str(parsed.get("notes", ""))
 
     radius = float(math.hypot(ox - cx, oy - cy))
-    # rotation: angle of 20 from top, clockwise
+    # rotation: angle of 20 from top, clockwise (image circle approx)
     rotation = float(math.degrees(math.atan2(tx - cx, -(ty - cy))) % 360.0)
 
-    # Clamp to image bounds sanity
     cx = float(np.clip(cx, 0, w - 1))
     cy = float(np.clip(cy, 0, h - 1))
     radius = float(np.clip(radius, min(w, h) * 0.1, min(w, h) * 0.6))
 
     console.print(
-        f"[green]Grok vision result[/green] conf={conf:.2f} center=({cx:.0f},{cy:.0f}) "
-        f"R={radius:.0f} rot={rotation:.1f}°"
+        f"[green]Grok vision landmarks[/green] conf={conf:.2f} center=({cx:.0f},{cy:.0f}) "
+        f"R≈{radius:.0f} rot≈{rotation:.1f}°"
     )
     if notes:
         console.print(f"  notes: {notes}")
 
-    return BoardCalibration(
-        camera_id=camera_id,
-        center_x=cx,
-        center_y=cy,
-        radius_px=radius,
-        rotation_deg=rotation,
-        image_width=w,
-        image_height=h,
+    # Ellipse + homography for oblique cameras (critical for accuracy)
+    calib = build_calibration(
+        camera_id,
+        frame_bgr,
+        cx,
+        cy,
+        radius,
+        rotation,
+        force_ellipse=True,
     )
+
+    # If vision gave 4 cardinals on outer double, build true perspective H
+    keys = [
+        ("double_at_20_x", "double_at_20_y"),
+        ("double_at_6_x", "double_at_6_y"),
+        ("double_at_3_x", "double_at_3_y"),
+        ("double_at_11_x", "double_at_11_y"),
+    ]
+    pts = []
+    for kx, ky in keys:
+        if kx in parsed and ky in parsed:
+            try:
+                pts.append((float(parsed[kx]), float(parsed[ky])))
+            except (TypeError, ValueError):
+                pass
+    if len(pts) == 4:
+        from .board_geometry import homography_board_to_image
+
+        H = homography_board_to_image(pts, (0.0, 90.0, 180.0, 270.0))
+        if H is not None:
+            calib.H_board_to_image = H
+            calib.model = "homography"
+            # rotation absorbed into H (board angles are absolute)
+            calib.rotation_deg = 0.0
+            console.print("[green]Perspective homography from 4 outer-double points[/green]")
+
+    console.print(
+        f"[green]Calib model={calib.model}[/green]  "
+        f"ellipse_a={calib.ellipse_a} ellipse_b={calib.ellipse_b}"
+    )
+    return calib
 
 
 def calibrate_auto_opencv(
@@ -284,16 +328,16 @@ def calibrate_auto_opencv(
     cx, cy, radius = detected
     console.print(
         f"[green]OpenCV auto[/green] center=({cx:.0f},{cy:.0f}) R={radius:.0f} "
-        f"rot={rotation_deg:.1f}° (assumes 20 toward top unless set)"
+        f"rot={rotation_deg:.1f}° — fitting ellipse for oblique view…"
     )
-    return BoardCalibration(
-        camera_id=camera_id,
-        center_x=cx,
-        center_y=cy,
-        radius_px=radius,
-        rotation_deg=rotation_deg,
-        image_width=w,
-        image_height=h,
+    return build_calibration(
+        camera_id,
+        frame_bgr,
+        cx,
+        cy,
+        radius,
+        rotation_deg,
+        force_ellipse=True,
     )
 
 

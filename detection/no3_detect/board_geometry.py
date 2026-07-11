@@ -8,7 +8,7 @@ Values approximate WDF / PDC proportions used by open CV scorers.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import math
 
@@ -122,21 +122,124 @@ def pixel_to_polar(
     rotation_deg: float = 0.0,
 ) -> Tuple[float, float]:
     """
-    Image pixel → (radius_norm, angle_deg).
+    Image pixel → (radius_norm, angle_deg) assuming a **circular** board
+    (nadir / face-on camera). For oblique cams use pixel_to_polar_ellipse
+    or pixel_to_polar_homography instead.
 
     Image coords: x right, y down.
     Board angle: 0 at top (negative Y), clockwise.
-    rotation_deg: calibration offset so that '20' is at the top of the board
-                  in the real world (degrees clockwise from image-up).
+    rotation_deg: image→board so that segment 20 is at board angle 0.
     """
     dx = x - center_x
     dy = y - center_y
-    # angle from top, clockwise
-    # atan2(dx, -dy): 0 when pointing up
     ang = math.degrees(math.atan2(dx, -dy)) % 360.0
     ang = (ang - rotation_deg) % 360.0
     r = math.hypot(dx, dy) / max(radius_px, 1e-6)
     return r, ang
+
+
+def pixel_to_polar_ellipse(
+    x: float,
+    y: float,
+    center_x: float,
+    center_y: float,
+    axis_a: float,
+    axis_b: float,
+    ellipse_angle_deg: float,
+    rotation_deg: float = 0.0,
+) -> Tuple[float, float]:
+    """
+    Oblique-camera model: outer double is an **ellipse** in the image
+    (perspective of a real circle). Map pixel → unit-disk board coords.
+
+    OpenCV fitEllipse style:
+      center (cx,cy), axes (a,b) as full widths OR we use semi-axes —
+      we store **semi-axes** (half of OpenCV width/height).
+      ellipse_angle_deg: rotation of the ellipse (OpenCV angle).
+
+    After normalizing onto the unit disk:
+      r=1 on outer double, angle 0 at board "up" after rotation_deg.
+    """
+    a = max(float(axis_a), 1e-6)
+    b = max(float(axis_b), 1e-6)
+    dx = float(x) - float(center_x)
+    dy = float(y) - float(center_y)
+    # Rotate into ellipse axis frame (OpenCV angle is degrees, CCW from +x)
+    th = math.radians(float(ellipse_angle_deg))
+    c, s = math.cos(th), math.sin(th)
+    # Inverse rotation of point into ellipse-aligned coords
+    xr = c * dx + s * dy
+    yr = -s * dx + c * dy
+    u = xr / a
+    v = yr / b
+    # Unit disk: angle from top (0,-1 in image-like v-down), clockwise
+    ang = math.degrees(math.atan2(u, -v)) % 360.0
+    ang = (ang - rotation_deg) % 360.0
+    r = math.hypot(u, v)
+    return r, ang
+
+
+def pixel_to_polar_homography(
+    x: float,
+    y: float,
+    H_inv: List[List[float]] | Tuple | object,
+    rotation_deg: float = 0.0,
+) -> Tuple[float, float]:
+    """
+    Full perspective: map image pixel through inverse homography to board
+    plane where outer double is the unit circle centered at origin,
+    +Y_board is "up" toward 20 before rotation_deg.
+    """
+    # H_inv maps image → board (3x3 row-major or nested)
+    import numpy as np
+
+    M = np.asarray(H_inv, dtype=np.float64).reshape(3, 3)
+    p = M @ np.array([x, y, 1.0], dtype=np.float64)
+    if abs(p[2]) < 1e-9:
+        return 99.0, 0.0
+    bx, by = float(p[0] / p[2]), float(p[1] / p[2])
+    # Board plane: +x right, +y up (20). Image-like y-down would be -by for atan2.
+    ang = math.degrees(math.atan2(bx, by)) % 360.0  # 0 at +y (up), clockwise? atan2(x,y): 0 at +y, increases toward +x = CW if y up
+    # atan2(bx, by): 0 when bx=0,by>0 (up); positive bx → angle increases → clockwise from up. Good.
+    ang = (ang - rotation_deg) % 360.0
+    r = math.hypot(bx, by)
+    return r, ang
+
+
+def homography_board_to_image(
+    image_points: list[Tuple[float, float]],
+    board_angles_deg: Tuple[float, ...] = (0.0, 90.0, 180.0, 270.0),
+) -> Optional[List[List[float]]]:
+    """
+    Build board→image homography from ≥4 image points on the OUTER DOUBLE
+    at known board angles (default: 20/top, 6, 3, 11 o'clock positions).
+
+    Board plane: unit circle, angle 0 at +Y (20), clockwise.
+    Returns 3x3 list (board→image) or None.
+    """
+    if len(image_points) < 4:
+        return None
+    try:
+        import numpy as np
+        import cv2
+    except ImportError:
+        return None
+
+    src = []
+    dst = []
+    for i, (ix, iy) in enumerate(image_points[:4]):
+        ang = math.radians(board_angles_deg[i % len(board_angles_deg)])
+        # board: 0° at +Y, clockwise → x = sin, y = cos
+        bx = math.sin(ang)
+        by = math.cos(ang)
+        src.append([bx, by])
+        dst.append([ix, iy])
+    src_a = np.float32(src)
+    dst_a = np.float32(dst)
+    H, _ = cv2.findHomography(src_a, dst_a, method=0)
+    if H is None:
+        return None
+    return H.tolist()
 
 
 def fuse_hits(hits: list[SegmentHit], min_confidence: float = 0.4) -> SegmentHit | None:

@@ -160,8 +160,21 @@ class MotionDartDetector:
         mask = np.zeros((h, w), dtype=np.uint8)
         cx = int(self.calib.center_x)
         cy = int(self.calib.center_y)
-        r = int(self.calib.radius_px * self.config.roi_scale)
-        # If calib is missing/off-frame, use whole image so we still see motion
+        scale = self.config.roi_scale
+        # Oblique: use ellipse ROI when available
+        if self.calib.ellipse_a and self.calib.ellipse_b:
+            sa = float(self.calib.ellipse_a) * scale
+            sb = float(self.calib.ellipse_b) * scale
+            ang = float(self.calib.ellipse_angle_deg or 0.0)
+            if sa >= 15 and sb >= 15:
+                cv2.ellipse(
+                    mask,
+                    ((cx, cy), (sa * 2, sb * 2), ang),
+                    255,
+                    -1,
+                )
+                return mask
+        r = int(self.calib.radius_px * scale)
         if r < 20 or cx < 0 or cy < 0 or cx >= w or cy >= h:
             mask[:] = 255
             return mask
@@ -308,7 +321,13 @@ class MotionDartDetector:
     ) -> np.ndarray:
         cx, cy = int(self.calib.center_x), int(self.calib.center_y)
         r = int(self.calib.radius_px)
-        cv2.circle(overlay, (cx, cy), r, (80, 80, 80), 1)
+        if self.calib.ellipse_a and self.calib.ellipse_b:
+            sa = float(self.calib.ellipse_a)
+            sb = float(self.calib.ellipse_b)
+            eang = float(self.calib.ellipse_angle_deg or 0.0)
+            cv2.ellipse(overlay, ((cx, cy), (sa * 2, sb * 2), eang), (80, 200, 255), 1)
+        else:
+            cv2.circle(overlay, (cx, cy), r, (80, 80, 80), 1)
         cv2.circle(overlay, (cx, cy), 4, (0, 255, 0), -1)
 
         if th is not None and th.shape[:2] == overlay.shape[:2]:
@@ -319,11 +338,12 @@ class MotionDartDetector:
 
         active = self._last_fg_pixels >= self._scaled_min_fg or self._pending
         color = (0, 255, 255) if force else ((0, 255, 0) if active else (220, 220, 220))
+        model = getattr(self.calib, "model", "circle")
         lines = [
             f"{self.calib.camera_id}  fg={self._last_fg_pixels}/{self._scaled_min_fg}  "
             f"f2f={self._last_frame_motion}/{self._scaled_settle}",
             f"pending={int(self._pending)} quiet={self._quiet_streak}  "
-            f"ROI r={r} @({cx},{cy})",
+            f"model={model} @({cx},{cy})",
             "B=empty board  T=force detect dart  Q=quit",
         ]
         y = 26

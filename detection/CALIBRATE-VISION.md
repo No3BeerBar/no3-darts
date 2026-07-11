@@ -11,9 +11,11 @@ You no longer have to click center / radius / 20 by hand (though that still work
 | **Hybrid** | `calibrate-vision --method vision-or-auto` | Tries Grok, falls back to OpenCV |
 | **Manual** | `calibrate` | Mouse + keys |
 
-Grok vision looks at a snapshot and returns bull center, outer double wire, and where **20** is — same landmarks the scoring math needs.
+Grok vision finds bull, outer double, **20**, and (when possible) four points on the outer double at 20/6/3/11. OpenCV then fits an **ellipse** and builds a **perspective homography** so **oblique / side-mounted cameras** score correctly (plain circle math is wrong when the board looks elliptical).
 
-Uses model **`grok-4.5`** via `https://api.x.ai/v1/responses` (image understanding). Override with env `XAI_VISION_MODEL` if needed.
+Uses model **`grok-4.5`** via `https://api.x.ai/v1/responses`. Override with env `XAI_VISION_MODEL` if needed.
+
+After calibration, check the overlay: you should see an **ellipse** on the outer double (not a circle) and `model=ellipse` or `model=homography` in the detector.
 
 ### API error codes
 
