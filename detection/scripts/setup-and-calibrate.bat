@@ -36,20 +36,21 @@ if errorlevel 1 (
 )
 
 echo.
-echo Calibrating with OpenCV auto (no Grok API) ...
-echo For each cam: ellipse should sit on outer double, Y=save N=skip.
-echo Tip: 20 should be near TOP of image, or press t later in manual calibrate.
+echo Auto ellipse is often BAD on dartboards.
+echo Recommended: CLICK-FIT on the outer double wire.
+echo.
+echo Launching click calibrate for cam 0, 1, 2 ...
+echo   Click 8-12 points on OUTER DOUBLE, press F, then T on 20, then S
 echo.
 
-"%VENVPY%" -m no3_detect calibrate-vision --cameras 0 1 2 --ids cam0 cam1 cam2 --outdir .\calib --method auto --continue-on-error
-set ERR=%ERRORLEVEL%
+if not exist "calib" mkdir calib
+
+"%VENVPY%" -m no3_detect calibrate --camera 0 --id cam0 --out .\calib\cam0.json
+"%VENVPY%" -m no3_detect calibrate --camera 1 --id cam1 --out .\calib\cam1.json
+"%VENVPY%" -m no3_detect calibrate --camera 2 --id cam2 --out .\calib\cam2.json
 
 echo.
-if %ERR% neq 0 (
-  echo Calibrate failed code %ERR%
-) else (
-  echo Done. Next: scripts\run-detector.bat
-  echo Optional Grok later: scripts\calibrate-vision.bat
-)
+echo Done. Next: scripts\run-detector.bat
+echo Or re-do one cam: scripts\calibrate-click.bat
 pause
-exit /b %ERR%
+exit /b 0

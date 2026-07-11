@@ -1,13 +1,15 @@
 """
 Board calibration per camera.
 
-Supports:
-  1. Circle model (nadir / face-on) — legacy
-  2. Ellipse model — outer double is an ellipse under oblique view
-  3. Homography — 4 points on outer double at known board angles (best)
+For oblique (side-mounted) cameras the board is an ellipse in the image.
+Auto edge-fit is often wrong — preferred path is interactive click-fit:
 
-Oblique cameras (side mounts, not looking straight at the board) MUST use
-ellipse or homography; a plain circle will mis-score segments badly.
+  python -m no3_detect calibrate --camera 0 --id cam0 --out ./calib/cam0.json
+
+  1) Click ~8–12 points around the OUTER DOUBLE wire
+  2) Press F to fit ellipse
+  3) Move mouse to center of segment 20, press T
+  4) Press S to save
 """
 
 from __future__ import annotations
@@ -36,23 +38,18 @@ class BoardCalibration:
     center_x: float
     center_y: float
     radius_px: float
-    # Degrees: image direction of segment 20 relative to image-up, clockwise
     rotation_deg: float = 0.0
-    # Ellipse of outer double (semi-axes in pixels, OpenCV angle)
     ellipse_a: Optional[float] = None
     ellipse_b: Optional[float] = None
     ellipse_angle_deg: Optional[float] = None
-    # Optional full perspective: board→image 3x3 (unit circle, 0° at +Y / 20)
     H_board_to_image: Optional[List[List[float]]] = None
-    # Legacy aliases
     axis_x: Optional[float] = None
     axis_y: Optional[float] = None
     image_width: int = 0
     image_height: int = 0
-    model: str = "circle"  # circle | ellipse | homography
+    model: str = "circle"
 
     def __post_init__(self) -> None:
-        # Promote legacy axis_x/y
         if self.ellipse_a is None and self.axis_x is not None:
             self.ellipse_a = float(self.axis_x)
         if self.ellipse_b is None and self.axis_y is not None:
@@ -76,13 +73,8 @@ class BoardCalibration:
             except np.linalg.LinAlgError:
                 H_inv = None
             if H_inv is not None:
-                return pixel_to_polar_homography(
-                    x, y, H_inv, rotation_deg=0.0
-                )
-        if (
-            self.model == "ellipse"
-            or (self.ellipse_a and self.ellipse_b)
-        ) and self.ellipse_a and self.ellipse_b:
+                return pixel_to_polar_homography(x, y, H_inv, rotation_deg=0.0)
+        if self.ellipse_a and self.ellipse_b:
             ang = self.ellipse_angle_deg if self.ellipse_angle_deg is not None else 0.0
             return pixel_to_polar_ellipse(
                 x,
@@ -110,7 +102,6 @@ class BoardCalibration:
     @staticmethod
     def load(path: str | Path) -> "BoardCalibration":
         data: dict[str, Any] = json.loads(Path(path).read_text())
-        # Drop unknown keys for forward compat
         known = {f.name for f in fields(BoardCalibration)}
         data = {k: v for k, v in data.items() if k in known}
         return BoardCalibration(**data)
@@ -131,80 +122,119 @@ def _open_source(source: int | str) -> cv2.VideoCapture:
     return cap
 
 
+def fit_ellipse_from_points(
+    pts: List[Tuple[float, float]],
+) -> Optional[Tuple[float, float, float, float, float]]:
+    """Fit ellipse to user-clicked outer-double points. Returns (cx,cy,sa,sb,angle)."""
+    if len(pts) < 5:
+        return None
+    arr = np.array(pts, dtype=np.float32).reshape(-1, 1, 2)
+    try:
+        (ecx, ecy), (ma, mi), ang = cv2.fitEllipse(arr)
+    except cv2.error:
+        return None
+    sa, sb = ma / 2.0, mi / 2.0
+    if sa < 10 or sb < 10:
+        return None
+    return float(ecx), float(ecy), float(sa), float(sb), float(ang)
+
+
 def fit_board_ellipse(
     frame_bgr: np.ndarray,
     center_hint: Optional[Tuple[float, float]] = None,
     radius_hint: Optional[float] = None,
 ) -> Optional[Tuple[float, float, float, float, float]]:
     """
-    Fit outer-board ellipse for oblique views.
+    Best-effort auto ellipse (often imperfect). Prefer click-fit for real use.
     Returns (cx, cy, semi_a, semi_b, angle_deg) or None.
     """
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
-    blur = cv2.GaussianBlur(gray, (7, 7), 0)
-    edges = cv2.Canny(blur, 40, 120)
-    # Prefer edges near expected board ring
+    blur = cv2.GaussianBlur(gray, (9, 9), 0)
+
+    # Multi-scale edges — dartboard outer ring is usually high-contrast
+    edges = np.zeros_like(gray)
+    for lo, hi in ((30, 90), (50, 150), (80, 200)):
+        e = cv2.Canny(blur, lo, hi)
+        edges = cv2.bitwise_or(edges, e)
+
     if center_hint and radius_hint and radius_hint > 20:
         mask = np.zeros_like(edges)
         cx, cy = int(center_hint[0]), int(center_hint[1])
         r = int(radius_hint)
-        cv2.circle(mask, (cx, cy), int(r * 1.25), 255, -1)
-        cv2.circle(mask, (cx, cy), max(int(r * 0.45), 10), 0, -1)
+        # Ring band only (outer double region)
+        cv2.circle(mask, (cx, cy), int(r * 1.15), 255, -1)
+        cv2.circle(mask, (cx, cy), max(int(r * 0.75), 10), 0, -1)
         edges = cv2.bitwise_and(edges, mask)
 
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     pts = cv2.findNonZero(edges)
-    if pts is None or len(pts) < 60:
-        # Fallback: Hough circle → treat as circle ellipse
-        circles = cv2.HoughCircles(
-            blur,
-            cv2.HOUGH_GRADIENT,
-            dp=1.2,
-            minDist=min(h, w) // 4,
-            param1=100,
-            param2=35,
-            minRadius=min(h, w) // 10,
-            maxRadius=min(h, w) // 2,
-        )
-        if circles is None:
-            return None
-        c = max(np.round(circles[0, :]).astype(int), key=lambda t: t[2])
-        return float(c[0]), float(c[1]), float(c[2]), float(c[2]), 0.0
+    if pts is not None and len(pts) >= 80:
+        try:
+            (ecx, ecy), (ma, mi), ang = cv2.fitEllipse(pts)
+            sa, sb = ma / 2.0, mi / 2.0
+            if sa > 25 and sb > 25:
+                ratio = max(sa, sb) / max(min(sa, sb), 1e-3)
+                if ratio < 2.8:
+                    if center_hint:
+                        d = math.hypot(ecx - center_hint[0], ecy - center_hint[1])
+                        if radius_hint is None or d < radius_hint * 0.4:
+                            return float(ecx), float(ecy), float(sa), float(sb), float(ang)
+                    else:
+                        return float(ecx), float(ecy), float(sa), float(sb), float(ang)
+        except cv2.error:
+            pass
 
-    # Contours → largest elliptical-ish ring
+    # Contour-based
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     best = None
     best_score = -1.0
     for cnt in contours:
-        if len(cnt) < 40:
+        if len(cnt) < 50:
             continue
         area = cv2.contourArea(cnt)
-        if area < (min(h, w) ** 2) * 0.02:
+        if area < (min(h, w) ** 2) * 0.03:
             continue
         try:
             ell = cv2.fitEllipse(cnt)
         except cv2.error:
             continue
         (ecx, ecy), (ma, mi), ang = ell
-        # OpenCV returns full axis lengths
         sa, sb = ma / 2.0, mi / 2.0
-        if sa < 20 or sb < 20:
+        if sa < 30 or sb < 30:
             continue
         ratio = max(sa, sb) / max(min(sa, sb), 1e-3)
-        if ratio > 3.5:  # too skinny
+        if ratio > 2.5:
             continue
-        # Prefer larger, more circular-ish, near center of frame
-        center_dist = math.hypot(ecx - w / 2, ecy - h / 2) / max(w, h)
-        score = math.sqrt(sa * sb) * (1.0 - 0.3 * center_dist) / max(ratio, 1.0)
+        peri = cv2.arcLength(cnt, True)
+        circularity = 4 * math.pi * area / max(peri * peri, 1e-3)
+        score = math.sqrt(sa * sb) * circularity / max(ratio, 1.0)
         if center_hint and radius_hint:
             d = math.hypot(ecx - center_hint[0], ecy - center_hint[1])
-            if d > radius_hint * 0.5:
-                score *= 0.3
+            if d > radius_hint * 0.35:
+                continue
             score *= 1.0 / (1.0 + abs(max(sa, sb) - radius_hint) / max(radius_hint, 1))
         if score > best_score:
             best_score = score
             best = (float(ecx), float(ecy), float(sa), float(sb), float(ang))
-    return best
+    if best is not None:
+        return best
+
+    # Circle fallback
+    circles = cv2.HoughCircles(
+        blur,
+        cv2.HOUGH_GRADIENT,
+        dp=1.2,
+        minDist=min(h, w) // 4,
+        param1=100,
+        param2=40,
+        minRadius=min(h, w) // 10,
+        maxRadius=min(h, w) // 2,
+    )
+    if circles is None:
+        return None
+    c = max(np.round(circles[0, :]).astype(int), key=lambda t: t[2])
+    return float(c[0]), float(c[1]), float(c[2]), float(c[2]), 0.0
 
 
 def ellipse_to_homography(
@@ -215,29 +245,52 @@ def ellipse_to_homography(
     ell_angle_deg: float,
     rotation_deg: float = 0.0,
 ) -> Optional[List[List[float]]]:
-    """
-    Build board→image homography from ellipse + 20-direction.
-    Samples 4 points on the ellipse at board angles 0/90/180/270.
-    """
     image_pts = []
     board_angles = (0.0, 90.0, 180.0, 270.0)
     th = math.radians(ell_angle_deg)
     c, s = math.cos(th), math.sin(th)
     for bang in board_angles:
-        # Board angle → unit disk (before image ellipse)
-        # board 0° = toward 20 = after rotation_deg in ellipse-normalized space
         a_img = math.radians((bang + rotation_deg) % 360.0)
-        # unit disk u,v with 0 at top (-v), clockwise: u=sin, v=-cos
         u = math.sin(a_img)
         v = -math.cos(a_img)
-        # ellipse-aligned → image
         xr = u * sa
         yr = v * sb
-        # rotate by ellipse angle to image
         ix = cx + c * xr - s * yr
         iy = cy + s * xr + c * yr
         image_pts.append((ix, iy))
     return homography_board_to_image(image_pts, board_angles)
+
+
+def calibration_from_ellipse(
+    camera_id: str,
+    frame_shape: Tuple[int, int],
+    cx: float,
+    cy: float,
+    sa: float,
+    sb: float,
+    eang: float,
+    rotation_deg: float,
+) -> BoardCalibration:
+    h, w = frame_shape[:2] if len(frame_shape) >= 2 else (frame_shape[0], frame_shape[0])
+    if len(frame_shape) == 3:
+        h, w = frame_shape[0], frame_shape[1]
+    H = ellipse_to_homography(cx, cy, sa, sb, eang, rotation_deg=rotation_deg)
+    return BoardCalibration(
+        camera_id=camera_id,
+        center_x=float(cx),
+        center_y=float(cy),
+        radius_px=float(math.sqrt(sa * sb)),
+        rotation_deg=float(rotation_deg),
+        ellipse_a=float(sa),
+        ellipse_b=float(sb),
+        ellipse_angle_deg=float(eang),
+        axis_x=float(sa),
+        axis_y=float(sb),
+        H_board_to_image=H,
+        image_width=int(w),
+        image_height=int(h),
+        model="homography" if H is not None else "ellipse",
+    )
 
 
 def build_calibration(
@@ -251,34 +304,36 @@ def build_calibration(
     force_ellipse: bool = True,
 ) -> BoardCalibration:
     """
-    Build calib with ellipse/homography for oblique views when possible.
+    Build calib. Auto ellipse only accepted if it looks sane; otherwise circle.
     """
     h, w = frame_bgr.shape[:2]
-    ell = fit_board_ellipse(
-        frame_bgr, center_hint=(center_x, center_y), radius_hint=radius_px
-    )
-    ellipse_a = ellipse_b = ellipse_angle = None
-    H = None
-    model = "circle"
-    if ell and force_ellipse:
-        ecx, ecy, sa, sb, eang = ell
-        # Prefer vision center if close; else ellipse center (better for oblique)
-        if math.hypot(ecx - center_x, ecy - center_y) < radius_px * 0.25:
-            center_x, center_y = ecx, ecy
-        else:
-            # blend
-            center_x = 0.4 * center_x + 0.6 * ecx
-            center_y = 0.4 * center_y + 0.6 * ecy
-        ellipse_a, ellipse_b, ellipse_angle = sa, sb, eang
-        radius_px = math.sqrt(sa * sb)  # geometric mean as effective R
-        H = ellipse_to_homography(
-            center_x, center_y, sa, sb, eang, rotation_deg=rotation_deg
+    ell = None
+    if force_ellipse:
+        ell = fit_board_ellipse(
+            frame_bgr, center_hint=(center_x, center_y), radius_hint=radius_px
         )
-        model = "homography" if H is not None else "ellipse"
-        # Aspect ratio: how oblique
-        aspect = max(sa, sb) / max(min(sa, sb), 1e-3)
-        if aspect < 1.05 and H is None:
-            model = "circle"
+    if ell is not None:
+        ecx, ecy, sa, sb, eang = ell
+        # Reject garbage fits (common with dartboard wire clutter)
+        ratio = max(sa, sb) / max(min(sa, sb), 1e-3)
+        d_center = math.hypot(ecx - center_x, ecy - center_y)
+        r_err = abs(math.sqrt(sa * sb) - radius_px) / max(radius_px, 1)
+        if ratio < 2.2 and d_center < radius_px * 0.25 and r_err < 0.35:
+            return calibration_from_ellipse(
+                camera_id, frame_bgr.shape, ecx, ecy, sa, sb, eang, rotation_deg
+            )
+        # weak fit — still use ellipse center/size lightly if close
+        if ratio < 2.0 and d_center < radius_px * 0.4:
+            return calibration_from_ellipse(
+                camera_id,
+                frame_bgr.shape,
+                0.5 * center_x + 0.5 * ecx,
+                0.5 * center_y + 0.5 * ecy,
+                sa,
+                sb,
+                eang,
+                rotation_deg,
+            )
 
     return BoardCalibration(
         camera_id=camera_id,
@@ -286,16 +341,79 @@ def build_calibration(
         center_y=float(center_y),
         radius_px=float(radius_px),
         rotation_deg=float(rotation_deg),
-        ellipse_a=float(ellipse_a) if ellipse_a else None,
-        ellipse_b=float(ellipse_b) if ellipse_b else None,
-        ellipse_angle_deg=float(ellipse_angle) if ellipse_angle is not None else None,
-        axis_x=float(ellipse_a) if ellipse_a else None,
-        axis_y=float(ellipse_b) if ellipse_b else None,
-        H_board_to_image=H,
         image_width=w,
         image_height=h,
-        model=model,
+        model="circle",
     )
+
+
+def _draw_calib_overlay(
+    vis: np.ndarray,
+    cx: Optional[float],
+    cy: Optional[float],
+    sa: Optional[float],
+    sb: Optional[float],
+    eang: float,
+    rot: float,
+    pts: List[Tuple[float, float]],
+    mx: int,
+    my: int,
+    status: str,
+) -> None:
+    for i, (px, py) in enumerate(pts):
+        cv2.circle(vis, (int(px), int(py)), 5, (0, 255, 255), -1)
+        cv2.putText(
+            vis,
+            str(i + 1),
+            (int(px) + 6, int(py) - 6),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 255, 255),
+            1,
+        )
+    cv2.drawMarker(vis, (mx, my), (255, 255, 0), cv2.MARKER_CROSS, 18, 1)
+
+    if cx is not None and cy is not None:
+        cv2.circle(vis, (int(cx), int(cy)), 5, (0, 255, 0), -1)
+        if sa and sb:
+            cv2.ellipse(
+                vis,
+                ((float(cx), float(cy)), (float(sa) * 2, float(sb) * 2), float(eang)),
+                (0, 200, 255),
+                2,
+            )
+            # sample ticks at board angles for visual check
+            th = math.radians(eang)
+            c, s = math.cos(th), math.sin(th)
+            for bang, label in ((0, "20"), (90, "6"), (180, "3"), (270, "11")):
+                a = math.radians((bang + rot) % 360.0)
+                u, v = math.sin(a), -math.cos(a)
+                xr, yr = u * sa, v * sb
+                ix = int(cx + c * xr - s * yr)
+                iy = int(cy + s * xr + c * yr)
+                cv2.circle(vis, (ix, iy), 4, (255, 128, 0), -1)
+                if label == "20":
+                    cv2.line(vis, (int(cx), int(cy)), (ix, iy), (0, 255, 0), 2)
+                    cv2.putText(
+                        vis, "20", (ix + 8, iy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
+                    )
+        else:
+            # circle only
+            r = int(sa or 0)
+            if r > 0:
+                cv2.circle(vis, (int(cx), int(cy)), r, (0, 200, 255), 2)
+
+    lines = [
+        status,
+        f"points={len(pts)}  center=({cx},{cy})  rot={rot:.1f}",
+        "CLICK outer double (8+ pts)  F=fit  T=mark 20  U=undo  C=clear  S=save  Q=quit",
+        "Or: 1 click bull + 4 clicks outer at 20/6/3/11 then F",
+    ]
+    y0 = 24
+    for line in lines:
+        cv2.putText(vis, line, (10, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (20, 20, 20), 3)
+        cv2.putText(vis, line, (10, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 240, 240), 1)
+        y0 += 22
 
 
 def interactive_calibrate(
@@ -304,36 +422,49 @@ def interactive_calibrate(
     out_path: str | Path = "./calib/cam0.json",
 ) -> BoardCalibration:
     """
-    Keyboard:
-      c – set center to current mouse position
-      r – set outer radius (or ellipse via auto-fit after c+r)
-      t – set rotation so mouse angle is center of 20
-      e – force OpenCV ellipse fit around current center/radius
-      s – save and quit
-      q – quit without save
+    Reliable oblique-camera calibration by clicking the outer double wire.
+
+    Keys:
+      click – add point on OUTER DOUBLE (aim for ring around board)
+      f     – fit ellipse to clicked points (need ≥5, prefer 8–12)
+      t     – set 20-direction to current mouse
+      u     – undo last point
+      c     – clear points
+      a     – auto-fit from edges (often imperfect)
+      s     – save
+      q     – quit
     """
     cap = _open_source(source)
-    state = {
+    state: dict[str, Any] = {
+        "pts": [],
         "cx": None,
         "cy": None,
-        "radius": None,
+        "sa": None,
+        "sb": None,
+        "eang": 0.0,
         "rot": 0.0,
         "mx": 0,
         "my": 0,
-        "ell": None,
+        "status": "Click 8+ points ON the outer double wire, then press F",
     }
 
     def on_mouse(event, x, y, flags, param):  # noqa: ARG001
         state["mx"], state["my"] = x, y
+        if event == cv2.EVENT_LBUTTONDOWN:
+            state["pts"].append((float(x), float(y)))
+            state["status"] = f"Point {len(state['pts'])} added — need 5+ then F to fit"
 
-    win = f"No3 Calibrate – {camera_id} (oblique OK)"
+    win = f"No3 Calibrate – {camera_id}  (CLICK outer double)"
     cv2.namedWindow(win)
     cv2.setMouseCallback(win, on_mouse)
 
     print(
-        "Calibration (oblique cameras supported):\n"
-        "  [c]enter  [r]adius  [t]wenty-dir  [e]llipse-fit  [s]ave  [q]uit\n"
-        "  Tip: set center + outer double, press E to fit ellipse for angled cams."
+        "\n=== CLICK-FIT calibration (best for angled cameras) ===\n"
+        "  1. Click 8–12 points around the OUTER DOUBLE wire (not the numbers)\n"
+        "  2. Press F to fit ellipse — should hug the outer scoring ring\n"
+        "  3. Move mouse to middle of 20, press T\n"
+        "  4. Press S to save\n"
+        "  U=undo point  C=clear  A=auto edge fit  Q=quit\n"
     )
 
     calib: Optional[BoardCalibration] = None
@@ -346,141 +477,116 @@ def interactive_calibrate(
         last_frame = frame
         vis = frame.copy()
         h, w = vis.shape[:2]
-        mx, my = state["mx"], state["my"]
-        cv2.drawMarker(vis, (mx, my), (0, 255, 255), cv2.MARKER_CROSS, 16, 1)
-
-        if state["cx"] is not None:
-            cx, cy = int(state["cx"]), int(state["cy"])
-            cv2.circle(vis, (cx, cy), 4, (0, 255, 0), -1)
-            if state["ell"] is not None:
-                ecx, ecy, sa, sb, eang = state["ell"]
-                # OpenCV ellipse uses full axes
-                cv2.ellipse(
-                    vis,
-                    ((ecx, ecy), (sa * 2, sb * 2), eang),
-                    (0, 200, 255),
-                    2,
-                )
-            elif state["radius"]:
-                cv2.circle(vis, (cx, cy), int(state["radius"]), (0, 200, 255), 2)
-            if state["radius"] or state["ell"]:
-                rdraw = state["radius"] or (
-                    math.sqrt(state["ell"][2] * state["ell"][3]) if state["ell"] else 50
-                )
-                theta = math.radians(state["rot"])
-                ex = int(cx + rdraw * math.sin(theta))
-                ey = int(cy - rdraw * math.cos(theta))
-                cv2.line(vis, (cx, cy), (ex, ey), (0, 255, 0), 2)
-                cv2.putText(
-                    vis, "20", (ex + 6, ey), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2
-                )
-
-        mode = "ellipse" if state["ell"] else "circle"
-        help_lines = [
-            f"mouse=({mx},{my})  center={state['cx']},{state['cy']}  "
-            f"R={state['radius']}  rot={state['rot']:.1f}  model={mode}",
-            "[c]enter [r]adius [t]wenty [e]llipse-fit [s]ave [q]uit",
-        ]
-        y0 = 24
-        for line in help_lines:
-            cv2.putText(vis, line, (10, y0), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (240, 240, 240), 1)
-            y0 += 22
-
+        _draw_calib_overlay(
+            vis,
+            state["cx"],
+            state["cy"],
+            state["sa"],
+            state["sb"],
+            state["eang"],
+            state["rot"],
+            state["pts"],
+            state["mx"],
+            state["my"],
+            state["status"],
+        )
         cv2.imshow(win, vis)
         key = cv2.waitKey(1) & 0xFF
-        if key == ord("c"):
-            state["cx"], state["cy"] = float(mx), float(my)
-            print(f"Center set to {state['cx']}, {state['cy']}")
-        elif key == ord("r"):
-            if state["cx"] is None:
-                print("Set center first [c]")
+
+        if key == ord("u"):
+            if state["pts"]:
+                state["pts"].pop()
+                state["status"] = f"Undid point — {len(state['pts'])} left"
+        elif key == ord("c"):
+            state["pts"] = []
+            state["cx"] = state["cy"] = state["sa"] = state["sb"] = None
+            state["status"] = "Cleared — click outer double again"
+        elif key == ord("f"):
+            ell = fit_ellipse_from_points(state["pts"])
+            if ell is None:
+                state["status"] = "Need at least 5 points on outer double, then F"
+                print(state["status"])
             else:
-                state["radius"] = float(np.hypot(mx - state["cx"], my - state["cy"]))
-                print(f"Radius set to {state['radius']:.1f}px")
+                state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
+                state["status"] = (
+                    f"FIT OK  center=({ell[0]:.0f},{ell[1]:.0f}) "
+                    f"axes=({ell[2]:.0f},{ell[3]:.0f}) — press T on 20, then S"
+                )
+                print(state["status"])
+        elif key == ord("a"):
+            if last_frame is None:
+                continue
+            hint_c = (
+                (state["cx"], state["cy"])
+                if state["cx"] is not None
+                else (w / 2, h / 2)
+            )
+            hint_r = state["sa"] or min(w, h) * 0.3
+            ell = fit_board_ellipse(last_frame, center_hint=hint_c, radius_hint=hint_r)
+            if ell is None:
+                state["status"] = "Auto fit failed — use clicks instead"
+            else:
+                state["cx"], state["cy"], state["sa"], state["sb"], state["eang"] = ell
+                state["status"] = "Auto fit applied — check overlay; refine with clicks+F if bad"
+                print(state["status"])
         elif key == ord("t"):
             if state["cx"] is None:
-                print("Set center first [c]")
+                state["status"] = "Fit ellipse first (F) before setting 20"
             else:
-                dx = mx - state["cx"]
-                dy = my - state["cy"]
-                ang = math.degrees(math.atan2(dx, -dy)) % 360.0
-                state["rot"] = ang
-                print(f"Rotation set so this point is 20: {state['rot']:.1f}°")
-        elif key == ord("e"):
-            if state["cx"] is None:
-                print("Set center first [c]")
-            else:
-                ell = fit_board_ellipse(
-                    frame,
-                    center_hint=(state["cx"], state["cy"]),
-                    radius_hint=state["radius"],
-                )
-                if ell is None:
-                    print("Ellipse fit failed — improve lighting / framing")
+                dx = state["mx"] - state["cx"]
+                dy = state["my"] - state["cy"]
+                # Image angle of mouse from center
+                img_ang = math.degrees(math.atan2(dx, -dy)) % 360.0
+                # For ellipse model, rotation_deg is board offset in ellipse-normalized space.
+                # Approx: use image angle as rotation so this point becomes board 0.
+                if state["sa"] and state["sb"]:
+                    th = math.radians(state["eang"])
+                    c, s = math.cos(th), math.sin(th)
+                    # point in ellipse-aligned frame
+                    xr = c * dx + s * dy
+                    yr = -s * dx + c * dy
+                    u = xr / max(state["sa"], 1e-6)
+                    v = yr / max(state["sb"], 1e-6)
+                    # angle in unit disk (0 at top)
+                    board_img = math.degrees(math.atan2(u, -v)) % 360.0
+                    state["rot"] = board_img
                 else:
-                    state["ell"] = ell
-                    state["cx"], state["cy"] = ell[0], ell[1]
-                    state["radius"] = math.sqrt(ell[2] * ell[3])
-                    print(
-                        f"Ellipse: center=({ell[0]:.0f},{ell[1]:.0f}) "
-                        f"semi=({ell[2]:.0f},{ell[3]:.0f}) ang={ell[4]:.1f}°"
-                    )
+                    state["rot"] = img_ang
+                state["status"] = f"20 set at rot={state['rot']:.1f}° — press S to save"
+                print(state["status"])
         elif key == ord("s"):
-            if state["cx"] is None or not state["radius"]:
-                print("Need center [c] and radius [r] before save")
-            else:
-                if last_frame is not None:
-                    calib = build_calibration(
-                        camera_id,
-                        last_frame,
-                        float(state["cx"]),
-                        float(state["cy"]),
-                        float(state["radius"]),
-                        float(state["rot"]),
-                        force_ellipse=True,
-                    )
-                    if state["ell"] is not None:
-                        ecx, ecy, sa, sb, eang = state["ell"]
-                        calib.center_x, calib.center_y = ecx, ecy
-                        calib.ellipse_a, calib.ellipse_b = sa, sb
-                        calib.ellipse_angle_deg = eang
-                        calib.axis_x, calib.axis_y = sa, sb
-                        calib.radius_px = math.sqrt(sa * sb)
-                        calib.H_board_to_image = ellipse_to_homography(
-                            ecx, ecy, sa, sb, eang, state["rot"]
-                        )
-                        calib.model = (
-                            "homography" if calib.H_board_to_image else "ellipse"
-                        )
-                        calib.rotation_deg = float(state["rot"])
-                else:
-                    calib = BoardCalibration(
-                        camera_id=camera_id,
-                        center_x=float(state["cx"]),
-                        center_y=float(state["cy"]),
-                        radius_px=float(state["radius"]),
-                        rotation_deg=float(state["rot"]),
-                        image_width=w,
-                        image_height=h,
-                    )
-                calib.save(out_path)
-                print(f"Saved calibration → {out_path}  model={calib.model}")
-                break
-        elif key == ord("q"):
+            if state["cx"] is None or not state["sa"] or not state["sb"]:
+                state["status"] = "Need a fitted ellipse (F) before save"
+                print(state["status"])
+                continue
+            calib = calibration_from_ellipse(
+                camera_id,
+                (h, w),
+                float(state["cx"]),
+                float(state["cy"]),
+                float(state["sa"]),
+                float(state["sb"]),
+                float(state["eang"]),
+                float(state["rot"]),
+            )
+            calib.save(out_path)
+            # debug image
+            snap = Path(out_path).with_suffix(".jpg")
+            cv2.imwrite(str(snap), vis)
+            print(f"Saved {out_path}  model={calib.model}  preview={snap}")
+            state["status"] = f"SAVED {out_path}"
+            break
+        elif key == ord("q") or key == 27:
             break
 
     cap.release()
     cv2.destroyAllWindows()
     if calib is None:
-        raise SystemExit("Calibration cancelled")
+        raise SystemExit("Calibration cancelled — no file saved")
     return calib
 
 
 def auto_detect_board_circle(frame_bgr: np.ndarray) -> Optional[Tuple[float, float, float]]:
-    """
-    Heuristic Hough circle on dark board – works only with good contrast.
-    Returns (cx, cy, radius) or None.
-    """
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
     h, w = gray.shape

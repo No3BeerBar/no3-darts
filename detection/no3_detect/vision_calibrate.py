@@ -396,8 +396,15 @@ def preview_and_confirm(
 ) -> bool:
     """Show overlay; return True if user presses y/s."""
     vis = frame_bgr.copy()
-    cx, cy, r = int(calib.center_x), int(calib.center_y), int(calib.radius_px)
-    cv2.circle(vis, (cx, cy), r, (0, 200, 255), 2)
+    cx, cy = int(calib.center_x), int(calib.center_y)
+    if calib.ellipse_a and calib.ellipse_b:
+        sa, sb = float(calib.ellipse_a), float(calib.ellipse_b)
+        eang = float(calib.ellipse_angle_deg or 0.0)
+        cv2.ellipse(vis, ((cx, cy), (sa * 2, sb * 2), eang), (0, 200, 255), 2)
+        r = math.sqrt(sa * sb)
+    else:
+        r = int(calib.radius_px)
+        cv2.circle(vis, (cx, cy), r, (0, 200, 255), 2)
     cv2.circle(vis, (cx, cy), 5, (0, 255, 0), -1)
     theta = math.radians(calib.rotation_deg)
     ex = int(cx + r * math.sin(theta))
@@ -406,10 +413,10 @@ def preview_and_confirm(
     cv2.putText(vis, "20", (ex + 6, ey), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     cv2.putText(
         vis,
-        "y/s=save  n/q=discard  (or auto-save if no window)",
+        f"model={calib.model}  y=save n=discard  (bad ellipse? use calibrate-click.bat)",
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
+        0.55,
         (240, 240, 240),
         1,
     )
