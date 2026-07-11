@@ -5,7 +5,7 @@
  */
 
 import type { DartDetectedEvent, GameState } from "@/engine/types";
-import { applyDart, createDart } from "@/engine";
+import { applyDart, createDart, endTurn } from "@/engine";
 
 type Listener = (event: { type: string; data: unknown }) => void;
 
@@ -78,19 +78,31 @@ export function removeServerMatch(id: string): void {
   emit({ type: "match_removed", data: { id } });
 }
 
+function resolveMatch(opts: {
+  matchId?: string;
+  roomId?: string;
+}): GameState | undefined {
+  if (opts.matchId) {
+    const m = matches.get(opts.matchId);
+    if (m) return m;
+  }
+  if (opts.roomId) {
+    const m = getActiveByRoom(opts.roomId);
+    if (m) return m;
+  }
+  return listServerMatches().find((m) => m.status === "playing");
+}
+
 export function applyCameraDart(
   event: DartDetectedEvent
-): { ok: true; state: GameState; callout?: string } | { ok: false; error: string } {
-  let state: GameState | undefined;
-  if (event.matchId) state = matches.get(event.matchId);
-  else if (event.roomId) state = getActiveByRoom(event.roomId);
-  else {
-    // Use most recent playing match
-    state = listServerMatches().find((m) => m.status === "playing");
-  }
+): { ok: true; state: GameState; callout?: string; turnEnded: boolean } | { ok: false; error: string } {
+  const state = resolveMatch({ matchId: event.matchId, roomId: event.roomId });
 
   if (!state) return { ok: false, error: "No active match found" };
   if (state.status !== "playing") return { ok: false, error: `Match status is ${state.status}` };
+
+  const beforePlayer = state.currentPlayerIndex;
+  const beforeTurnLen = state.currentTurnDarts.length;
 
   const dart = createDart(event.kind, event.number, {
     angle: event.angle,
@@ -101,11 +113,53 @@ export function applyCameraDart(
 
   const result = applyDart(state, dart);
   matches.set(result.state.id, result.state);
+  const turnEnded =
+    result.state.currentPlayerIndex !== beforePlayer ||
+    (beforeTurnLen + 1 >= 3 && result.state.currentTurnDarts.length === 0) ||
+    result.state.status !== "playing";
+
   emit({
     type: "dart_detected",
-    data: { dart, state: result.state, callout: result.callout, confidence: event.confidence },
+    data: {
+      dart,
+      state: result.state,
+      callout: result.callout,
+      confidence: event.confidence,
+      turnEnded,
+    },
   });
 
+  return { ok: true, state: result.state, callout: result.callout, turnEnded };
+}
+
+/** Hands pulled darts / takeout — advance to next thrower if visit still open. */
+export function applyCameraEndTurn(opts: {
+  matchId?: string;
+  roomId?: string;
+}): { ok: true; state: GameState; callout?: string } | { ok: false; error: string } {
+  const state = resolveMatch(opts);
+  if (!state) return { ok: false, error: "No active match found" };
+  if (state.status !== "playing") {
+    return { ok: false, error: `Match status is ${state.status}` };
+  }
+
+  // Visit already empty (3rd dart auto-ended) — just re-broadcast state
+  if (state.currentTurnDarts.length === 0) {
+    emit({ type: "match_update", data: state });
+    return { ok: true, state, callout: "READY" };
+  }
+
+  const result = endTurn(state);
+  matches.set(result.state.id, result.state);
+  emit({
+    type: "dart_detected",
+    data: {
+      state: result.state,
+      callout: result.callout ?? "NEXT",
+      turnEnded: true,
+    },
+  });
+  emit({ type: "match_update", data: result.state });
   return { ok: true, state: result.state, callout: result.callout };
 }
 

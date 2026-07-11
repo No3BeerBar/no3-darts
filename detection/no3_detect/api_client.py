@@ -186,3 +186,25 @@ class No3Client:
         r.raise_for_status()
         data = r.json()
         return data.get("match")
+
+    def end_turn(
+        self,
+        *,
+        match_id: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Signal takeout complete / next player (POST /api/camera/end-turn)."""
+        payload: dict[str, Any] = {"roomId": self.room_id}
+        if match_id:
+            payload["matchId"] = match_id
+        if dry_run:
+            return {"ok": True, "dry_run": True, "payload": payload}
+        url = f"{self.base_url}/api/camera/end-turn"
+        r = self._post_json(url, payload)
+        try:
+            data = r.json()
+        except Exception:
+            data = {"raw": r.text[:300]}
+        if r.status_code >= 400:
+            raise RuntimeError(f"end-turn API {r.status_code} URL={url}: {data}")
+        return data

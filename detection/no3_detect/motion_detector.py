@@ -10,6 +10,7 @@ Approach:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -22,21 +23,16 @@ from .calibration import BoardCalibration
 
 @dataclass
 class DetectorConfig:
-    motion_threshold: int = 8  # intensity 0–255; lower = more sensitive
-    min_blob_area: int = 10
-    max_blob_area: int = 80000
-    settle_frames: int = 3
-    bg_learn_rate_idle: float = 0.005
-    roi_scale: float = 1.35
-    # New object on board (vs empty bg). Scaled by image size at runtime.
-    min_motion_pixels: int = 25
-    # Frame-to-frame still-moving threshold
-    settle_motion_pixels: int = 80
-    # f2f spike that starts a detection even if bg slowly adapted
-    spike_motion_pixels: int = 150
-    # Force tip measure after this many pending frames even if still a bit noisy
-    max_pending_frames: int = 25
-    # Show red mask + separate "mask" window
+    motion_threshold: int = 10  # intensity 0–255
+    min_blob_area: int = 20
+    max_blob_area: int = 12000  # reject hands/arms (huge blobs)
+    settle_frames: int = 5
+    bg_learn_rate_idle: float = 0.004
+    roi_scale: float = 1.25
+    min_motion_pixels: int = 35
+    settle_motion_pixels: int = 100
+    spike_motion_pixels: int = 200
+    max_pending_frames: int = 30
     show_mask: bool = True
 
 
@@ -337,6 +333,10 @@ class MotionDartDetector:
         return overlay
 
     def _find_tip(self, mask: np.ndarray) -> Optional[Tuple[float, float]]:
+        """
+        Tip ≈ point on the new blob closest to the bull (dart points inward).
+        Prefer elongated thin contours (shaft); reject huge hand-sized blobs.
+        """
         cfg = self.config
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
@@ -350,6 +350,9 @@ class MotionDartDetector:
             area = cv2.contourArea(cnt)
             if area < cfg.min_blob_area or area > cfg.max_blob_area:
                 continue
+            # Reject nearly circular fat blobs (noise/lighting) — prefer elongated
+            peri = cv2.arcLength(cnt, True)
+            circularity = 4.0 * math.pi * area / max(peri * peri, 1e-3)
             pts = cnt.reshape(-1, 2).astype(np.float32)
             d = np.hypot(pts[:, 0] - cx, pts[:, 1] - cy)
             i = int(np.argmin(d))
@@ -362,32 +365,39 @@ class MotionDartDetector:
                     elong = 1.0
             else:
                 elong = 1.0
-            r_norm = d[i] / max(self.calib.radius_px, 1)
-            if r_norm > 1.4:
+            r_norm = float(d[i] / max(self.calib.radius_px, 1))
+            if r_norm > 1.15:
                 continue
-            score = (1.3 - min(r_norm, 1.2)) * min(elong, 5.0) * np.log1p(area)
+            # Prefer elongated shaft-like blobs nearer the board
+            score = (
+                (1.2 - min(r_norm, 1.15))
+                * (1.0 + min(elong, 6.0))
+                * np.log1p(area)
+                * (1.2 - min(circularity, 1.0))
+            )
             if score > best_score:
                 best_score = score
                 best_tip = tip
 
-        if best_tip is None and contours:
-            cnt = max(contours, key=cv2.contourArea)
-            area = cv2.contourArea(cnt)
-            if area >= cfg.min_blob_area:
-                M = cv2.moments(cnt)
-                if M["m00"] > 0:
-                    best_tip = (float(M["m10"] / M["m00"]), float(M["m01"] / M["m00"]))
-
+        # No centroid fallback — that scored flights/barrels and was wildly wrong
         return best_tip
 
     def _confidence(
         self, mask: np.ndarray, tip: Tuple[float, float], fg_pixels: float
     ) -> float:
+        """More conservative confidence — geometry matters more than blob size."""
         area = float(np.count_nonzero(mask))
-        a = np.clip(area / 400.0, 0.0, 1.0)
-        m = np.clip(fg_pixels / 200.0, 0.0, 1.0)
-        conf = 0.5 + 0.3 * a + 0.2 * m
+        # Huge area → likely hand/noise, lower confidence
+        if area > self.config.max_blob_area * 0.85:
+            return 0.25
         r, _ = self.calib.to_polar(tip[0], tip[1])
-        if r <= 1.0:
-            conf = min(0.98, conf + 0.05)
-        return float(conf)
+        if r > 1.08:
+            return 0.3
+        # Dart-sized blob
+        size_ok = 1.0 - abs(np.clip(area, 30, 4000) - 400) / 4000.0
+        size_ok = float(np.clip(size_ok, 0.2, 1.0))
+        in_board = 1.0 if r <= 1.0 else 0.4
+        conf = 0.35 + 0.35 * size_ok + 0.25 * in_board
+        if 0.05 < r < 0.98:
+            conf += 0.05
+        return float(np.clip(conf, 0.0, 0.95))

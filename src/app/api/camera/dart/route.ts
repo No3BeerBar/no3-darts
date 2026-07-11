@@ -52,5 +52,7 @@ export async function POST(request: Request) {
     currentPlayerIndex: result.state.currentPlayerIndex,
     currentTurnDarts: result.state.currentTurnDarts,
     playerStates: result.state.playerStates,
+    turnEnded: result.turnEnded,
+    dartsThisTurn: result.state.currentTurnDarts.length,
   });
 }

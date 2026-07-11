@@ -1,41 +1,40 @@
 # Copy to config.yaml and edit for your board.
 
-# Where No3 Darts is running — site ROOT only (https, no /tv /api /play)
-# Good:  https://no3-darts-production.up.railway.app
-# Bad:   http://...  (redirects can cause API 405)
-# Bad:   https://.../tv  or  https://.../api
+# Site ROOT only — https, no /tv /api /play
 no3_api_url: "https://no3-darts-production.up.railway.app"
-camera_api_key: ""          # same as CAMERA_API_KEY if set on the server
+camera_api_key: ""
 room_id: "Board 1"
 
-# Debounce: ignore further detections for N ms after a hit
-debounce_ms: 1200
+# Debounce between posted darts (ms)
+debounce_ms: 1800
 
-# Minimum confidence (0–1) before posting a dart
-min_confidence: 0.30
+# Only post when confidence ≥ this (higher = fewer wrong scores)
+min_confidence: 0.55
 
-# --- Sensitivity (LOWER thresholds = more detections) ---
-# Intensity threshold 0–255
-motion_threshold: 8
+# Same segment must be seen this many times before POST (1 = faster, noisier)
+confirm_hits: 2
+confirm_window_ms: 900
 
-# New pixels on board vs empty background
-min_motion_pixels: 25
+# Don't re-score a tip this close to the last one (pixels)
+min_tip_separation_px: 18
 
-# Frame-to-frame "still moving" cutoff (hand withdrawing)
-settle_motion_pixels: 80
+# --- Motion sensitivity ---
+motion_threshold: 10
+min_motion_pixels: 35
+settle_motion_pixels: 100
+spike_motion_pixels: 200
+min_blob_area: 20
+max_blob_area: 12000
+settle_frames: 5
+max_pending_frames: 30
 
-# Frame-to-frame spike that starts a cycle even if bg adapted
-spike_motion_pixels: 150
-
-# Contour size for dart blob
-min_blob_area: 10
-max_blob_area: 80000
-
-# Quiet frames before measuring tip
-settle_frames: 3
-
-# Measure tip after this many frames even if still a bit noisy
-max_pending_frames: 25
+# --- Takeout / hands (next visit) ---
+# Frame-to-frame pixels that mean "arm/hand in front of board"
+hand_motion_pixels: 2500
+# Board looks empty vs last B snapshot
+empty_board_fg_max: 80
+takeout_quiet_frames: 8
+takeout_min_ms: 400
 
 cameras:
   - id: cam0
@@ -51,9 +50,6 @@ cameras:
     enabled: true
     calibration: "./calib/cam2.json"
 
-# Show OpenCV preview + binary motion mask windows
 preview: true
 show_mask: true
-
-# true = detect only, do not POST
 dry_run: false
