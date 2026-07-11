@@ -1,16 +1,34 @@
 # Mini-PC install (Windows) — one command
 
-After this repo is on GitHub, on the **Windows mini PC** open **PowerShell** and run:
+On the **Windows mini PC** open **PowerShell** and run:
 
 ```powershell
-# Allow scripts for this session (once)
+# Allow scripts for this session
 Set-ExecutionPolicy -Scope Process Bypass
 
-# Install everything
+# Install everything (will offer to install Python automatically if missing)
 irm https://raw.githubusercontent.com/No3BeerBar/no3-darts/main/detection/scripts/install-from-github.ps1 | iex
 ```
 
-The script will ask for your **No3 Darts URL** (Railway URL) if you don’t pass parameters.
+When it asks **Install Python 3.12 automatically?** type **Y** and Enter.
+
+If Python was just installed and still not found: **close PowerShell completely**, open a **new** window, and run the same two lines again.
+
+The script will also ask for your **No3 Darts URL** (Railway URL) if you don’t pass parameters.
+
+### If Python still fails (manual)
+
+1. Download: https://www.python.org/downloads/windows/ → **Python 3.12 64-bit**
+2. Run installer — **must check** ☑ **Add python.exe to PATH**
+3. Click Install Now
+4. **Close all PowerShell windows**, open a new one
+5. Run:
+
+```powershell
+python --version
+```
+
+You should see `Python 3.12.x`. Then re-run the install one-liner above.
 
 ### With parameters (no prompts)
 
