@@ -14,9 +14,18 @@ if not exist "config.yaml" (
   exit /b 1
 )
 
-echo Starting No3 detector...
+echo.
+echo ============================================================
+echo  No3 detector — keep THIS black window open
+echo  Camera pictures are separate; scores print HERE.
+echo  Click a camera window, empty the board, press B, then throw.
+echo ============================================================
+echo.
 ".venv\Scripts\python.exe" -m no3_detect run --config config.yaml
 if errorlevel 1 (
   echo Detector exited with an error.
   pause
 )
+echo.
+echo Detector stopped.
+pause

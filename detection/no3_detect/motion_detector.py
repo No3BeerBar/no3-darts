@@ -3,10 +3,9 @@ Frame-difference dart tip detector for a single calibrated camera.
 
 Approach (classic DIY / open-source style):
   1. Keep a running "empty board" background (updated when idle).
-  2. When a dart sticks, motion spikes then settles.
-  3. Foreground mask → largest elongated blob near the board.
-  4. Tip ≈ point on the contour closest to the board center
-     (dart points inward from the rim / stands in the sisal).
+  2. When a dart sticks, background-diff spikes (new object on board).
+  3. Wait until *frame-to-frame* motion settles (hand withdrawn, dart stuck).
+  4. Foreground mask vs pre-throw background → tip closest to board center.
 """
 
 from __future__ import annotations
@@ -23,15 +22,17 @@ from .calibration import BoardCalibration
 
 @dataclass
 class DetectorConfig:
-    motion_threshold: int = 18  # lower = more sensitive (was 28)
-    min_blob_area: int = 25
-    max_blob_area: int = 25000
-    settle_frames: int = 6
+    motion_threshold: int = 12  # lower = more sensitive (pixel intensity)
+    min_blob_area: int = 15
+    max_blob_area: int = 40000
+    settle_frames: int = 4
     bg_learn_rate_idle: float = 0.01
     # Only search inside slightly larger than double wire
-    roi_scale: float = 1.15
-    # Absolute foreground pixel count to treat as motion (NOT mean fraction)
-    min_motion_pixels: int = 80
+    roi_scale: float = 1.2
+    # Absolute foreground pixels vs empty-board bg to treat as "something new"
+    min_motion_pixels: int = 40
+    # Frame-to-frame pixels that still count as "moving" (hand / dart in flight)
+    settle_motion_pixels: int = 120
 
 
 @dataclass
@@ -48,19 +49,24 @@ class MotionDartDetector:
         self.config = config or DetectorConfig()
         self._bg: Optional[np.ndarray] = None
         self._bg_frozen: Optional[np.ndarray] = None  # snapshot before motion
+        self._prev_gray: Optional[np.ndarray] = None
         self._motion_streak = 0
         self._quiet_streak = 0
         self._pending = False
         self._last_motion = 0.0
         self._last_fg_pixels = 0
+        self._last_frame_motion = 0
+        self._last_event: str = "init"  # for console debug
 
     def reset_background(self, frame_bgr: np.ndarray) -> None:
         gray = self._prep(frame_bgr)
         self._bg = gray.astype(np.float32)
         self._bg_frozen = None
+        self._prev_gray = gray.copy()
         self._motion_streak = 0
         self._quiet_streak = 0
         self._pending = False
+        self._last_event = "bg_reset"
 
     def _prep(self, frame_bgr: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -90,14 +96,18 @@ class MotionDartDetector:
         gray = self._prep(frame_bgr)
         overlay = frame_bgr.copy()
         cfg = self.config
+        self._last_event = ""
 
         if self._bg is None:
             self._bg = gray.astype(np.float32)
+            self._prev_gray = gray.copy()
             return None, overlay
 
+        roi = self._roi_mask(gray.shape)
+
+        # --- Background difference: new objects on the board (stuck dart) ---
         bg_u8 = cv2.convertScaleAbs(self._bg)
         diff = cv2.absdiff(gray, bg_u8)
-        roi = self._roi_mask(gray.shape)
         diff = cv2.bitwise_and(diff, diff, mask=roi)
         _, th = cv2.threshold(diff, cfg.motion_threshold, 255, cv2.THRESH_BINARY)
         th = cv2.morphologyEx(th, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
@@ -105,9 +115,22 @@ class MotionDartDetector:
 
         fg_pixels = int(np.count_nonzero(th))
         self._last_fg_pixels = fg_pixels
-        # Fraction only for display
         motion_score = float(np.mean(th[roi > 0]) / 255.0) if np.any(roi) else 0.0
         self._last_motion = motion_score
+        something_new = fg_pixels >= cfg.min_motion_pixels
+
+        # --- Frame-to-frame difference: is the scene still moving? ---
+        if self._prev_gray is not None and self._prev_gray.shape == gray.shape:
+            fdiff = cv2.absdiff(gray, self._prev_gray)
+            fdiff = cv2.bitwise_and(fdiff, fdiff, mask=roi)
+            _, fth = cv2.threshold(fdiff, max(8, cfg.motion_threshold - 2), 255, cv2.THRESH_BINARY)
+            fth = cv2.morphologyEx(fth, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+            frame_motion = int(np.count_nonzero(fth))
+        else:
+            frame_motion = 0
+        self._prev_gray = gray.copy()
+        self._last_frame_motion = frame_motion
+        still_moving = frame_motion >= cfg.settle_motion_pixels
 
         # Draw ROI (calibration circle)
         cv2.circle(
@@ -125,31 +148,34 @@ class MotionDartDetector:
             -1,
         )
 
-        # Use ABSOLUTE pixel count — mean fraction is far too small for a dart on HD frames
-        active = fg_pixels >= cfg.min_motion_pixels
-
-        if active:
-            if not self._pending:
-                # Freeze background as of just before this motion burst
-                self._bg_frozen = self._bg.copy()
-            self._motion_streak += 1
-            self._quiet_streak = 0
+        # Start a detection cycle when a new blob appears vs empty-board bg
+        if something_new and not self._pending:
+            self._bg_frozen = self._bg.copy()
             self._pending = True
+            self._quiet_streak = 0
+            self._motion_streak = 1
+            self._last_event = f"motion_start fg={fg_pixels}"
+        elif self._pending:
+            self._motion_streak += 1
+            if still_moving:
+                self._quiet_streak = 0
+            else:
+                self._quiet_streak += 1
         else:
-            self._quiet_streak += 1
-            self._motion_streak = 0
-            if not self._pending:
-                cv2.accumulateWeighted(gray, self._bg, cfg.bg_learn_rate_idle)
+            # Idle: slowly learn lighting into background
+            cv2.accumulateWeighted(gray, self._bg, cfg.bg_learn_rate_idle)
 
         result: Optional[DetectionResult] = None
 
-        # After motion, wait for settle then measure tip vs frozen pre-motion bg
+        # After throw settles (low frame-to-frame motion), measure tip vs pre-throw bg
         if self._pending and self._quiet_streak >= cfg.settle_frames:
             ref = self._bg_frozen if self._bg_frozen is not None else self._bg
             ref_u8 = cv2.convertScaleAbs(ref)
             diff2 = cv2.absdiff(gray, ref_u8)
             diff2 = cv2.bitwise_and(diff2, diff2, mask=roi)
-            _, th2 = cv2.threshold(diff2, max(10, cfg.motion_threshold - 6), 255, cv2.THRESH_BINARY)
+            _, th2 = cv2.threshold(
+                diff2, max(8, cfg.motion_threshold - 4), 255, cv2.THRESH_BINARY
+            )
             th2 = cv2.morphologyEx(th2, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
             th2 = cv2.morphologyEx(th2, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
             tip = self._find_tip(th2, gray)
@@ -164,6 +190,10 @@ class MotionDartDetector:
                     motion_score=motion_score,
                     camera_id=self.calib.camera_id,
                 )
+                self._last_event = (
+                    f"HIT {hit.kind} {hit.number} conf={hit.confidence:.2f} "
+                    f"tip=({tx:.0f},{ty:.0f})"
+                )
                 cv2.circle(overlay, (int(tx), int(ty)), 10, (0, 255, 255), 2)
                 cv2.putText(
                     overlay,
@@ -177,29 +207,46 @@ class MotionDartDetector:
                 # Lock background INCLUDING the dart so next dart is incremental
                 self._bg = gray.astype(np.float32)
             else:
-                # Motion but no tip — soft adapt, don't fully lock
-                cv2.accumulateWeighted(gray, self._bg, 0.15)
+                # Motion settled but no tip contour — soft adapt, log for debug
+                self._last_event = f"settle_no_tip fg={fg_pixels} f2f={frame_motion}"
+                cv2.accumulateWeighted(gray, self._bg, 0.2)
 
             self._pending = False
             self._quiet_streak = 0
             self._bg_frozen = None
 
-        # debug motion tint (red = foreground)
+        # Timeout: if "pending" forever with nothing, drop it
+        if self._pending and self._motion_streak > 90 and self._quiet_streak == 0:
+            self._last_event = f"timeout_still_moving fg={fg_pixels} f2f={frame_motion}"
+            self._pending = False
+            self._bg_frozen = None
+            self._quiet_streak = 0
+
+        # debug motion tint (red = background-diff foreground)
         color_m = cv2.cvtColor(th, cv2.COLOR_GRAY2BGR)
         color_m[:, :, 0] = 0
         color_m[:, :, 1] = 0
         overlay = cv2.addWeighted(overlay, 1.0, color_m, 0.35, 0)
-        status = (
-            f"{self.calib.camera_id} fg={fg_pixels} thr={cfg.min_motion_pixels} "
-            f"pending={self._pending} quiet={self._quiet_streak}"
+
+        status1 = (
+            f"{self.calib.camera_id}  fg={fg_pixels}/{cfg.min_motion_pixels}  "
+            f"f2f={frame_motion}/{cfg.settle_motion_pixels}"
         )
+        status2 = (
+            f"pending={int(self._pending)} quiet={self._quiet_streak}/{cfg.settle_frames}  "
+            f"{'NEW' if something_new else 'idle'} "
+            f"{'MOVING' if still_moving else 'still'}"
+        )
+        color = (0, 255, 0) if something_new or self._pending else (220, 220, 220)
+        cv2.putText(overlay, status1, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
+        cv2.putText(overlay, status2, (10, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         cv2.putText(
             overlay,
-            status,
-            (10, 28),
+            "Click this window, empty board, press B | Q quit",
+            (10, overlay.shape[0] - 12),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (0, 255, 0) if active or self._pending else (220, 220, 220),
+            0.45,
+            (180, 180, 180),
             1,
         )
 
@@ -240,7 +287,7 @@ class MotionDartDetector:
             else:
                 elong = 1.0
             r_norm = d[i] / max(self.calib.radius_px, 1)
-            if r_norm > 1.2:
+            if r_norm > 1.25:
                 continue
             score = (1.25 - r_norm) * min(elong, 5.0) * np.log1p(area)
             if score > best_score:

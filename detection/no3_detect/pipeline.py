@@ -35,12 +35,13 @@ class PipelineConfig:
     camera_api_key: str = ""
     room_id: str = "Board 1"
     debounce_ms: int = 1200
-    min_confidence: float = 0.45
-    motion_threshold: int = 18
-    min_blob_area: int = 25
-    max_blob_area: int = 25000
-    settle_frames: int = 6
-    min_motion_pixels: int = 80
+    min_confidence: float = 0.35
+    motion_threshold: int = 12
+    min_blob_area: int = 15
+    max_blob_area: int = 40000
+    settle_frames: int = 4
+    min_motion_pixels: int = 40
+    settle_motion_pixels: int = 120
     preview: bool = True
     dry_run: bool = False
     cameras: List[Dict[str, Any]] = field(default_factory=list)
@@ -69,6 +70,7 @@ class DetectionPipeline:
             max_blob_area=config.max_blob_area,
             settle_frames=config.settle_frames,
             min_motion_pixels=config.min_motion_pixels,
+            settle_motion_pixels=config.settle_motion_pixels,
         )
 
     def open_cameras(self) -> None:
@@ -120,37 +122,76 @@ class DetectionPipeline:
 
     def run(self) -> None:
         self.open_cameras()
+        console.print()
+        console.rule("[bold]No3 detector[/bold]")
         console.print(
-            f"[bold]No3 detector running[/bold] → {self.config.no3_api_url} "
-            f"room={self.config.room_id} dry_run={self.config.dry_run}"
+            f"API  → [cyan]{self.config.no3_api_url}[/cyan]  "
+            f"room=[cyan]{self.config.room_id}[/cyan]  "
+            f"dry_run={self.config.dry_run}"
         )
+        console.print(
+            f"Cams → {', '.join(c.id for c in self.cameras)}  "
+            f"(thr={self.config.motion_threshold}  "
+            f"min_fg={self.config.min_motion_pixels})"
+        )
+        console.print()
+        console.print(
+            "[bold yellow]THIS black window is the console[/bold yellow] — "
+            "logs print here (not in the camera picture)."
+        )
+        console.print(
+            "Camera windows show [green]fg=[/green] (board change) and "
+            "[green]f2f=[/green] (still moving)."
+        )
+        console.print(
+            "1) Click a [bold]camera[/bold] window  2) empty board  3) press [bold]B[/bold]  "
+            "4) throw  ·  [bold]Q[/bold]=quit"
+        )
+        console.print(
+            "When a dart sticks you should see red overlay on the dart, then a line like "
+            "[green]POST dart[/green] here."
+        )
+        console.print()
         try:
             self.client.health()
             console.print("[green]API health OK[/green]")
         except Exception as e:
             console.print(f"[yellow]API health failed (will still detect): {e}[/yellow]")
 
+        last_heartbeat = 0.0
         try:
             while True:
                 frame_hits: List[SegmentHit] = []
                 for cam in self.cameras:
                     ok, frame = cam.cap.read()
                     if not ok:
+                        console.print(f"[red]{cam.id}: camera read failed[/red]")
                         continue
                     result, overlay = cam.detector.process(frame)
                     if self.config.preview:
                         cv2.imshow(f"No3 · {cam.id}", overlay)
+
+                    # Log state changes from the detector (start / hit / no tip)
+                    ev = cam.detector._last_event
+                    if ev:
+                        console.print(f"[dim]{cam.id}[/dim] {ev}")
+                        cam.detector._last_event = ""
+
                     if result is not None:
                         console.print(
-                            f"[cyan]{cam.id}[/cyan] → {result.hit.kind} "
-                            f"{result.hit.number} conf={result.hit.confidence:.2f}"
+                            f"[bold cyan]DETECT {cam.id}[/bold cyan] → "
+                            f"{result.hit.kind} {result.hit.number} "
+                            f"conf={result.hit.confidence:.2f} "
+                            f"tip=({result.tip_xy[0]:.0f},{result.tip_xy[1]:.0f})"
                         )
                         frame_hits.append(result.hit)
 
                 if frame_hits:
-                    fused = fuse_hits(frame_hits, min_confidence=0.3)
+                    fused = fuse_hits(frame_hits, min_confidence=0.25)
                     if fused is None:
-                        console.print(f"[dim]hits ignored (low conf): {len(frame_hits)} cam(s)[/dim]")
+                        console.print(
+                            f"[dim]hits ignored (low conf): {len(frame_hits)} cam(s)[/dim]"
+                        )
                     elif fused.confidence < self.config.min_confidence:
                         console.print(
                             f"[yellow]hit below min_confidence "
@@ -159,6 +200,20 @@ class DetectionPipeline:
                         )
                     else:
                         self._maybe_post(fused)
+
+                # Heartbeat every 2s so the console is never "dead silent"
+                now = time.time()
+                if now - last_heartbeat >= 2.0:
+                    last_heartbeat = now
+                    parts = []
+                    for cam in self.cameras:
+                        d = cam.detector
+                        parts.append(
+                            f"{cam.id}:fg={d._last_fg_pixels}"
+                            f"/f2f={d._last_frame_motion}"
+                            f"{'*' if d._pending else ''}"
+                        )
+                    console.print(f"[dim]live {' | '.join(parts)}[/dim]")
 
                 if self.config.preview:
                     key = cv2.waitKey(1) & 0xFF
@@ -170,9 +225,10 @@ class DetectionPipeline:
                             ok, frame = cam.cap.read()
                             if ok:
                                 cam.detector.reset_background(frame)
-                        console.print("[blue]Background reset — board should be EMPTY[/blue]")
+                        console.print(
+                            "[bold blue]Background reset — board should be EMPTY[/bold blue]"
+                        )
                     if key == ord("d"):
-                        # toggle dry-run logging help
                         self.config.dry_run = not self.config.dry_run
                         console.print(f"[blue]dry_run={self.config.dry_run}[/blue]")
                 else:
