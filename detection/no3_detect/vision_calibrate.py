@@ -29,8 +29,18 @@ from .calibration import (
 
 console = Console()
 
-# Current image-capable chat models (grok-2-vision-* is retired → 400 invalid argument)
+# Prefer env override; otherwise try several current image-capable models.
+# xAI retires model slugs often → 400 "invalid argument" if wrong.
 DEFAULT_VISION_MODEL = os.environ.get("XAI_VISION_MODEL", "grok-4.5")
+VISION_MODEL_CANDIDATES = [
+    m.strip()
+    for m in os.environ.get(
+        "XAI_VISION_MODELS",
+        # Order: flagship vision, then cheaper chat, then older aliases
+        "grok-4.5,grok-4.3,grok-4,grok-2-vision-1212,grok-2-vision-latest",
+    ).split(",")
+    if m.strip()
+]
 XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"
 XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions"
 
@@ -49,12 +59,13 @@ def grab_frame(source: int | str, warm: int = 8) -> Tuple[np.ndarray, int, int]:
     return frame, w, h
 
 
-def frame_to_jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1280) -> str:
+def frame_to_jpeg_b64(frame_bgr: np.ndarray, max_side: int = 1024) -> str:
+    """Encode frame as JPEG base64 (capped size so API payload stays valid)."""
     h, w = frame_bgr.shape[:2]
     scale = min(1.0, max_side / max(h, w))
     if scale < 1.0:
         frame_bgr = cv2.resize(frame_bgr, (int(w * scale), int(h * scale)))
-    ok, buf = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+    ok, buf = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
     if not ok:
         raise RuntimeError("JPEG encode failed")
     return base64.b64encode(buf.tobytes()).decode("ascii")
@@ -164,10 +175,108 @@ def _extract_text_from_chat(data: dict[str, Any]) -> str:
     return str(content)
 
 
+def _vision_request_variants(model: str, data_url: str) -> list[tuple[str, str, dict]]:
+    """
+    (label, url, json_body) candidates.
+    xAI is picky about model slug + content shape; try several.
+    """
+    variants: list[tuple[str, str, dict]] = []
+
+    # 1) Documented /v1/responses image understanding (minimal fields)
+    variants.append(
+        (
+            f"responses/{model}",
+            XAI_RESPONSES_URL,
+            {
+                "model": model,
+                "store": False,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_image", "image_url": data_url},
+                            {"type": "input_text", "text": VISION_PROMPT},
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    # 2) Same with detail=high
+    variants.append(
+        (
+            f"responses+detail/{model}",
+            XAI_RESPONSES_URL,
+            {
+                "model": model,
+                "store": False,
+                "input": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_image",
+                                "image_url": data_url,
+                                "detail": "high",
+                            },
+                            {"type": "input_text", "text": VISION_PROMPT},
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    # 3) Chat completions OpenAI-style (older clients / some keys)
+    variants.append(
+        (
+            f"chat/{model}",
+            XAI_CHAT_URL,
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url},
+                            },
+                            {"type": "text", "text": VISION_PROMPT},
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    # 4) Chat with nested detail
+    variants.append(
+        (
+            f"chat+detail/{model}",
+            XAI_CHAT_URL,
+            {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": data_url, "detail": "high"},
+                            },
+                            {"type": "text", "text": VISION_PROMPT},
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    return variants
+
+
 def _call_xai_vision(api_key: str, model: str, data_url: str) -> str:
     """
-    Ask Grok to describe board landmarks from an image.
-    Prefers /v1/responses (current image-understanding path), then chat completions.
+    Ask Grok to locate board landmarks.
+    Tries preferred model first, then other candidates, multiple payload shapes.
     """
     key = api_key.strip()
     headers = {
@@ -175,58 +284,41 @@ def _call_xai_vision(api_key: str, model: str, data_url: str) -> str:
         "Content-Type": "application/json",
     }
 
-    # Current documented image understanding format
-    responses_body = {
-        "model": model,
-        "temperature": 0.1,
-        "store": False,  # docs: avoid storing image request history
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_image",
-                        "image_url": data_url,
-                        "detail": "high",
-                    },
-                    {"type": "input_text", "text": VISION_PROMPT},
-                ],
-            }
-        ],
-    }
+    models: list[str] = []
+    for m in [model, *VISION_MODEL_CANDIDATES]:
+        if m and m not in models:
+            models.append(m)
 
-    console.print(f"[cyan]Asking Grok vision ({model}) via /v1/responses…[/cyan]")
-    r = requests.post(XAI_RESPONSES_URL, headers=headers, json=responses_body, timeout=120)
-    if r.status_code < 400:
-        return _extract_text_from_responses(r.json())
+    errors: list[str] = []
+    for mid in models:
+        for label, url, body in _vision_request_variants(mid, data_url):
+            console.print(f"[cyan]Grok vision try:[/cyan] {label}")
+            try:
+                r = requests.post(url, headers=headers, json=body, timeout=120)
+            except requests.RequestException as e:
+                errors.append(f"{label}: network {e}")
+                continue
+            if r.status_code < 400:
+                console.print(f"[green]Grok vision OK via {label}[/green]")
+                data = r.json()
+                if "choices" in data:
+                    return _extract_text_from_chat(data)
+                return _extract_text_from_responses(data)
+            snippet = (r.text or "")[:280].replace("\n", " ")
+            errors.append(f"{label}: HTTP {r.status_code} {snippet}")
+            # Auth errors won't fix with another model shape for same key
+            if r.status_code in (401, 403):
+                raise RuntimeError(_api_error_message(r.status_code, r.text))
+            # 400 invalid model → try next model/variant
+            continue
 
-    first_err = _api_error_message(r.status_code, r.text)
-    # Fallback: OpenAI-style chat completions (still supported for some keys/models)
-    chat_body = {
-        "model": model,
-        "temperature": 0.1,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": data_url, "detail": "high"},
-                    },
-                    {"type": "text", "text": VISION_PROMPT},
-                ],
-            }
-        ],
-    }
-    console.print(
-        f"[yellow]Responses API failed ({r.status_code}); trying /v1/chat/completions…[/yellow]"
+    raise RuntimeError(
+        "All Grok vision attempts failed (usually wrong model name for your account "
+        "or image payload). Falling back to OpenCV if method allows.\n"
+        + "\n".join(f"  - {e}" for e in errors[-12:])
+        + "\nTip: set XAI_VISION_MODEL to a model from https://console.x.ai/ "
+        "or use --method auto for OpenCV-only calibrate."
     )
-    r2 = requests.post(XAI_CHAT_URL, headers=headers, json=chat_body, timeout=120)
-    if r2.status_code >= 400:
-        raise RuntimeError(
-            f"{first_err}\n--- chat fallback ---\n{_api_error_message(r2.status_code, r2.text)}"
-        )
-    return _extract_text_from_chat(r2.json())
 
 
 def calibrate_with_grok_vision(
