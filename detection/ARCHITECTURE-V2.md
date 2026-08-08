@@ -97,3 +97,14 @@ python -m no3_detect v2-calibrate --camera 0 --id cam0 --out calib/cam0.json
 ## Migration
 - Keep v1 code temporarily; default bats use **v2**.  
 - Old ellipse/Grok calib files are incompatible; re-calibrate with 4 clicks.
+
+## Learn from Autodarts (companion)
+
+See **`tools/autodarts-companion/`** — runs **beside** Autodarts Board Manager
+(`http://127.0.0.1:3180`) and logs `/api/state` throws so we can study their
+outputs (segments, any coords) without reverse-engineering closed CV.
+
+```powershell
+cd tools\autodarts-companion
+.\scripts\run-spy.bat
+```
