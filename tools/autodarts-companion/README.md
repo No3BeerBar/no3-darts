@@ -73,6 +73,18 @@ python -m companion viz
 
 Draws an OpenCV board with Autodarts hits marked (needs a window).
 
+### `bridge` — use Autodarts as the detector for No3
+When DIY CV is not ready for the bar, Autodarts can own detection and
+**mirror scores into No3** (iPad / TV still work):
+
+```powershell
+python -m companion bridge --no3-url https://no3-darts-production.up.railway.app --room "Board 1"
+```
+
+Or: `scripts\run-bridge.bat`
+
+Start a No3 match on that room, leave Autodarts detecting, throw.
+
 ## What we hope to learn
 
 From logged JSON (when present in your Board Manager version):

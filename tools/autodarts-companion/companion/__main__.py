@@ -48,6 +48,17 @@ def main(argv: list[str] | None = None) -> None:
     p_viz.add_argument("--host", default=None)
     p_viz.add_argument("--port", type=int, default=None)
 
+    p_br = sub.add_parser(
+        "bridge",
+        help="Mirror Autodarts throws into No3 (reliable scoring while CV improves)",
+    )
+    p_br.add_argument("--host", default=None)
+    p_br.add_argument("--port", type=int, default=None)
+    p_br.add_argument("--no3-url", default=None)
+    p_br.add_argument("--room", default=None)
+    p_br.add_argument("--api-key", default="")
+    p_br.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args(argv)
     cfg = _load_cfg(args.config)
     ad = cfg.get("autodarts") or {}
@@ -94,6 +105,20 @@ def main(argv: list[str] | None = None) -> None:
         from .viz import run_viz
 
         run_viz(host=host, port=port, poll_ms=poll_ms)
+        return
+
+    if args.cmd == "bridge":
+        no3 = cfg.get("no3") or {}
+        from .bridge import run_bridge
+
+        run_bridge(
+            host=host,
+            port=port,
+            no3_url=args.no3_url or no3.get("url") or "http://localhost:3000",
+            room=args.room or no3.get("room_id") or "Board 1",
+            api_key=args.api_key or no3.get("camera_api_key") or "",
+            dry_run=bool(args.dry_run),
+        )
         return
 
     parser.print_help()

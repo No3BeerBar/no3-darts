@@ -1,11 +1,20 @@
-"""v2 multi-camera pipeline: board-plane fusion + takeout + API."""
+"""
+v2 multi-camera pipeline — warped top-down tip detect + robust board-plane fusion.
+
+Detection path (industry-style):
+  1. Per cam: warp to board canvas via 4-pt H
+  2. Motion settle vs empty background
+  3. Tip = shaft endpoint toward bull in warped space
+  4. Fuse multi-cam board (x,y) with outlier rejection
+  5. Score via WDF polar; POST to No3; takeout after 3 / hands
+"""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import cv2
 import yaml
@@ -14,7 +23,7 @@ from rich.console import Console
 from ..api_client import No3Client
 from .board_plane import BoardPoint, fuse_board_points
 from .cam_calib import CamCalib
-from .tip_detect import TipConfig, TipDetector, TipResult
+from .warped_tip import WarpTipConfig, WarpedTipDetector, WarpTipResult
 
 console = Console()
 
@@ -24,11 +33,14 @@ class V2Config:
     no3_api_url: str = "http://localhost:3000"
     camera_api_key: str = ""
     room_id: str = "Board 1"
-    debounce_ms: int = 1600
-    min_confidence: float = 0.45
+    debounce_ms: int = 1400
+    min_confidence: float = 0.50
+    # Require this many cameras to agree (1 = allow single-cam)
+    min_agree_cams: int = 1
+    max_pair_dist: float = 0.22
     preview: bool = True
     dry_run: bool = False
-    hand_motion_pixels: int = 8000
+    hand_motion_pixels: int = 6000
     cameras: List[Dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
@@ -43,7 +55,7 @@ class CamRT:
     id: str
     cap: cv2.VideoCapture
     calib: CamCalib
-    det: TipDetector
+    det: WarpedTipDetector
 
 
 class V2Pipeline:
@@ -59,6 +71,9 @@ class V2Pipeline:
         self.darts_visit = 0
         self.waiting_takeout = False
         self._hand_streak = 0
+        # Collect tips within a short window for multi-cam fuse
+        self._pending_tips: List[WarpTipResult] = []
+        self._pending_since = 0.0
 
     def open(self) -> None:
         for cam in self.config.cameras:
@@ -70,19 +85,20 @@ class V2Pipeline:
                 source = int(source)
             path = cam.get("calibration")
             if not path or not Path(path).exists():
-                console.print(f"[yellow]Skip {cid}: missing {path} — run v2-calibrate[/yellow]")
+                console.print(
+                    f"[yellow]Skip {cid}: missing {path} — run calibrate-auto-v2.bat[/yellow]"
+                )
                 continue
-            # v2 only
             try:
                 raw = Path(path).read_text()
-                if '"version": 2' not in raw and "H_image_to_board" not in raw:
+                if "H_image_to_board" not in raw and '"version": 2' not in raw:
                     console.print(
-                        f"[yellow]Skip {cid}: not v2 calib — run scripts\\calibrate-auto-v2.bat[/yellow]"
+                        f"[yellow]Skip {cid}: not v2 calib — calibrate-auto-v2.bat[/yellow]"
                     )
                     continue
                 calib = CamCalib.load(path)
             except Exception as e:
-                console.print(f"[red]{cid} calib load failed: {e}[/red]")
+                console.print(f"[red]{cid} calib: {e}[/red]")
                 continue
             if isinstance(source, int):
                 cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
@@ -94,18 +110,17 @@ class V2Pipeline:
                 console.print(f"[red]Cannot open {cid}[/red]")
                 continue
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            for _ in range(6):
+            for _ in range(8):
                 cap.read()
-            det = TipDetector(calib, TipConfig())
+            det = WarpedTipDetector(calib, WarpTipConfig())
             ok, frame = cap.read()
             if ok:
                 det.reset_background(frame)
             self.cams.append(CamRT(id=cid, cap=cap, calib=calib, det=det))
-            console.print(f"[green]v2 opened {cid}[/green]")
+            console.print(f"[green]v2 warped detector · {cid}[/green]")
         if not self.cams:
             raise RuntimeError(
-                "No v2 cameras. Run: scripts\\calibrate-auto-v2.bat  "
-                "(or: python -m no3_detect v2-auto-calibrate --cameras 0 1 2 -y)"
+                "No cameras. Run scripts\\calibrate-auto-v2.bat then retry."
             )
 
     def close(self) -> None:
@@ -115,10 +130,16 @@ class V2Pipeline:
 
     def run(self) -> None:
         self.open()
-        console.rule("[bold]No3 detection v2[/bold]")
-        console.print(f"API {self.client.base_url}  room={self.config.room_id}")
-        console.print("Board-plane fusion (Autodarts/DeepDarts style)")
-        console.print("Keys: B=empty bg  N=next visit  Q=quit")
+        console.rule("[bold]No3 detection v2 — warped multi-cam[/bold]")
+        console.print(
+            f"API {self.client.base_url}  room={self.config.room_id}  "
+            f"min_cams={self.config.min_agree_cams}"
+        )
+        console.print(
+            "Tip find runs in [cyan]top-down board warp[/cyan] per camera, "
+            "then fuses board (x,y)."
+        )
+        console.print("Keys: [bold]B[/bold]=empty bg  [bold]N[/bold]=next  [bold]Q[/bold]=quit")
         try:
             self.client.health()
             console.print("[green]API health OK[/green]")
@@ -128,7 +149,7 @@ class V2Pipeline:
         last_hb = 0.0
         try:
             while True:
-                tips: List[TipResult] = []
+                now = time.time()
                 frames: Dict[str, Any] = {}
                 max_f2f = 0
                 for cam in self.cams:
@@ -138,13 +159,17 @@ class V2Pipeline:
                     frames[cam.id] = frame
                     res, overlay = cam.det.process(frame)
                     max_f2f = max(max_f2f, cam.det.last_f2f)
-                    phase = "TAKEOUT" if self.waiting_takeout else f"THROW {self.darts_visit}/3"
+                    phase = (
+                        "TAKEOUT"
+                        if self.waiting_takeout
+                        else f"THROW {self.darts_visit}/3"
+                    )
                     cv2.putText(
                         overlay,
                         phase,
-                        (10, overlay.shape[0] - 20),
+                        (10, overlay.shape[0] - 16),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
+                        0.65,
                         (0, 200, 255) if self.waiting_takeout else (0, 255, 0),
                         2,
                     )
@@ -154,27 +179,31 @@ class V2Pipeline:
                         console.print(f"[dim]{cam.id}[/dim] {cam.det.last_event}")
                         cam.det.last_event = ""
                     if res is not None and not self.waiting_takeout:
-                        tips.append(res)
+                        self._pending_tips.append(res)
+                        if self._pending_since <= 0:
+                            self._pending_since = now
 
-                if tips and not self.waiting_takeout:
-                    fused = fuse_board_points([t.board for t in tips])
-                    if fused and fused.confidence >= self.config.min_confidence:
-                        self._post(fused)
+                # Fuse tips that arrived within 250ms window
+                if self._pending_tips and (now - self._pending_since) >= 0.25:
+                    self._flush_tips()
 
                 if self.waiting_takeout:
                     if max_f2f >= self.config.hand_motion_pixels:
                         self._hand_streak += 1
                     else:
-                        if self._hand_streak >= 3 and max_f2f < self.config.hand_motion_pixels // 4:
+                        if (
+                            self._hand_streak >= 3
+                            and max_f2f < self.config.hand_motion_pixels // 4
+                        ):
                             self._finish_takeout(frames)
                         self._hand_streak = 0
 
-                now = time.time()
                 if now - last_hb >= 2:
                     last_hb = now
                     console.print(
-                        f"[dim]v2 live visit={self.darts_visit}/3 "
-                        f"takeout={self.waiting_takeout} f2f={max_f2f}[/dim]"
+                        f"[dim]live visit={self.darts_visit}/3 "
+                        f"takeout={self.waiting_takeout} "
+                        f"pending_tips={len(self._pending_tips)} f2f={max_f2f}[/dim]"
                     )
 
                 if self.config.preview:
@@ -186,6 +215,8 @@ class V2Pipeline:
                             ok, frame = cam.cap.read()
                             if ok:
                                 cam.det.reset_background(frame)
+                        self._pending_tips.clear()
+                        self._pending_since = 0.0
                         console.print("[blue]Background locked (empty board)[/blue]")
                     if key == ord("n"):
                         self._finish_takeout(frames)
@@ -194,9 +225,41 @@ class V2Pipeline:
         finally:
             self.close()
 
+    def _flush_tips(self) -> None:
+        tips = self._pending_tips
+        self._pending_tips = []
+        self._pending_since = 0.0
+        if not tips:
+            return
+        # Keep latest tip per camera
+        by_cam: Dict[str, WarpTipResult] = {}
+        for t in tips:
+            by_cam[t.board.camera_id] = t
+        points = [t.board for t in by_cam.values()]
+        for p in points:
+            console.print(
+                f"  cam {p.camera_id}: board=({p.x:.3f},{p.y:.3f}) conf={p.confidence:.2f}"
+            )
+        fused = fuse_board_points(
+            points,
+            min_confidence=self.config.min_confidence * 0.85,
+            max_pair_dist=self.config.max_pair_dist,
+            require_cams=self.config.min_agree_cams,
+        )
+        if fused is None:
+            console.print("[yellow]fuse rejected (no agreement)[/yellow]")
+            return
+        if fused.confidence < self.config.min_confidence:
+            console.print(
+                f"[yellow]fuse conf {fused.confidence:.2f} < {self.config.min_confidence}[/yellow]"
+            )
+            return
+        self._post(fused)
+
     def _post(self, bp: BoardPoint) -> None:
         now = time.time() * 1000
         if now - self._last_post < self.config.debounce_ms:
+            console.print("[dim]debounced[/dim]")
             return
         hit = bp.to_hit()
         try:
@@ -205,7 +268,7 @@ class V2Pipeline:
             self.darts_visit += 1
             console.print(
                 f"[bold green]POST[/bold green] {hit.kind} {hit.number} "
-                f"board=({bp.x:.2f},{bp.y:.2f}) conf={bp.confidence:.2f} "
+                f"board=({bp.x:.3f},{bp.y:.3f}) conf={bp.confidence:.2f} "
                 f"visit={self.darts_visit}/3"
             )
             turn_ended = bool(resp.get("turnEnded")) if isinstance(resp, dict) else False
@@ -213,7 +276,7 @@ class V2Pipeline:
                 self.waiting_takeout = True
                 self._hand_streak = 0
                 console.print(
-                    "[yellow]VISIT FULL — remove darts (or press N)[/yellow]"
+                    "[yellow]VISIT FULL — pull darts or press N[/yellow]"
                 )
         except Exception as e:
             console.print(f"[red]POST failed: {e}[/red]")
@@ -234,4 +297,6 @@ class V2Pipeline:
         self.darts_visit = 0
         self.waiting_takeout = False
         self._hand_streak = 0
+        self._pending_tips.clear()
+        self._pending_since = 0.0
         console.print("[green]READY[/green]")
