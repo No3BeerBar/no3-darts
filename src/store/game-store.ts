@@ -195,6 +195,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    const prevId = state.id;
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
     const stored = buildStoredMatch(finished);
     saveMatch(stored);
@@ -202,6 +203,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     void persistMatchToServer(stored);
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
+    // Drop server copy so TV returns to attract mode
+    if (prevId) {
+      void fetch(`/api/matches/${prevId}`, { method: "DELETE" }).catch(() => {});
+    }
   },
 
   clearGame: () => {

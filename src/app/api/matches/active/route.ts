@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
-import {
-  checkCameraAuth,
-  getActiveByRoom,
-  listServerMatches,
-} from "@/lib/server-game-store";
+import { getActiveByRoom, listServerMatches } from "@/lib/server-game-store";
 
-/** GET /api/matches/active?room=Board%201 */
+/**
+ * GET /api/matches/active?room=Board%201
+ * Public read for TV kiosk / attract idle detection (no camera key).
+ * Write paths under /api/matches and /api/camera remain protected.
+ */
 export async function GET(request: Request) {
-  if (!checkCameraAuth(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { searchParams } = new URL(request.url);
   const room = searchParams.get("room");
 

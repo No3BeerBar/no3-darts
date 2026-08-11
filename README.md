@@ -38,10 +38,11 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 - Guests (no account) + **walk-up accounts** (display name + 4-digit PIN)
 - Personal stats in **Postgres** when `DATABASE_URL` is set (shared across tablets)
 - Averages, 180s, checkouts, highest out
-- Local leaderboard (+ server history for registered players)
+- Local leaderboard (+ **server** weekly / all-time boards for registered players)
 - Match history with **JSON / CSV** export
+- **TV attract mode** on `/tv` when the board is idle (leaderboards + games carousel)
 
-Details: [`docs/PLAYERS.md`](./docs/PLAYERS.md).
+Details: [`docs/PLAYERS.md`](./docs/PLAYERS.md) · [`docs/TV.md`](./docs/TV.md).
 
 ### Ops
 - PWA installable on tablets
@@ -180,7 +181,7 @@ Change bar name, room name, and toggles under **Admin**.
 | `npm run build` | Production build |
 | `npm start` | Start production server |
 | `npm run lint` | ESLint |
-| `npm test` | Unit tests (PIN hash, name rules) |
+| `npm test` | Unit tests (PIN hash, name rules, leaderboard helpers) |
 | `npm run db:push` | Optional Drizzle schema push (auto-migrate also runs at runtime) |
 
 ---
@@ -191,7 +192,7 @@ Change bar name, room name, and toggles under **Admin**.
 - [ ] Heatmaps from `angle` / `radius` on darts
 - [ ] Multi-room dashboard
 - [x] Postgres persistence via `DATABASE_URL` (player accounts + match history)
-- [ ] Weekly / TV idle leaderboard UI (schema supports `finished_at` + per-player queries)
+- [x] Weekly / TV idle leaderboard UI (attract mode on `/tv`)
 - [ ] Harden Autodarts bridge autostart on the bar mini-PC
 
 ---

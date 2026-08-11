@@ -14,12 +14,12 @@ export async function GET(request: Request) {
   return NextResponse.json({ matches: listServerMatches() });
 }
 
-/** POST /api/matches – create / register a match on the server (for camera) */
+/**
+ * POST /api/matches – create / register a match on the server.
+ * Unauthenticated so the tablet heartbeat and TV stay in sync even when
+ * CAMERA_API_KEY is set (camera write routes remain keyed).
+ */
 export async function POST(request: Request) {
-  if (!checkCameraAuth(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
     const body = await request.json();
 

@@ -31,10 +31,8 @@ export async function PUT(request: Request, ctx: Ctx) {
   return NextResponse.json({ ok: true, match: body.state });
 }
 
-export async function DELETE(request: Request, ctx: Ctx) {
-  if (!checkCameraAuth(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+/** Tablet clear / save — public so TV can drop to attract without camera key. */
+export async function DELETE(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   removeServerMatch(id);
   return NextResponse.json({ ok: true });

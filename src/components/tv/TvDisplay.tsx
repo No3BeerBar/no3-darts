@@ -17,11 +17,12 @@ import { CricketScoreboard } from "@/components/scoring/CricketMarks";
 import { VisitHistory } from "@/components/scoring/VisitHistory";
 import { formatAvg } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settings-store";
+import { AttractMode } from "@/components/tv/AttractMode";
 import { useTvMatchFeed } from "@/hooks/useTvMatchFeed";
 
 /**
  * Cinematic full-screen TV layout:
- * scores stack on the left, oversized board on the right (slightly overlapping).
+ * idle → attract loop; active match → scores + board.
  */
 export function TvDisplay() {
   const settings = useSettingsStore();
@@ -34,7 +35,7 @@ export function TvDisplay() {
   }, [settings]);
 
   const room = settings.roomName || "Board 1";
-  const { state, connected, statusText, callout, cameraNotice, lastSyncAt } =
+  const { state, idle, connected, statusText, callout, cameraNotice, lastSyncAt } =
     useTvMatchFeed(hydrated ? room : "");
 
   useEffect(() => {
@@ -48,35 +49,14 @@ export function TvDisplay() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
-  // Idle / waiting
-  if (!state) {
+  // Idle / attract (leaderboards + games) when no live match
+  if (!hydrated || idle || !state) {
     return (
-      <div className="tv-display relative flex min-h-dvh items-center justify-center overflow-hidden">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-1/4 top-0 h-full w-1/2 bg-[radial-gradient(ellipse_at_center,rgb(225_6_0/0.22),transparent_65%)]" />
-          <div className="absolute bottom-0 right-0 h-2/3 w-2/3 bg-[radial-gradient(ellipse_at_bottom_right,rgb(225_6_0/0.12),transparent_60%)]" />
-        </div>
-        <div className="relative z-10 text-center">
-          <Image
-            src="/brand/logo.png"
-            alt="No.3"
-            width={140}
-            height={140}
-            className="mx-auto opacity-95 drop-shadow-[0_0_40px_rgb(225_6_0/0.35)]"
-          />
-          <h1 className="font-logo mt-6 text-6xl tracking-tight text-white md:text-8xl">
-            No.<span className="text-[var(--brand-red)]">3</span>
-          </h1>
-          <p className="font-display mt-3 text-sm tracking-[0.35em] text-zinc-500">
-            {room} · {connected ? "LINKED" : "STANDBY"}
-          </p>
-          <p className="mt-6 text-base text-zinc-400">{statusText}</p>
-          <p className="mt-3 max-w-md px-6 text-sm text-zinc-600">
-            Keep the tablet on the scoring screen — it re-publishes the match every few
-            seconds so this TV can reconnect after updates.
-          </p>
-        </div>
-      </div>
+      <AttractMode
+        room={room}
+        barName={settings.barName || "No. 3 Craft Beer Bar"}
+        connected={connected}
+      />
     );
   }
 
