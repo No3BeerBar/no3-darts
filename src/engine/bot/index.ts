@@ -19,10 +19,13 @@ export {
 } from "./aim";
 
 export {
+  aimExactFaceValue,
   generateBotVisit,
   generateGenericBotDart,
   generateNextBotDart,
   generateNextBotDartForPlayer,
+  planFortyOneAim,
+  planFortyOneAimForTarget,
 } from "./generate-visit";
 
 export {
