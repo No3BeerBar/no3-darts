@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isDatabaseConfigured } from "@/db";
-import { LEADERBOARD_METRICS } from "@/lib/leaderboard";
+import { LEADERBOARD_METRICS, metricsForGameMode } from "@/lib/leaderboard";
 import { fetchLeaderboardSlices } from "@/lib/leaderboard-server";
 
 /**
@@ -11,6 +11,7 @@ import { fetchLeaderboardSlices } from "@/lib/leaderboard-server";
  *   weekMode=rolling7|calendar  (default rolling7)
  *   minMatches=1
  *   limit=8
+ *   gameMode=killer|baseball|…  (optional per-mode boards; guests excluded)
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -18,9 +19,14 @@ export async function GET(request: Request) {
     searchParams.get("weekMode") === "calendar" ? "calendar" : "rolling7";
   const minMatches = Math.max(1, Number(searchParams.get("minMatches") ?? "1") || 1);
   const limit = Math.min(25, Math.max(1, Number(searchParams.get("limit") ?? "8") || 8));
+  const gameModeRaw = searchParams.get("gameMode")?.trim() || null;
+  // Allowlist keeps the additive hook open for new modes (e.g. 41) without free-form SQL risk
+  const gameMode =
+    gameModeRaw && /^[a-z0-9_]{1,32}$/.test(gameModeRaw) ? gameModeRaw : null;
+  const metrics = metricsForGameMode(gameMode);
 
   try {
-    const data = await fetchLeaderboardSlices({ weekMode, minMatches, limit });
+    const data = await fetchLeaderboardSlices({ weekMode, minMatches, limit, gameMode });
 
     if (!data) {
       return NextResponse.json(
@@ -28,7 +34,8 @@ export async function GET(request: Request) {
           ok: true,
           dbConfigured: isDatabaseConfigured(),
           dbAvailable: false,
-          metrics: LEADERBOARD_METRICS,
+          gameMode,
+          metrics,
           weekly: null,
           allTime: null,
         },
@@ -45,7 +52,8 @@ export async function GET(request: Request) {
         ok: true,
         dbConfigured: true,
         dbAvailable: true,
-        metrics: LEADERBOARD_METRICS,
+        gameMode: data.gameMode ?? gameMode,
+        metrics,
         weekly: data.weekly,
         allTime: data.allTime,
       },
@@ -65,6 +73,7 @@ export async function GET(request: Request) {
         ok: true,
         dbConfigured: isDatabaseConfigured(),
         dbAvailable: false,
+        gameMode,
         metrics: LEADERBOARD_METRICS,
         weekly: null,
         allTime: null,

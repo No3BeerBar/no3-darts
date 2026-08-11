@@ -29,12 +29,48 @@ export interface KillerExtra {
   eliminated: boolean;
 }
 
-function extra(ps: { extra?: Record<string, unknown> }): KillerExtra {
+/** Read Killer extras from a player state (safe defaults). */
+export function getKillerExtra(ps: { extra?: Record<string, unknown> }): KillerExtra {
   return {
     killerNumber: Number(ps.extra?.killerNumber ?? 0),
     lives: Number(ps.extra?.lives ?? 0),
     isKiller: Boolean(ps.extra?.isKiller),
     eliminated: Boolean(ps.extra?.eliminated),
+  };
+}
+
+function extra(ps: { extra?: Record<string, unknown> }): KillerExtra {
+  return getKillerExtra(ps);
+}
+
+/**
+ * Board focus for Autodarts-style highlight.
+ * Primary = current thrower's number; when armed, secondary = alive opponents.
+ * Classic Killer only scores doubles, so UI should light the double ring.
+ */
+export function killerBoardFocus(state: GameState): {
+  primary: number | null;
+  secondary: number[];
+  focusKind: "double";
+} {
+  if (state.mode !== "killer") {
+    return { primary: null, secondary: [], focusKind: "double" };
+  }
+  const me = extra(currentPlayerState(state));
+  if (me.eliminated || !me.killerNumber) {
+    return { primary: null, secondary: [], focusKind: "double" };
+  }
+  const secondary = me.isKiller
+    ? state.playerStates
+        .filter((p) => p.playerId !== currentPlayer(state).id)
+        .map((p) => extra(p))
+        .filter((e) => !e.eliminated && e.killerNumber >= 1 && e.killerNumber <= 20)
+        .map((e) => e.killerNumber)
+    : [];
+  return {
+    primary: me.killerNumber,
+    secondary,
+    focusKind: "double",
   };
 }
 
@@ -88,7 +124,8 @@ function checkWinner(state: GameState, events: EngineEvent[]): ApplyDartResult |
 export const killerHandler: GameModeHandler = {
   id: "killer",
   displayName: "Killer",
-  description: "Arm on your double, eliminate opponents – last life standing",
+  description:
+    "Claim a number · arm on your double · take lives on theirs · last standing wins",
 
   initLeg(state: GameState): GameState {
     const cfg = getModeConfig(state, "killer");

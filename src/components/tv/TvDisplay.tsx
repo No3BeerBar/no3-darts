@@ -6,9 +6,11 @@ import {
   baseballDartPoints,
   baseballInning,
   getHandler,
+  getKillerExtra,
   getRemaining,
   getTeamForPlayer,
   isTeamGame,
+  killerBoardFocus,
   segmentLabel,
   suggestCheckout,
   teamScoreRows,
@@ -17,6 +19,7 @@ import {
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "@/components/scoring/BaseballBanner";
 import { CricketScoreboard } from "@/components/scoring/CricketMarks";
+import { KillerBanner } from "@/components/scoring/KillerBanner";
 import { VisitHistory } from "@/components/scoring/VisitHistory";
 import { formatAvg } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settings-store";
@@ -68,7 +71,9 @@ export function TvDisplay() {
   const current = state.players[state.currentPlayerIndex];
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const baseball = state.mode === "baseball";
+  const killer = state.mode === "killer";
   const inn = baseball ? baseballInning(state) : 0;
+  const killerFocus = killer ? killerBoardFocus(state) : null;
   const turnTotal = state.currentTurnDarts.reduce(
     (a, d) => a + (baseball ? baseballDartPoints(d, inn) : d.value),
     0
@@ -137,6 +142,11 @@ export function TvDisplay() {
               <BaseballBanner state={state} size="lg" />
             </div>
           )}
+          {killer && (
+            <div className="mb-3">
+              <KillerBanner state={state} size="lg" />
+            </div>
+          )}
           <div className="flex flex-1 flex-col justify-center gap-3 lg:gap-4">
             {state.mode === "cricket" ? (
               <div className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-4 lg:px-5 lg:py-6">
@@ -203,18 +213,24 @@ export function TvDisplay() {
                   idx === state.currentPlayerIndex && state.status === "playing";
                 const rem = getRemaining(state, p.id);
                 const avg = threeDartAverage(ps);
-                const display = state.mode === "killer" ? ps.score : rem;
+                const k = killer ? getKillerExtra(ps) : null;
+                const display = killer ? (k?.lives ?? ps.score) : rem;
+                const out = Boolean(k?.eliminated);
 
                 return (
                   <div
                     key={p.id}
                     className={`relative overflow-hidden rounded-2xl border px-5 py-4 transition-all duration-300 lg:px-6 lg:py-5 ${
-                      active
-                        ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.18)] shadow-[0_0_48px_rgb(225_6_0/0.25)]"
-                        : "border-[var(--panel-border)] bg-[var(--panel)]"
+                      out
+                        ? "opacity-45 border-[var(--panel-border)] bg-black"
+                        : active
+                          ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.18)] shadow-[0_0_48px_rgb(225_6_0/0.25)]"
+                          : k?.isKiller
+                            ? "border-red-900/60 bg-[var(--panel)]"
+                            : "border-[var(--panel-border)] bg-[var(--panel)]"
                     }`}
                   >
-                    {active && (
+                    {active && !out && (
                       <div className="absolute left-0 top-0 h-full w-1 bg-[var(--brand-red)] shadow-[0_0_12px_var(--brand-red)]" />
                     )}
                     <div className="flex items-end justify-between gap-4">
@@ -222,34 +238,54 @@ export function TvDisplay() {
                         <div className="flex items-center gap-2">
                           <span
                             className={`font-display truncate text-sm tracking-[0.2em] lg:text-base ${
-                              active ? "text-white" : "text-zinc-500"
+                              active && !out ? "text-white" : "text-zinc-500"
                             }`}
                           >
                             {p.name.toUpperCase()}
                           </span>
-                          {active && (
+                          {active && !out && (
                             <span className="shrink-0 animate-pulse rounded-full bg-[var(--brand-red)] px-2 py-0.5 font-display text-[9px] tracking-wider text-white">
                               LIVE
                             </span>
                           )}
-                        </div>
-                        <div className="mt-1 font-display text-[11px] tracking-wider text-zinc-600">
-                          AVG {formatAvg(avg)}
-                          {ps.oneEighties > 0 && (
-                            <span className="ml-2 text-[var(--style-orange)]">
-                              {ps.oneEighties}×180
+                          {k?.isKiller && !out && (
+                            <span className="shrink-0 rounded bg-red-700 px-2 py-0.5 font-display text-[10px] font-bold tracking-wider text-white">
+                              K
                             </span>
                           )}
-                          {state.matchFormat.legsToWin > 1 && (
-                            <span className="ml-2">· L{ps.legsWon}</span>
+                          {out && (
+                            <span className="shrink-0 font-display text-[10px] tracking-wider text-zinc-600">
+                              OUT
+                            </span>
                           )}
                         </div>
+                        {killer && k ? (
+                          <div className="mt-1 font-display text-[11px] tracking-wider text-zinc-500">
+                            D{k.killerNumber}
+                            {!k.isKiller && !out && " · NEED DOUBLE TO ARM"}
+                            {k.isKiller && !out && " · ARMED"}
+                          </div>
+                        ) : (
+                          <div className="mt-1 font-display text-[11px] tracking-wider text-zinc-600">
+                            AVG {formatAvg(avg)}
+                            {ps.oneEighties > 0 && (
+                              <span className="ml-2 text-[var(--style-orange)]">
+                                {ps.oneEighties}×180
+                              </span>
+                            )}
+                            {state.matchFormat.legsToWin > 1 && (
+                              <span className="ml-2">· L{ps.legsWon}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div
                         className={`shrink-0 font-black tabular-nums leading-none tracking-tighter ${
-                          active
-                            ? "text-[clamp(3.5rem,9vw,7.5rem)] text-[var(--brand-red-bright)] drop-shadow-[0_0_30px_rgb(225_6_0/0.45)]"
-                            : "text-[clamp(2.5rem,6vw,5rem)] text-white/90"
+                          out
+                            ? "text-[clamp(2.5rem,6vw,5rem)] text-zinc-600 line-through"
+                            : active
+                              ? "text-[clamp(3.5rem,9vw,7.5rem)] text-[var(--brand-red-bright)] drop-shadow-[0_0_30px_rgb(225_6_0/0.45)]"
+                              : "text-[clamp(2.5rem,6vw,5rem)] text-white/90"
                         }`}
                       >
                         {display}
@@ -324,7 +360,9 @@ export function TvDisplay() {
           >
             <Dartboard
               marks={state.currentTurnDarts}
-              focusNumber={baseball ? inn : null}
+              focusNumber={baseball ? inn : killerFocus?.primary ?? null}
+              focusNumbers={killerFocus?.secondary ?? null}
+              focusKind={killerFocus?.focusKind ?? "wedge"}
               size={boardSize}
               showLiveLabel={false}
               className="relative z-10"

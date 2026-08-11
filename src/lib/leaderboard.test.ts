@@ -3,7 +3,9 @@ import {
   aggregateMatchRows,
   calendarWeekStart,
   filterByFinishedSince,
+  filterRowsByGameMode,
   formatLeaderboardValue,
+  metricsForGameMode,
   metricValue,
   rankLeaderboard,
   rollingWeekStart,
@@ -141,5 +143,26 @@ describe("aggregateMatchRows + rankLeaderboard", () => {
   it("formats avg to one decimal", () => {
     const [top] = rankLeaderboard(aggregateMatchRows(sample), "avg");
     expect(formatLeaderboardValue(top, "avg")).toMatch(/^\d+\.\d$/);
+  });
+});
+
+describe("per-mode leaderboard helpers", () => {
+  it("filters rows by gameMode", () => {
+    const rows = [
+      row({ playerId: "a", name: "A", mode: "killer", won: true }),
+      row({ playerId: "b", name: "B", mode: "x01", won: true }),
+      row({ playerId: "c", name: "C", mode: "killer", won: false }),
+    ];
+    expect(filterRowsByGameMode(rows, "killer").map((r) => r.playerId)).toEqual([
+      "a",
+      "c",
+    ]);
+    expect(filterRowsByGameMode(rows, null)).toHaveLength(3);
+  });
+
+  it("wins-first modes only expose wins metric", () => {
+    expect(metricsForGameMode("killer").map((m) => m.id)).toEqual(["wins"]);
+    expect(metricsForGameMode("baseball").map((m) => m.id)).toEqual(["wins"]);
+    expect(metricsForGameMode(null).length).toBeGreaterThan(1);
   });
 });

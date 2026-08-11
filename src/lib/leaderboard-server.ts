@@ -7,7 +7,7 @@ import { getDb, schema } from "@/db";
 import {
   aggregateMatchRows,
   calendarWeekStart,
-  LEADERBOARD_METRICS,
+  metricsForGameMode,
   rankLeaderboard,
   rollingWeekStart,
   threeDartAvg,
@@ -24,6 +24,8 @@ export type LeaderboardSlice = {
   since: number | null;
   until: number;
   mode: "rolling7" | "calendar" | "all";
+  /** Optional game mode filter (killer, baseball, …). */
+  gameMode?: string | null;
   boards: LeaderboardBoards;
 };
 
@@ -36,27 +38,38 @@ function emptyBoards(): LeaderboardBoards {
   };
 }
 
-function rankAllMetrics(
+function rankMetrics(
   entries: LeaderboardEntry[],
-  opts: { minMatches: number; limit: number }
+  opts: { minMatches: number; limit: number; gameMode?: string | null }
 ): LeaderboardBoards {
   const boards = emptyBoards();
-  for (const m of LEADERBOARD_METRICS) {
+  for (const m of metricsForGameMode(opts.gameMode)) {
     boards[m.id] = rankLeaderboard(entries, m.id, opts);
   }
   return boards;
 }
 
-async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | null> {
+async function loadMatchRows(opts: {
+  sinceMs?: number | null;
+  gameMode?: string | null;
+}): Promise<MatchPlayerRow[] | null> {
   const db = await getDb();
   if (!db) return null;
 
-  const since = new Date(sinceMs);
+  const conditions = [isNotNull(schema.matchPlayers.playerId)];
+  if (opts.sinceMs != null) {
+    conditions.push(gte(schema.matches.finishedAt, new Date(opts.sinceMs)));
+  }
+  if (opts.gameMode) {
+    conditions.push(eq(schema.matches.mode, opts.gameMode));
+  }
+
   const rows = await db
     .select({
       playerId: schema.matchPlayers.playerId,
       name: schema.matchPlayers.name,
       finishedAt: schema.matches.finishedAt,
+      mode: schema.matches.mode,
       avg: schema.matchPlayers.avg,
       oneEighties: schema.matchPlayers.oneEighties,
       highestCheckout: schema.matchPlayers.highestCheckout,
@@ -66,9 +79,7 @@ async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | n
     })
     .from(schema.matchPlayers)
     .innerJoin(schema.matches, eq(schema.matchPlayers.matchId, schema.matches.id))
-    .where(
-      and(isNotNull(schema.matchPlayers.playerId), gte(schema.matches.finishedAt, since))
-    )
+    .where(and(...conditions))
     .orderBy(desc(schema.matches.finishedAt));
 
   return rows
@@ -77,6 +88,7 @@ async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | n
       playerId: r.playerId!,
       name: r.name,
       finishedAt: r.finishedAt.getTime(),
+      mode: r.mode,
       avg: r.avg,
       oneEighties: r.oneEighties,
       highestCheckout: r.highestCheckout,
@@ -84,6 +96,11 @@ async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | n
       totalScore: r.totalScore,
       won: r.winnerPlayerId === r.playerId,
     }));
+}
+
+/** @deprecated prefer loadMatchRows — kept for any callers during mode-filter rollout */
+async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | null> {
+  return loadMatchRows({ sinceMs });
 }
 
 async function loadAllTimeEntries(): Promise<LeaderboardEntry[] | null> {
@@ -115,6 +132,13 @@ export type FetchLeaderboardsOptions = {
   weekMode?: "rolling7" | "calendar";
   minMatches?: number;
   limit?: number;
+  /**
+   * Optional game mode filter (e.g. killer, baseball).
+   * When set, boards are ranked from matches of that mode only
+   * (registered PIN players — guests already have null playerId).
+   * Additive hook for per-mode boards; omit for global X01-style boards.
+   */
+  gameMode?: string | null;
 };
 
 /**
@@ -127,17 +151,50 @@ export async function fetchLeaderboardSlices(
   dbAvailable: boolean;
   weekly: LeaderboardSlice;
   allTime: LeaderboardSlice;
+  gameMode?: string | null;
 } | null> {
   const now = opts.nowMs ?? Date.now();
   const weekMode = opts.weekMode ?? "rolling7";
   const minMatches = opts.minMatches ?? 1;
   const limit = opts.limit ?? 8;
-  const rankOpts = { minMatches, limit };
+  const gameMode = opts.gameMode?.trim() || null;
+  const rankOpts = { minMatches, limit, gameMode };
 
   const since =
     weekMode === "calendar" ? calendarWeekStart(now, 1) : rollingWeekStart(now);
 
   try {
+    // Per-mode boards always come from match rows (player aggregates are global).
+    // Global all-time still uses career player aggregates for avg/180s continuity.
+    if (gameMode) {
+      const [weekRows, allRows] = await Promise.all([
+        loadMatchRows({ sinceMs: since, gameMode }),
+        loadMatchRows({ sinceMs: null, gameMode }),
+      ]);
+      if (weekRows === null || allRows === null) return null;
+
+      return {
+        dbAvailable: true,
+        gameMode,
+        weekly: {
+          window: "week",
+          since,
+          until: now,
+          mode: weekMode,
+          gameMode,
+          boards: rankMetrics(aggregateMatchRows(weekRows), rankOpts),
+        },
+        allTime: {
+          window: "all",
+          since: null,
+          until: now,
+          mode: "all",
+          gameMode,
+          boards: rankMetrics(aggregateMatchRows(allRows), rankOpts),
+        },
+      };
+    }
+
     const [weekRows, allEntries] = await Promise.all([
       loadMatchRowsSince(since),
       loadAllTimeEntries(),
@@ -151,19 +208,22 @@ export async function fetchLeaderboardSlices(
 
     return {
       dbAvailable: true,
+      gameMode: null,
       weekly: {
         window: "week",
         since,
         until: now,
         mode: weekMode,
-        boards: rankAllMetrics(weeklyEntries, rankOpts),
+        gameMode: null,
+        boards: rankMetrics(weeklyEntries, rankOpts),
       },
       allTime: {
         window: "all",
         since: null,
         until: now,
         mode: "all",
-        boards: rankAllMetrics(allEntries, rankOpts),
+        gameMode: null,
+        boards: rankMetrics(allEntries, rankOpts),
       },
     };
   } catch (err) {
