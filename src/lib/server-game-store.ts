@@ -4,14 +4,25 @@
  * For multi-instance Railway, swap for Redis later.
  */
 
-import type { DartDetectedEvent, GameState } from "@/engine/types";
-import { applyDart, createDart, endTurn } from "@/engine";
+import type { DartDetectedEvent, GameState, SegmentKind } from "@/engine/types";
+import {
+  applyDart,
+  correctCurrentTurn,
+  createDart,
+  endTurn,
+} from "@/engine";
+import type { CameraHealth } from "@/lib/camera-health";
+
+export type { CameraHealth } from "@/lib/camera-health";
 
 type Listener = (event: { type: string; data: unknown }) => void;
 
 const matches = new Map<string, GameState>();
 const byRoom = new Map<string, string>(); // roomId -> matchId
 const listeners = new Set<Listener>();
+
+/** Latest camera / Board Manager health per room (from companion bridge). */
+const cameraHealthByRoom = new Map<string, CameraHealth>();
 
 export function upsertServerMatch(state: GameState): void {
   const existing = matches.get(state.id);
@@ -161,6 +172,106 @@ export function applyCameraEndTurn(opts: {
   });
   emit({ type: "match_update", data: result.state });
   return { ok: true, state: result.state, callout: result.callout };
+}
+
+export type CameraCorrectDart = {
+  kind: SegmentKind;
+  number: number;
+  angle?: number;
+  radius?: number;
+  confidence?: number;
+  timestamp?: number;
+};
+
+/**
+ * Replace the open visit with the exact dart list from Autodarts (or UI).
+ * Idempotent: same list → same scores; used for mid-visit corrections.
+ */
+export function applyCameraCorrect(opts: {
+  matchId?: string;
+  roomId?: string;
+  darts: CameraCorrectDart[];
+  reason?: string;
+}):
+  | { ok: true; state: GameState; callout?: string; turnEnded: boolean }
+  | { ok: false; error: string } {
+  const state = resolveMatch({ matchId: opts.matchId, roomId: opts.roomId });
+  if (!state) return { ok: false, error: "No active match found" };
+  if (state.status !== "playing" && state.status !== "leg_won" && state.status !== "match_won") {
+    return { ok: false, error: `Match status is ${state.status}` };
+  }
+
+  const beforePlayer = state.currentPlayerIndex;
+  const darts = (opts.darts ?? []).slice(0, 3).map((d) =>
+    createDart(d.kind, d.number, {
+      angle: d.angle,
+      radius: d.radius,
+      source: "camera",
+      timestamp: d.timestamp,
+    })
+  );
+
+  // Empty list = clear open visit (undo all current-turn darts) without advancing
+  const result = correctCurrentTurn(state, darts, { autoEnd: false });
+  matches.set(result.state.id, result.state);
+
+  const turnEnded =
+    result.state.currentPlayerIndex !== beforePlayer ||
+    result.state.status !== "playing";
+
+  emit({
+    type: "dart_detected",
+    data: {
+      state: result.state,
+      callout: result.callout ?? "CORRECTED",
+      turnEnded,
+      corrected: true,
+      reason: opts.reason,
+    },
+  });
+  emit({ type: "match_update", data: result.state });
+
+  return {
+    ok: true,
+    state: result.state,
+    callout: result.callout,
+    turnEnded,
+  };
+}
+
+export function setCameraHealth(health: CameraHealth): CameraHealth {
+  const room = (health.roomId || "Board 1").trim() || "Board 1";
+  const next: CameraHealth = {
+    ...health,
+    roomId: room,
+    ts: health.ts || Date.now(),
+  };
+  cameraHealthByRoom.set(room, next);
+  // Also index case-insensitive lookup key
+  cameraHealthByRoom.set(room.toLowerCase(), next);
+  emit({ type: "camera_health", data: next });
+  return next;
+}
+
+export function getCameraHealth(roomId?: string): CameraHealth | undefined {
+  if (roomId) {
+    const exact = cameraHealthByRoom.get(roomId);
+    if (exact) return exact;
+    const lower = cameraHealthByRoom.get(roomId.trim().toLowerCase());
+    if (lower) return lower;
+    for (const h of cameraHealthByRoom.values()) {
+      if ((h.roomId || "").trim().toLowerCase() === roomId.trim().toLowerCase()) {
+        return h;
+      }
+    }
+    return undefined;
+  }
+  // Sole / most recent
+  let latest: CameraHealth | undefined;
+  for (const h of cameraHealthByRoom.values()) {
+    if (!latest || (h.ts ?? 0) > (latest.ts ?? 0)) latest = h;
+  }
+  return latest;
 }
 
 export function subscribe(listener: Listener): () => void {

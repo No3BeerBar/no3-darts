@@ -44,9 +44,11 @@ export function useTvMatchFeed(room: string) {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("Connecting…");
   const [callout, setCallout] = useState<string | null>(null);
+  const [cameraNotice, setCameraNotice] = useState<string | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
   const calloutTimer = useRef<number | null>(null);
+  const healthTimer = useRef<number | null>(null);
 
   const flashCallout = useCallback((text?: string) => {
     if (!text) return;
@@ -168,6 +170,37 @@ export function useTvMatchFeed(room: string) {
         }
       });
 
+      es.addEventListener("camera_health", (ev) => {
+        try {
+          const h = JSON.parse((ev as MessageEvent).data) as {
+            roomId?: string;
+            level?: string;
+            message?: string;
+            restarting?: boolean;
+          };
+          const want = roomRef.current.trim().toLowerCase();
+          const got = (h.roomId || "").trim().toLowerCase();
+          if (got && want && got !== want) return;
+          if (h.level === "ok" && !h.restarting) {
+            setCameraNotice(null);
+            return;
+          }
+          const text = h.restarting
+            ? "Detection restarting…"
+            : h.message || "Cameras unhealthy";
+          setCameraNotice(text);
+          if (healthTimer.current) window.clearTimeout(healthTimer.current);
+          if (h.level === "degraded") {
+            healthTimer.current = window.setTimeout(
+              () => setCameraNotice(null),
+              4000
+            );
+          }
+        } catch {
+          /* */
+        }
+      });
+
       es.onerror = () => {
         setConnected(false);
         setStatusText("Stream lost · reconnecting…");
@@ -209,10 +242,20 @@ export function useTvMatchFeed(room: string) {
       }
       if (pollTimer) window.clearInterval(pollTimer);
       if (sseRetryTimer) window.clearTimeout(sseRetryTimer);
+      if (healthTimer.current) window.clearTimeout(healthTimer.current);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("online", fetchActive);
     };
   }, [room, apply, flashCallout]);
 
-  return { state, setState, connected, lastSyncAt, statusText, callout, apply };
+  return {
+    state,
+    setState,
+    connected,
+    lastSyncAt,
+    statusText,
+    callout,
+    cameraNotice,
+    apply,
+  };
 }

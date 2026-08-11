@@ -105,6 +105,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Do not call POST /api/camera/end-turn on Autodarts takeout",
     )
+    p_br.add_argument(
+        "--no-health",
+        action="store_true",
+        help="Disable camera health watch / Board Manager auto-restart",
+    )
 
     args = parser.parse_args(argv)
     cfg = _load_cfg(args.config)
@@ -159,7 +164,31 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.cmd == "bridge":
         no3 = cfg.get("no3") or {}
+        hcfg_raw = cfg.get("health") or {}
         from .bridge import run_bridge
+        from .health import HealthConfig
+
+        health = HealthConfig(
+            enabled=not bool(args.no_health)
+            and bool(hcfg_raw.get("enabled", True)),
+            fps_min=float(hcfg_raw.get("fps_min") or 5.0),
+            unhealthy_seconds=float(hcfg_raw.get("unhealthy_seconds") or 15.0),
+            restart_cooldown_seconds=float(
+                hcfg_raw.get("restart_cooldown_seconds") or 60.0
+            ),
+            between_games_recal=bool(hcfg_raw.get("between_games_recal", True)),
+            exe_path=str(
+                hcfg_raw.get("exe_path")
+                or ad.get("exe_path")
+                or os.environ.get("AUTODARTS_EXE")
+                or ""
+            ),
+            process_names=list(
+                hcfg_raw.get("process_names")
+                or ad.get("process_names")
+                or ["Autodarts", "autodarts", "AutodartsDesktop"]
+            ),
+        )
 
         run_bridge(
             host=host,
@@ -176,6 +205,7 @@ def main(argv: list[str] | None = None) -> None:
             or "",
             dry_run=bool(args.dry_run),
             end_turn_on_takeout=not bool(args.no_end_turn),
+            health=health,
         )
         return
 

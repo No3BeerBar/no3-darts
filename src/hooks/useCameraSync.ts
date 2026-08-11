@@ -9,11 +9,19 @@ import { useEffect, useRef } from "react";
 import type { GameState } from "@/engine/types";
 import { useGameStore } from "@/store/game-store";
 
+function turnSig(state: GameState): string {
+  return (state.currentTurnDarts ?? [])
+    .map((d) => `${d.kind}:${d.number}:${d.value}`)
+    .join("|");
+}
+
 function isAhead(remote: GameState, local: GameState): boolean {
   if (remote.id !== local.id) return false;
   if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) return true;
   if ((remote.updatedAt ?? 0) < (local.updatedAt ?? 0)) return false;
-  // same timestamp — more darts in the current visit wins
+  // same timestamp — prefer remote when visit content differs (corrections)
+  if (turnSig(remote) !== turnSig(local)) return true;
+  // otherwise more darts / progress wins
   const rTurn = remote.currentTurnDarts?.length ?? 0;
   const lTurn = local.currentTurnDarts?.length ?? 0;
   if (rTurn > lTurn) return true;
