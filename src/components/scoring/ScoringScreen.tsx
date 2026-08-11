@@ -4,9 +4,9 @@
  * `/play` scoring UI.
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
- * recent visits, dartboard, Stats + End game. Match win auto-saves (no Save dialog).
- * Board sits in a fixed stage — visit history / seats scroll and never shove it.
- * No global AppShell nav — see docs/PLAY.md.
+ * recent visits, dartboard, How to play + Stats + End game. Match win auto-saves
+ * (no Save dialog). Board sits in a fixed stage — visit history / seats scroll and
+ * never shove it. No global AppShell nav — see docs/PLAY.md.
  *
  * Staff (admin unlocked): Undo / Edit / End turn / Pause / Home + Keys/Pad.
  * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
@@ -33,6 +33,7 @@ import {
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
+import { HowToPlayModal } from "@/components/play/HowToPlayModal";
 import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "@/lib/match-autosave";
 import { canScoreMatch } from "@/lib/seat-auth";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,7 @@ function ScoringScreenInner() {
   const [idleAuthOpen, setIdleAuthOpen] = useState(false);
   const [idleAuthMode, setIdleAuthMode] = useState<AuthMode>("signin");
   const [idleAuthName, setIdleAuthName] = useState("");
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boardStageRef = useRef<HTMLDivElement>(null);
 
@@ -374,6 +376,12 @@ function ScoringScreenInner() {
         />
       )}
 
+      <HowToPlayModal
+        open={howToPlayOpen}
+        mode={state.mode}
+        onClose={() => setHowToPlayOpen(false)}
+      />
+
       {/* Top bar — thrower + score; staff tools only when unlocked */}
       <header className="shrink-0 border-b border-[rgb(225_6_0/0.22)] bg-[#050505] px-3 py-2">
         <div className="mx-auto flex max-w-6xl items-center gap-3">
@@ -417,6 +425,13 @@ function ScoringScreenInner() {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => setHowToPlayOpen(true)}
+              className="btn-ghost min-h-10 px-3 font-display text-xs tracking-wider text-zinc-300"
+            >
+              How to play
+            </button>
             <Link
               href={statsHrefFromPlay("/play")}
               className="btn-ghost min-h-10 px-3 font-display text-xs tracking-wider text-zinc-300"

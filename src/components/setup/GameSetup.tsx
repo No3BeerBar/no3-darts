@@ -15,6 +15,7 @@ import {
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
+import { HowToPlayModal } from "@/components/play/HowToPlayModal";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
 import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
@@ -81,6 +82,7 @@ export function GameSetup() {
   const [authName, setAuthName] = useState("");
   const [pendingSelect, setPendingSelect] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
   const [mode, setMode] = useState<GameModeId>("x01");
   const [startScore, setStartScore] = useState<301 | 501 | 701 | 901>(501);
@@ -406,6 +408,12 @@ export function GameSetup() {
         onSuccess={onAuthSuccess}
       />
 
+      <HowToPlayModal
+        open={howToPlayOpen}
+        mode={mode}
+        onClose={() => setHowToPlayOpen(false)}
+      />
+
       <SavedPlayersPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
@@ -528,7 +536,16 @@ export function GameSetup() {
       )}
 
       <section>
-        <h2 className="section-title mb-1.5">Mode</h2>
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title mb-0">Mode</h2>
+          <button
+            type="button"
+            onClick={() => setHowToPlayOpen(true)}
+            className="btn-ghost min-h-10 px-3 font-display text-xs tracking-wider text-zinc-300"
+          >
+            How to play
+          </button>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {MODES.map((m) => (
             <button
