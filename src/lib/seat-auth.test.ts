@@ -51,6 +51,23 @@ describe("seat auth / resume re-verification", () => {
     expect(canScoreMatch("m1", players, null)).toBe(true);
   });
 
+  it("allows bot seats without PIN (bots are guests)", () => {
+    installMemoryStorage();
+    const players = [
+      {
+        id: "bot1",
+        name: "Luke Littler",
+        isGuest: true,
+        isBot: true,
+        botDifficulty: "luke_littler" as const,
+      },
+      { id: "alice", name: "Alice", isGuest: false },
+    ];
+    seedSeatAuthForMatch("m1", players, "alice");
+    expect(seatsNeedingReauth("m1", players, "alice")).toEqual([]);
+    expect(canScoreMatch("m1", players, "alice")).toBe(true);
+  });
+
   it("seeds registered seats at match start and allows scoring while session matches", () => {
     installMemoryStorage();
     const players = [

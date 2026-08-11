@@ -40,6 +40,7 @@ import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
+import { useBotTurn, isCurrentThrowerBot } from "@/hooks/useBotTurn";
 import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
@@ -144,11 +145,18 @@ function ScoringScreenInner() {
     return canScoreMatch(state.id, state.players, sessionPlayer?.id ?? null);
   }, [state, sessionPlayer?.id, sessionHydrated, seatAuthTick]);
 
-  // Camera must not advance scores while PIN seats need re-auth
-  useCameraSync(seatsOk);
+  const botThrowing = isCurrentThrowerBot(state);
+
+  // Camera must not advance scores while PIN seats need re-auth, or during bot turns
+  // (bots generate darts on the tablet — Autodarts would collide)
+  useCameraSync(seatsOk && !botThrowing);
+  useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  const { notice: cameraNotice } = useCameraHealth(state?.roomId, Boolean(state) && seatsOk);
+  const { notice: cameraNotice } = useCameraHealth(
+    state?.roomId,
+    Boolean(state) && seatsOk && !botThrowing
+  );
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
   const showCheckout =
@@ -311,9 +319,10 @@ function ScoringScreenInner() {
         focusRing={fortyOneFocus?.focusRing ?? null}
         focusBull={fortyOneFocus?.focusBull ?? false}
         size={boardSize}
-        interactive
+        interactive={!botThrowing}
         showLiveLabel
         onScore={(kind, number, meta) => {
+          if (botThrowing) return;
           throwDart(kind, number, {
             angle: meta?.angle,
             radius: meta?.radius,
@@ -388,13 +397,21 @@ function ScoringScreenInner() {
             )}
             <div className="truncate font-display text-base font-bold tracking-wide text-white sm:text-lg">
               {current?.name}
-              <span className="ml-2 font-normal text-zinc-500">throws</span>
+              {current?.isBot && (
+                <span className="ml-2 align-middle text-[10px] font-bold tracking-wider text-[var(--brand-red-bright)]">
+                  BOT
+                </span>
+              )}
+              <span className="ml-2 font-normal text-zinc-500">
+                {botThrowing ? "throwing…" : "throws"}
+              </span>
               {(state.mode === "x01" || state.mode === "random_checkout") && (
                 <span className="ml-3 tabular-nums text-[var(--brand-red-bright)]">{remaining}</span>
               )}
             </div>
             <div className="truncate text-xs text-zinc-500">
               {statusLine} · Leg {state.legNumber}
+              {botThrowing ? " · Bot visit" : ""}
               {lastCallout ? ` · ${lastCallout}` : ""}
               {isAdmin ? " · Staff" : ""}
             </div>
@@ -484,7 +501,7 @@ function ScoringScreenInner() {
             </div>
             <TurnDarts
               darts={state.currentTurnDarts}
-              interactive={playing}
+              interactive={playing && !botThrowing}
               onSlotClick={(i) => setCorrectSlot(i)}
               showDartPoints={baseball || fortyOne}
               pointsForDart={

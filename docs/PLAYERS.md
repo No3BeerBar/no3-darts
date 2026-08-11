@@ -1,14 +1,14 @@
 # Walk-up player accounts (name + PIN)
 
-Bar tablets use **display name + 4-digit PIN** instead of email/password. Guests can still play with no account. Registered stats live in **Postgres** so they follow the player across devices.
+Bar tablets use **display name + 4-digit PIN** instead of email/password. Guests can still play with no account. **Bots** are ephemeral AI seats (no account, no PIN, no stats) — see [`PLAY.md`](./PLAY.md#bot-opponents). Registered stats live in **Postgres** so they follow the player across devices.
 
 ## How it works
 
 1. **Create account** — player picks a display name (2–24 chars) and a 4-digit PIN on the tablet numpad.
 2. **Sign in** — same name + PIN. Session is an **httpOnly cookie** (`no3_player_session`) that stays on that tablet until **Sign out** (~30 days), or until **2 minutes idle** on idle play / setup (not mid-match). See [`PLAY.md`](./PLAY.md).
-3. **Saved players** — on a **cold** tablet, open the searchable directory (not a dump of 50+ names) → tap name → PIN. With no session, PIN **signs in** (sticky). While signed in, setup shows those trusted names for quick re-seat; unlocking another seat adds them to that quick list without stealing the cookie. Idle logout / Sign out clears everyone → cold path again. Guests stay one-tap (+ Guest).
-4. **Resume** — in-progress games persist on the tablet, but registered seats must still be verified. After **Sign out** (or a cleared session), Resume prompts for PIN again before scoring; guests-only games do not. See [`PLAY.md`](./PLAY.md).
-5. **Match finish** — **guests stay ephemeral**: no local history, no Postgres rows, no leaderboard credit. Only matches with at least one **registered** (name+PIN) player are saved (`localStorage` + `POST /api/matches/persist`). Server writes `match_players` / aggregates **only** for ids that exist in `players`.
+3. **Saved players** — on a **cold** tablet, open the searchable directory (not a dump of 50+ names) → tap name → PIN. With no session, PIN **signs in** (sticky). While signed in, setup shows those trusted names for quick re-seat; unlocking another seat adds them to that quick list without stealing the cookie. Idle logout / Sign out clears everyone → cold path again. Guests stay one-tap (+ Guest). Bots are separate (+ difficulty chip) — not in the directory.
+4. **Resume** — in-progress games persist on the tablet, but registered seats must still be verified. After **Sign out** (or a cleared session), Resume prompts for PIN again before scoring; guests-only / bot seats do not need PIN. See [`PLAY.md`](./PLAY.md).
+5. **Match finish** — **guests and bots stay ephemeral**: no local history, no Postgres rows, no leaderboard credit for those seats. Only matches with at least one **registered** (name+PIN) player are saved (`localStorage` + `POST /api/matches/persist`). Server writes `match_players` / aggregates **only** for ids that exist in `players`.
 6. **Lockout** — after 5 bad PINs, that account locks for 60 seconds.
 
 PINs are stored as **bcrypt hashes** (`pin_hash`). APIs never return hashes.

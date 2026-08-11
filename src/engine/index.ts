@@ -7,6 +7,22 @@ export * from "./dart";
 export * from "./checkout";
 export * from "./engine";
 export * from "./teams";
+export {
+  BOT_BETWEEN_DARTS_MS,
+  BOT_DIFFICULTY_ORDER,
+  BOT_PROFILES,
+  BOT_TURN_START_DELAY_MS,
+  createBotSeat,
+  generateBotVisit,
+  generateNextBotDart,
+  generateNextBotDartForPlayer,
+  getBotProfile,
+  isBotPlayer,
+  planBotTurn,
+  resolveBotDifficulty,
+  type BotProfile,
+  type BotTurnPlan,
+} from "./bot";
 export { BERMUDA_SEQUENCE, bermudaTargetLabel } from "./modes/bermuda";
 export {
   getKillerExtra,
