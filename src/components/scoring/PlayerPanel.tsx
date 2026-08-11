@@ -51,8 +51,8 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                 "relative overflow-hidden rounded-2xl border px-3.5 transition",
                 compact ? "py-2.5" : "py-3",
                 row.active
-                  ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.14)] shadow-[0_0_24px_rgb(225_6_0/0.22)]"
-                  : "border-[var(--panel-border)] bg-[var(--panel)]"
+                  ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.12)]"
+                  : "border-[var(--panel-border)] bg-[#0a0a0a]"
               )}
             >
               {row.active && (
@@ -83,14 +83,13 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
 
               {/* Who throws */}
               {row.active && thrower ? (
-                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-red)] px-3 py-1">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                  <span className="font-display text-sm font-bold tracking-wide text-white">
+                <div className="mt-1.5 inline-flex items-center gap-1.5 bg-[var(--brand-red)] px-2.5 py-0.5">
+                  <span className="font-display text-xs font-bold tracking-wide text-white">
                     {thrower.name} throws
                   </span>
                 </div>
               ) : (
-                <div className="mt-2 h-7" />
+                <div className="mt-1.5 h-6" />
               )}
 
               {!isCricket && (
@@ -144,15 +143,16 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
     );
   }
 
-  // Singles / FFA / killer
+  // Singles / FFA / killer — dense grid; parent scrolls when many seats / Cricket marks
   return (
     <div
       className={cn(
-        "grid gap-2.5",
+        "grid gap-2",
         isCricket && state.players.length <= 2 && "grid-cols-1 sm:grid-cols-2",
         !isCricket && state.players.length <= 2 && "grid-cols-2",
-        state.players.length === 3 && "grid-cols-1 sm:grid-cols-3",
-        state.players.length >= 4 && "grid-cols-2 sm:grid-cols-4"
+        state.players.length === 3 && "grid-cols-3",
+        state.players.length >= 4 && state.players.length <= 6 && "grid-cols-2 sm:grid-cols-3",
+        state.players.length >= 7 && "grid-cols-2 sm:grid-cols-4"
       )}
     >
       {state.players.map((p, idx) => {
@@ -172,13 +172,13 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
           <div
             key={p.id}
             className={cn(
-              "relative overflow-hidden rounded-2xl border px-3.5 transition",
-              compact ? "py-2.5" : "py-3",
+              "relative overflow-hidden rounded-xl border px-2.5 transition",
+              compact ? "py-2" : "py-2.5",
               k?.eliminated && "opacity-40 border-[var(--panel-border)] bg-black",
               !k?.eliminated &&
                 active &&
-                "border-[var(--brand-red)] bg-[rgb(225_6_0/0.14)] shadow-[0_0_24px_rgb(225_6_0/0.22)]",
-              !k?.eliminated && !active && "border-[var(--panel-border)] bg-[var(--panel)]",
+                "border-[var(--brand-red)] bg-[rgb(225_6_0/0.12)]",
+              !k?.eliminated && !active && "border-[var(--panel-border)] bg-[#0a0a0a]",
               k?.isKiller && !k.eliminated && !active && "border-red-900/50"
             )}
           >
@@ -186,21 +186,20 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
               <div className="absolute left-0 top-0 h-full w-1 bg-[var(--brand-red)]" />
             )}
 
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-1.5">
               <div className="min-w-0">
                 <div
                   className={cn(
                     "truncate font-display font-bold tracking-wide",
-                    compact ? "text-base sm:text-lg" : "text-lg sm:text-xl",
+                    compact ? "text-sm sm:text-base" : "text-base sm:text-lg",
                     active ? "text-white" : "text-zinc-200"
                   )}
                 >
                   {p.name}
                 </div>
                 {active && !k?.eliminated && (
-                  <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-red)] px-3 py-1">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-                    <span className="font-display text-sm font-bold tracking-wide text-white">
+                  <div className="mt-1 inline-flex bg-[var(--brand-red)] px-2 py-0.5">
+                    <span className="font-display text-[10px] font-bold tracking-wide text-white">
                       Throwing
                     </span>
                   </div>
@@ -210,7 +209,7 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                 <span
                   className={cn(
                     "font-black tabular-nums",
-                    compact ? "text-2xl" : "text-3xl",
+                    compact ? "text-xl" : "text-2xl",
                     active ? "text-[var(--brand-red-bright)]" : "text-white"
                   )}
                 >
@@ -218,20 +217,20 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                 </span>
               )}
               {k?.isKiller && !k.eliminated && (
-                <span className="rounded bg-red-700 px-2 py-0.5 text-xs font-bold text-white">
+                <span className="bg-red-700 px-1.5 py-0.5 text-[10px] font-bold text-white">
                   K
                 </span>
               )}
               {k?.eliminated && (
-                <span className="text-xs text-zinc-600">OUT</span>
+                <span className="text-[10px] text-zinc-600">OUT</span>
               )}
             </div>
 
             {!isCricket && (
               <div
                 className={cn(
-                  "mt-1 font-black tabular-nums leading-none",
-                  compact ? "text-4xl" : "text-5xl sm:text-6xl",
+                  "mt-0.5 font-black tabular-nums leading-none",
+                  compact ? "text-3xl sm:text-4xl" : "text-4xl sm:text-5xl",
                   active && !k?.eliminated
                     ? "text-[var(--brand-red-bright)]"
                     : "text-white",
@@ -246,8 +245,8 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
               <CricketMarksRow
                 marks={playerMarks(ps)}
                 numbers={cricketNums}
-                compact={compact}
-                className="mt-2"
+                compact
+                className="mt-1.5"
               />
             )}
 
@@ -260,9 +259,9 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
               </div>
             )}
             {state.mode === "killer" && k && !k.eliminated && (
-              <div className="mt-1 text-sm text-zinc-400">
-                Number D{k.killerNumber}
-                {!k.isKiller && " · need double to arm"}
+              <div className="mt-1 text-xs text-zinc-400">
+                D{k.killerNumber}
+                {!k.isKiller && " · arm on double"}
               </div>
             )}
           </div>

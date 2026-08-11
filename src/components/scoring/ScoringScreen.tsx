@@ -5,6 +5,7 @@
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
  * recent visits, dartboard, Stats + End game. Match win auto-saves (no Save dialog).
+ * Board sits in a fixed stage — visit history / seats scroll and never shove it.
  * No global AppShell nav — see docs/PLAY.md.
  *
  * Staff (admin unlocked): Undo / Edit / End turn / Pause / Home + Keys/Pad.
@@ -89,13 +90,14 @@ function ScoringScreenInner() {
   const [pad, setPad] = useState("");
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
-  const [boardSize, setBoardSize] = useState(340);
+  const [boardSize, setBoardSize] = useState(320);
   const [seatAuthTick, setSeatAuthTick] = useState(0);
   const [idlePickerOpen, setIdlePickerOpen] = useState(false);
   const [idleAuthOpen, setIdleAuthOpen] = useState(false);
   const [idleAuthMode, setIdleAuthMode] = useState<AuthMode>("signin");
   const [idleAuthName, setIdleAuthName] = useState("");
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boardStageRef = useRef<HTMLDivElement>(null);
 
   const admin = usePlayAdmin(settings.staffPin);
 
@@ -107,17 +109,20 @@ function ScoringScreenInner() {
     void hydrateSession();
   }, [hydrate, settings, setDisplayOnly, hydrateSession, hydratePlayers]);
 
+  // Board size follows the reserved board column only — never visit/seat chrome
   useEffect(() => {
+    const el = boardStageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
     const fit = () => {
-      // Fit board under larger score chrome + visit history
-      const w = Math.min(window.innerWidth - 24, 400);
-      const h = window.innerHeight - 340;
-      setBoardSize(Math.max(240, Math.min(w, h, 380)));
+      const { width, height } = el.getBoundingClientRect();
+      const side = Math.floor(Math.min(width, height) - 20);
+      if (side > 0) setBoardSize(Math.max(200, Math.min(side, 440)));
     };
     fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [state?.id]);
 
   // Match won → auto-save (PIN players get history; guests do not) → idle. No Save dialog.
   useEffect(() => {
@@ -251,6 +256,8 @@ function ScoringScreenInner() {
     ? baseballInning(state)
     : (killerFocus?.primary ?? fortyOneFocus?.focusNumber ?? null);
   const isAdmin = admin.isAdmin;
+  const modeInning = state.mode === "baseball" ? baseballInning(state) : undefined;
+  const playing = state.status === "playing";
 
   const endGame = () => {
     if (!state) return;
@@ -294,10 +301,30 @@ function ScoringScreenInner() {
     }
   };
 
-  const modeInning = state.mode === "baseball" ? baseballInning(state) : undefined;
+  const boardNode =
+    playing && (!isAdmin || tab === "board") ? (
+      <Dartboard
+        marks={state.currentTurnDarts}
+        focusNumber={boardFocusNumber}
+        focusNumbers={killerFocus?.secondary ?? null}
+        focusKind={killerFocus?.focusKind ?? "wedge"}
+        focusRing={fortyOneFocus?.focusRing ?? null}
+        focusBull={fortyOneFocus?.focusBull ?? false}
+        size={boardSize}
+        interactive
+        showLiveLabel
+        onScore={(kind, number, meta) => {
+          throwDart(kind, number, {
+            angle: meta?.angle,
+            radius: meta?.radius,
+            source: "manual",
+          });
+        }}
+      />
+    ) : null;
 
   return (
-    <div className="shell-black flex flex-col">
+    <div className="play-match flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
 
@@ -338,9 +365,9 @@ function ScoringScreenInner() {
         />
       )}
 
-      {/* Top bar — thrower prominent; staff tools only when admin unlocked */}
-      <header className="shrink-0 border-b border-[var(--panel-border)] bg-black px-3 py-2">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
+      {/* Top bar — thrower + score; staff tools only when unlocked */}
+      <header className="shrink-0 border-b border-[rgb(225_6_0/0.22)] bg-[#050505] px-3 py-2">
+        <div className="mx-auto flex max-w-6xl items-center gap-3">
           <button
             type="button"
             className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-red)]"
@@ -366,10 +393,9 @@ function ScoringScreenInner() {
                 <span className="ml-3 tabular-nums text-[var(--brand-red-bright)]">{remaining}</span>
               )}
             </div>
-            <div className="truncate text-xs text-zinc-600">
+            <div className="truncate text-xs text-zinc-500">
               {statusLine} · Leg {state.legNumber}
               {lastCallout ? ` · ${lastCallout}` : ""}
-              {sessionPlayer ? ` · Signed in: ${sessionPlayer.name}` : ""}
               {isAdmin ? " · Staff" : ""}
             </div>
           </div>
@@ -398,7 +424,7 @@ function ScoringScreenInner() {
                 <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
                   End turn
                 </button>
-                {state.status === "playing" ? (
+                {playing ? (
                   <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
                     ‖
                   </button>
@@ -427,24 +453,38 @@ function ScoringScreenInner() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-2.5 px-2 py-2">
-        <PlayerPanel state={state} compact />
-
-        {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
-        {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
-        {fortyOne && <FortyOneBanner state={state} size="sm" />}
-
-        {/* X01 / practice outshots only — keep Baseball / 41 / Killer uncluttered */}
-        {showCheckout && state.status === "playing" && (
-          <CheckoutBanner suggestion={checkout} />
+      {/*
+        Stable match grid:
+        - Landscape / iPad: scrollable chrome | fixed board column
+        - Portrait: compact scroll seats → fixed board band → scroll visit/footer
+        Board stage size is independent of visit history / checkout / seat count.
+      */}
+      <main
+        className={cn(
+          "mx-auto grid w-full max-w-6xl flex-1 min-h-0 gap-2 px-2 py-2",
+          // Portrait stack
+          "grid-rows-[minmax(0,32%)_minmax(220px,38%)_minmax(0,1fr)]",
+          // Landscape: chrome | board
+          "md:grid-cols-[minmax(0,1fr)_minmax(280px,44%)] md:grid-rows-1"
         )}
+      >
+        {/* Chrome column — seats, banners, visit, actions (scrolls) */}
+        <section className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain md:order-1 md:pr-1">
+          <PlayerPanel state={state} compact />
 
-        {/* Current visit — tap-to-correct kept for Autodarts misreads (patrons + staff) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
-          <div className="min-w-0">
+          {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
+          {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
+          {fortyOne && <FortyOneBanner state={state} size="sm" />}
+
+          {showCheckout && playing && <CheckoutBanner suggestion={checkout} />}
+
+          <div className="rounded-xl border border-[rgb(225_6_0/0.28)] bg-[#0a0a0a] px-3 py-2">
+            <div className="mb-1 font-display text-[10px] tracking-[0.18em] text-zinc-500">
+              THIS VISIT
+            </div>
             <TurnDarts
               darts={state.currentTurnDarts}
-              interactive={state.status === "playing"}
+              interactive={playing}
               onSlotClick={(i) => setCorrectSlot(i)}
               showDartPoints={baseball || fortyOne}
               pointsForDart={
@@ -460,121 +500,126 @@ function ScoringScreenInner() {
                 state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d))
               }
             />
-            {state.status === "playing" && (
+            {playing && (
               <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
-                Tap a dart to fix · pick the right segment
+                Tap a dart to fix
               </p>
             )}
           </div>
-        </div>
 
-        {/* Previous rounds / visits */}
-        <VisitHistory state={state} limit={8} size="sm" />
+          <VisitHistory state={state} limit={12} size="sm" className="shrink-0" />
 
-        {(state.status === "leg_won" || state.status === "match_won") && (
-          <div className="rounded-xl border border-[rgb(225_6_0/0.4)] bg-[rgb(225_6_0/0.1)] p-4 text-center">
-            <div className="font-logo text-2xl text-[var(--brand-red-bright)]">
-              {state.status === "match_won" ? "MATCH" : "LEG"} ·{" "}
-              {(() => {
-                const wid = state.winnerId ?? state.legWinnerId;
-                if (!wid) return "—";
-                const team = getTeamForPlayer(state, wid);
-                return team && team.playerIds.length > 1 ? team.name : state.players.find((p) => p.id === wid)?.name;
-              })()}
-            </div>
-            {state.status === "match_won" ? (
-              <p className="mt-2 text-sm text-zinc-400">Saving…</p>
-            ) : (
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                <button type="button" onClick={nextLeg} className="btn-primary min-h-11 px-6">
-                  Next leg
-                </button>
-                <button
-                  type="button"
-                  onClick={endGame}
-                  className="btn-ghost min-h-11 px-6 text-red-300"
-                >
-                  End game
-                </button>
+          {(state.status === "leg_won" || state.status === "match_won") && (
+            <div className="rounded-xl border border-[rgb(225_6_0/0.45)] bg-[rgb(225_6_0/0.12)] p-4 text-center">
+              <div className="font-logo text-2xl text-[var(--brand-red-bright)]">
+                {state.status === "match_won" ? "MATCH" : "LEG"} ·{" "}
+                {(() => {
+                  const wid = state.winnerId ?? state.legWinnerId;
+                  if (!wid) return "—";
+                  const team = getTeamForPlayer(state, wid);
+                  return team && team.playerIds.length > 1
+                    ? team.name
+                    : state.players.find((p) => p.id === wid)?.name;
+                })()}
               </div>
-            )}
-          </div>
-        )}
-
-        {state.status === "playing" && (
-          <>
-            {isAdmin && (
-              <div className="flex gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] p-0.5">
-                {(
-                  [
-                    ["board", "Board"],
-                    ["keys", "Keys"],
-                    ["pad", "Pad"],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setTab(id)}
-                    className={cn(
-                      "min-h-9 flex-1 rounded-md font-display text-xs tracking-wider",
-                      tab === id ? "bg-[var(--brand-red)] text-white" : "text-zinc-500"
-                    )}
-                  >
-                    {label}
+              {state.status === "match_won" ? (
+                <p className="mt-2 text-sm text-zinc-400">Saving…</p>
+              ) : (
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  <button type="button" onClick={nextLeg} className="btn-primary min-h-11 px-6">
+                    Next leg
                   </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex flex-1 flex-col items-center justify-center pb-2">
-              {(!isAdmin || tab === "board") && (
-                <Dartboard
-                  marks={state.currentTurnDarts}
-                  focusNumber={boardFocusNumber}
-                  focusNumbers={killerFocus?.secondary ?? null}
-                  focusKind={killerFocus?.focusKind ?? "wedge"}
-                  focusRing={fortyOneFocus?.focusRing ?? null}
-                  focusBull={fortyOneFocus?.focusBull ?? false}
-                  size={boardSize}
-                  interactive
-                  showLiveLabel
-                  onScore={(kind, number, meta) => {
-                    throwDart(kind, number, {
-                      angle: meta?.angle,
-                      radius: meta?.radius,
-                      source: "manual",
-                    });
-                  }}
-                />
-              )}
-              {isAdmin && tab === "keys" && (
-                <div className="w-full max-w-lg">
-                  <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
-                </div>
-              )}
-              {isAdmin && tab === "pad" && (
-                <div className="w-full max-w-xs">
-                  <NumberPad
-                    value={pad}
-                    onNumber={(n) => setPad((v) => (v + String(n)).slice(0, 4))}
-                    onClear={() => setPad("")}
-                    onSubmit={submitPad}
-                  />
+                  <button
+                    type="button"
+                    onClick={endGame}
+                    className="btn-ghost min-h-11 px-6 text-red-300"
+                  >
+                    End game
+                  </button>
                 </div>
               )}
             </div>
-          </>
-        )}
+          )}
 
-        {/* Thumb-zone abort for iPad kiosk (same as header End game) */}
-        <button
-          type="button"
-          onClick={endGame}
-          className="btn-ghost mt-auto min-h-14 w-full border border-[rgb(225_6_0/0.35)] font-display text-base tracking-wider text-red-300"
+          {playing && isAdmin && (
+            <div className="flex gap-1 rounded-lg border border-[var(--panel-border)] bg-[#0a0a0a] p-0.5">
+              {(
+                [
+                  ["board", "Board"],
+                  ["keys", "Keys"],
+                  ["pad", "Pad"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className={cn(
+                    "min-h-9 flex-1 rounded-md font-display text-xs tracking-wider",
+                    tab === id ? "bg-[var(--brand-red)] text-white" : "text-zinc-500"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {playing && isAdmin && tab === "keys" && (
+            <div className="w-full max-w-lg md:hidden">
+              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+            </div>
+          )}
+          {playing && isAdmin && tab === "pad" && (
+            <div className="w-full max-w-xs md:hidden">
+              <NumberPad
+                value={pad}
+                onNumber={(n) => setPad((v) => (v + String(n)).slice(0, 4))}
+                onClear={() => setPad("")}
+                onSubmit={submitPad}
+              />
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={endGame}
+            className="btn-ghost mt-auto min-h-12 w-full border border-[rgb(225_6_0/0.35)] font-display text-sm tracking-wider text-red-300"
+          >
+            End game
+          </button>
+        </section>
+
+        {/* Fixed board column — size from this cell only; history/seats never shove it */}
+        <section
+          ref={boardStageRef}
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl border border-[rgb(225_6_0/0.2)] bg-black px-2 py-2 md:order-2",
+            !playing && "opacity-80"
+          )}
         >
-          End game
-        </button>
+          {boardNode}
+          {playing && isAdmin && tab === "keys" && (
+            <div className="hidden w-full max-w-lg md:block">
+              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+            </div>
+          )}
+          {playing && isAdmin && tab === "pad" && (
+            <div className="hidden w-full max-w-xs md:block">
+              <NumberPad
+                value={pad}
+                onNumber={(n) => setPad((v) => (v + String(n)).slice(0, 4))}
+                onClear={() => setPad("")}
+                onSubmit={submitPad}
+              />
+            </div>
+          )}
+          {!playing && (
+            <div className="px-4 text-center font-display text-sm tracking-wider text-zinc-600">
+              Board idle
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

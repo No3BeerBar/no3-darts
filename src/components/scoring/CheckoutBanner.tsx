@@ -15,7 +15,7 @@ export function CheckoutBanner({
   return (
     <div
       className={cn(
-        "rounded-xl border border-[rgb(225_6_0/0.45)] bg-[rgb(225_6_0/0.12)] px-4 py-2.5 text-center",
+        "rounded-xl border border-[rgb(225_6_0/0.5)] bg-[#0a0a0a] px-3 py-2 text-center",
         className
       )}
       aria-live="polite"
@@ -23,7 +23,7 @@ export function CheckoutBanner({
       <div className="font-display text-[10px] tracking-[0.2em] text-[var(--brand-red-bright)]">
         OUTSHOT · {suggestion.remaining}
       </div>
-      <div className="mt-0.5 font-logo text-2xl tracking-wide text-white sm:text-3xl">
+      <div className="mt-0.5 font-logo text-xl tracking-wide text-white sm:text-2xl">
         {suggestion.description}
       </div>
     </div>

@@ -83,6 +83,8 @@ Clean bar / kiosk UI for players:
 - Dartboard for manual entry if needed
 - End of match: auto-save → idle (no Save button)
 
+**Static board:** the dartboard sits in a reserved stage. Visit history, seat lists, and banners scroll in the chrome column/band — they do **not** shove the board when a round is scored. Landscape uses chrome | board; portrait uses a fixed board band between scrollable seats and visits. Dense Cricket / many seats stay readable via scrolling.
+
 Hidden from patrons: Undo, Edit last, End turn, Pause, Setup, Keys/Pad tabs.
 
 ## Staff (admin)

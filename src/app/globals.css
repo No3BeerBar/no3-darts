@@ -189,6 +189,15 @@ body {
   min-height: 100dvh;
 }
 
+/* `/play` match: ink canvas; board column is a fixed grid cell (chrome scrolls) */
+.play-match {
+  background: #050505;
+  color: var(--foreground);
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
 /* TV display: huge type, no chrome clutter */
 .tv-display {
   cursor: none;
