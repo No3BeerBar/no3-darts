@@ -25,10 +25,15 @@ export interface DartboardProps {
   /** All darts to show as laser marks (e.g. current visit) */
   marks?: DartThrow[];
   /**
-   * Light the whole numbered wedge (single + double + triple) — e.g. Baseball
-   * inning target, Autodarts-style active segment. 1–20.
+   * Light a numbered segment — e.g. Baseball inning target or Killer number. 1–20.
+   * Pair with `focusRing` to choose whole wedge vs double ring only.
    */
   focusNumber?: number | null;
+  /**
+   * `wedge` (default): whole S/D/T for Baseball-style targets.
+   * `double`: only the double ring — classic Killer arm/attack focus.
+   */
+  focusRing?: "wedge" | "double";
   size?: number;
   className?: string;
   interactive?: boolean;
@@ -40,6 +45,7 @@ export function Dartboard({
   highlight,
   marks,
   focusNumber = null,
+  focusRing = "wedge",
   size = 360,
   className,
   interactive = false,
@@ -109,9 +115,10 @@ export function Dartboard({
     });
   };
 
-  /** Whole wedge lit for mode target (Baseball inning, etc.) — under hover/hit. */
-  const isFocusWedge = (num: number) =>
+  /** Mode target number (Baseball inning / Killer #) — under hover/hit. */
+  const isFocusNumber = (num: number) =>
     typeof focusNumber === "number" && focusNumber >= 1 && focusNumber <= 20 && focusNumber === num;
+  const focusDoublesOnly = focusRing === "double";
 
   const pins = allMarks
     .map((d, i) => ({ pos: dartPin(d), index: i, dart: d }))
@@ -186,15 +193,22 @@ export function Dartboard({
           const multiA = dark ? "#c41e1e" : "#1a8f45";
           const multiB = dark ? "#8f1212" : "#0f6b32";
           const lit = "#f5c518";
-          // Autodarts-style target: whole wedge (S/D/T) for focusNumber
-          const focus = isFocusWedge(num);
+          // Autodarts-style: whole wedge, or Killer doubles-only ring
+          const focus = isFocusNumber(num);
+          const focusWedge = focus && !focusDoublesOnly;
+          const focusDouble = focus && focusDoublesOnly;
           const focusSingle = dark ? "#6b5a14" : "#f0e6a8";
           const focusMulti = dark ? "#d4a017" : "#e8c547";
           const fillRing = (
             kind: "single" | "double" | "triple",
             base: string,
             focusBase: string
-          ) => (isLit(kind, num) ? lit : focus ? focusBase : base);
+          ) => {
+            if (isLit(kind, num)) return lit;
+            if (kind === "double" && (focusWedge || focusDouble)) return focusBase;
+            if (kind !== "double" && focusWedge) return focusBase;
+            return base;
+          };
 
           return (
             <g key={num}>
@@ -222,12 +236,22 @@ export function Dartboard({
                 stroke="#050505"
                 strokeWidth={0.4}
               />
-              {focus && (
+              {focusWedge && (
                 <path
                   d={wedgePath(i, NR.outerBull, NR.doubleOuter)}
                   fill="none"
                   stroke="#f5c518"
                   strokeWidth={2.2}
+                  opacity={0.95}
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
+              {focusDouble && (
+                <path
+                  d={wedgePath(i, NR.doubleInner, NR.doubleOuter)}
+                  fill="none"
+                  stroke="#f5c518"
+                  strokeWidth={2.4}
                   opacity={0.95}
                   style={{ pointerEvents: "none" }}
                 />

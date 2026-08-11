@@ -362,7 +362,13 @@ export function editLastTurn(state: GameState): ApplyDartResult {
 export function endTurn(state: GameState): ApplyDartResult {
   if (state.status !== "playing") return { state, events: [] };
   if (state.currentTurnDarts.length === 0) {
-    // Pass – advance player
+    // Pass – advance player (Killer skips eliminated via its finalizer)
+    if (state.mode === "killer") {
+      const result = FINALIZERS.killer(state);
+      result.state.turnBaseline = structuredClone(result.state.playerStates);
+      result.state.updatedAt = Date.now();
+      return { ...result, callout: result.callout ?? "PASS" };
+    }
     const next = cloneState(state);
     advanceThrower(next);
     next.turnBaseline = structuredClone(next.playerStates);

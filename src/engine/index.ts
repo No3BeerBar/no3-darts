@@ -8,7 +8,12 @@ export * from "./checkout";
 export * from "./engine";
 export * from "./teams";
 export { BERMUDA_SEQUENCE, bermudaTargetLabel } from "./modes/bermuda";
-export { validateKillerNumbers } from "./modes/killer";
+export {
+  validateKillerNumbers,
+  killerExtra,
+  killerFocusNumber,
+} from "./modes/killer";
+export type { KillerExtra } from "./modes/killer";
 export {
   BASEBALL_INNINGS,
   baseballDartPoints,

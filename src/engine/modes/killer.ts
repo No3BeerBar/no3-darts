@@ -29,13 +29,29 @@ export interface KillerExtra {
   eliminated: boolean;
 }
 
-function extra(ps: { extra?: Record<string, unknown> }): KillerExtra {
+/** Read Killer fields from a player state `extra` blob. */
+export function killerExtra(ps: { extra?: Record<string, unknown> }): KillerExtra {
   return {
     killerNumber: Number(ps.extra?.killerNumber ?? 0),
     lives: Number(ps.extra?.lives ?? 0),
     isKiller: Boolean(ps.extra?.isKiller),
     eliminated: Boolean(ps.extra?.eliminated),
   };
+}
+
+/** Alias used inside the handler (same as `killerExtra`). */
+function extra(ps: { extra?: Record<string, unknown> }): KillerExtra {
+  return killerExtra(ps);
+}
+
+/** Current thrower's assigned number (1–20), for board double-ring highlight. */
+export function killerFocusNumber(state: GameState): number | null {
+  if (state.mode !== "killer" || state.status !== "playing") return null;
+  const ps = state.playerStates[state.currentPlayerIndex];
+  if (!ps) return null;
+  const me = killerExtra(ps);
+  if (me.eliminated || me.killerNumber < 1 || me.killerNumber > 20) return null;
+  return me.killerNumber;
 }
 
 function setExtra(

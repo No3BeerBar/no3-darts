@@ -2,12 +2,13 @@
  * Server-side leaderboard queries (Postgres). Degrades to null when DB is down.
  */
 
-import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import {
   aggregateMatchRows,
   calendarWeekStart,
   LEADERBOARD_METRICS,
+  mergeKillerWins,
   rankLeaderboard,
   rollingWeekStart,
   threeDartAvg,
@@ -31,6 +32,7 @@ function emptyBoards(): LeaderboardBoards {
   return {
     avg: [],
     wins: [],
+    killerWins: [],
     oneEighties: [],
     highestCheckout: [],
   };
@@ -57,6 +59,7 @@ async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | n
       playerId: schema.matchPlayers.playerId,
       name: schema.matchPlayers.name,
       finishedAt: schema.matches.finishedAt,
+      mode: schema.matches.mode,
       avg: schema.matchPlayers.avg,
       oneEighties: schema.matchPlayers.oneEighties,
       highestCheckout: schema.matchPlayers.highestCheckout,
@@ -77,6 +80,7 @@ async function loadMatchRowsSince(sinceMs: number): Promise<MatchPlayerRow[] | n
       playerId: r.playerId!,
       name: r.name,
       finishedAt: r.finishedAt.getTime(),
+      mode: r.mode,
       avg: r.avg,
       oneEighties: r.oneEighties,
       highestCheckout: r.highestCheckout,
@@ -98,6 +102,7 @@ async function loadAllTimeEntries(): Promise<LeaderboardEntry[] | null> {
       name: p.name,
       matchesPlayed: p.matchesPlayed,
       matchesWon: p.matchesWon,
+      killerWins: 0,
       oneEighties: p.oneEighties,
       highestCheckout: p.highestCheckout,
       avg:
@@ -106,6 +111,34 @@ async function loadAllTimeEntries(): Promise<LeaderboardEntry[] | null> {
           : p.bestThreeDartAvg,
       dartsThrown: p.dartsThrown,
       totalScore: p.totalScore,
+    }));
+}
+
+/**
+ * All-time Killer wins for registered winners only (`winner_player_id` set → not guest).
+ */
+async function loadAllTimeKillerWins(): Promise<
+  Array<{ playerId: string; name: string; killerWins: number }> | null
+> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select({
+      playerId: schema.matches.winnerPlayerId,
+      name: schema.matches.winnerName,
+      killerWins: sql<number>`count(*)::int`,
+    })
+    .from(schema.matches)
+    .where(and(eq(schema.matches.mode, "killer"), isNotNull(schema.matches.winnerPlayerId)))
+    .groupBy(schema.matches.winnerPlayerId, schema.matches.winnerName);
+
+  return rows
+    .filter((r) => r.playerId)
+    .map((r) => ({
+      playerId: r.playerId!,
+      name: r.name ?? "Player",
+      killerWins: Number(r.killerWins) || 0,
     }));
 }
 
@@ -138,16 +171,18 @@ export async function fetchLeaderboardSlices(
     weekMode === "calendar" ? calendarWeekStart(now, 1) : rollingWeekStart(now);
 
   try {
-    const [weekRows, allEntries] = await Promise.all([
+    const [weekRows, allEntries, killerAllTime] = await Promise.all([
       loadMatchRowsSince(since),
       loadAllTimeEntries(),
+      loadAllTimeKillerWins(),
     ]);
 
-    if (weekRows === null || allEntries === null) {
+    if (weekRows === null || allEntries === null || killerAllTime === null) {
       return null;
     }
 
     const weeklyEntries = aggregateMatchRows(weekRows);
+    const allTimeEntries = mergeKillerWins(allEntries, killerAllTime);
 
     return {
       dbAvailable: true,
@@ -163,7 +198,7 @@ export async function fetchLeaderboardSlices(
         since: null,
         until: now,
         mode: "all",
-        boards: rankAllMetrics(allEntries, rankOpts),
+        boards: rankAllMetrics(allTimeEntries, rankOpts),
       },
     };
   } catch (err) {

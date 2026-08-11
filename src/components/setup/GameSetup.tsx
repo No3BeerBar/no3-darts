@@ -31,6 +31,8 @@ const MODES: Array<{ id: GameModeId; name: string }> = [
 const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
   baseball:
     "9 innings · only hits on the current inning number count (e.g. inning 4: S4/D4/T4 = 4/8/12) · anything else = 0 · highest total wins",
+  killer:
+    "Unique # 1–20 each · hit your double to arm as Killer · then hit opponents’ doubles to take lives (own double costs a life) · singles/triples/bull don’t count · last life standing wins · throw weak-hand optional",
 };
 
 type PlayFormat = "singles" | "teams";
@@ -559,6 +561,15 @@ export function GameSetup() {
 
       {mode === "killer" && (
         <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="section-title">Numbers & lives</h2>
+            <button type="button" className="btn-ghost min-h-10 text-xs" onClick={autoAssignKillerNumbers}>
+              Auto #s
+            </button>
+          </div>
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Each player needs a unique 1–20. Doubles only arm and kill. Throw weak-hand optional when claiming numbers.
+          </p>
           <div className="flex flex-wrap gap-2">
             {[3, 5, 7].map((n) => (
               <button
@@ -570,10 +581,10 @@ export function GameSetup() {
                 {n} lives
               </button>
             ))}
-            <button type="button" className="btn-ghost min-h-10 text-xs" onClick={autoAssignKillerNumbers}>
-              Auto #s
-            </button>
           </div>
+          {selected.length === 0 && (
+            <p className="text-xs text-zinc-600">Add at least 2 players, then assign numbers.</p>
+          )}
           {selected.map((p) => (
             <div key={p.id} className="flex items-center gap-2">
               <span className="w-20 shrink-0 truncate text-sm font-semibold">{p.name}</span>

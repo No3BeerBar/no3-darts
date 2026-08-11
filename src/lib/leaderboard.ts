@@ -1,15 +1,23 @@
 /**
  * Pure helpers for bar TV / server leaderboards.
  * Weekly windows use match finished_at; all-time uses player aggregates.
+ * Per-mode boards (e.g. Killer wins) count finished matches for registered PIN players only.
  */
 
-export type LeaderboardMetric = "avg" | "wins" | "oneEighties" | "highestCheckout";
+export type LeaderboardMetric =
+  | "avg"
+  | "wins"
+  | "oneEighties"
+  | "highestCheckout"
+  | "killerWins";
 
 export type LeaderboardEntry = {
   playerId: string;
   name: string;
   matchesPlayed: number;
   matchesWon: number;
+  /** Wins in Killer mode only (registered players; guests never counted) */
+  killerWins: number;
   oneEighties: number;
   highestCheckout: number;
   /** Three-dart average for the window (or career) */
@@ -28,6 +36,8 @@ export type MatchPlayerRow = {
   dartsThrown: number;
   totalScore: number;
   won: boolean;
+  /** Game mode id when available (e.g. "killer") — used for per-mode boards */
+  mode?: string;
 };
 
 const MS_DAY = 24 * 60 * 60 * 1000;
@@ -71,6 +81,7 @@ export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
         name: r.name,
         matchesPlayed: 0,
         matchesWon: 0,
+        killerWins: 0,
         oneEighties: 0,
         highestCheckout: 0,
         avg: 0,
@@ -82,6 +93,7 @@ export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
     e.name = r.name || e.name;
     e.matchesPlayed += 1;
     if (r.won) e.matchesWon += 1;
+    if (r.won && r.mode === "killer") e.killerWins += 1;
     e.oneEighties += r.oneEighties || 0;
     e.highestCheckout = Math.max(e.highestCheckout, r.highestCheckout || 0);
     e.dartsThrown += r.dartsThrown || 0;
@@ -116,6 +128,39 @@ export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
   return [...byId.values()];
 }
 
+/**
+ * Merge Killer win counts onto entries (all-time player aggregates lack per-mode columns).
+ * Creates stub entries for players who only appear on the Killer board.
+ */
+export function mergeKillerWins(
+  entries: LeaderboardEntry[],
+  killerWinsByPlayer: Array<{ playerId: string; name: string; killerWins: number }>
+): LeaderboardEntry[] {
+  const byId = new Map(entries.map((e) => [e.playerId, { ...e }]));
+  for (const row of killerWinsByPlayer) {
+    if (!row.playerId || row.killerWins <= 0) continue;
+    const existing = byId.get(row.playerId);
+    if (existing) {
+      existing.killerWins = row.killerWins;
+      if (row.name) existing.name = row.name;
+    } else {
+      byId.set(row.playerId, {
+        playerId: row.playerId,
+        name: row.name,
+        matchesPlayed: row.killerWins,
+        matchesWon: row.killerWins,
+        killerWins: row.killerWins,
+        oneEighties: 0,
+        highestCheckout: 0,
+        avg: 0,
+        dartsThrown: 0,
+        totalScore: 0,
+      });
+    }
+  }
+  return [...byId.values()];
+}
+
 export function filterByFinishedSince(
   rows: MatchPlayerRow[],
   sinceMs: number
@@ -127,6 +172,8 @@ export function metricValue(entry: LeaderboardEntry, metric: LeaderboardMetric):
   switch (metric) {
     case "wins":
       return entry.matchesWon;
+    case "killerWins":
+      return entry.killerWins;
     case "oneEighties":
       return entry.oneEighties;
     case "highestCheckout":
@@ -150,10 +197,15 @@ export function rankLeaderboard(
   const limit = opts.limit ?? 10;
 
   return [...entries]
-    .filter((e) => e.matchesPlayed >= minMatches)
+    .filter((e) => {
+      // Killer wins board: count Killer wins only (guests already excluded upstream)
+      if (metric === "killerWins") return e.killerWins >= minMatches && e.killerWins > 0;
+      return e.matchesPlayed >= minMatches;
+    })
     .filter((e) => {
       // Hide zeroed boards for sparse metrics (except avg after min matches)
       if (metric === "wins") return e.matchesWon > 0;
+      if (metric === "killerWins") return e.killerWins > 0;
       if (metric === "oneEighties") return e.oneEighties > 0;
       if (metric === "highestCheckout") return e.highestCheckout > 0;
       if (metric === "avg") return e.avg > 0 || e.dartsThrown > 0;
@@ -175,6 +227,7 @@ export const LEADERBOARD_METRICS: Array<{
 }> = [
   { id: "avg", label: "Three-dart average", shortLabel: "AVG" },
   { id: "wins", label: "Match wins", shortLabel: "WINS" },
+  { id: "killerWins", label: "Killer wins", shortLabel: "KILLER" },
   { id: "oneEighties", label: "180s", shortLabel: "180s" },
   { id: "highestCheckout", label: "Highest checkout", shortLabel: "HIGH OUT" },
 ];

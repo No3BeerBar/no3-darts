@@ -4,6 +4,7 @@ import {
   calendarWeekStart,
   filterByFinishedSince,
   formatLeaderboardValue,
+  mergeKillerWins,
   metricValue,
   rankLeaderboard,
   rollingWeekStart,
@@ -141,5 +142,42 @@ describe("aggregateMatchRows + rankLeaderboard", () => {
   it("formats avg to one decimal", () => {
     const [top] = rankLeaderboard(aggregateMatchRows(sample), "avg");
     expect(formatLeaderboardValue(top, "avg")).toMatch(/^\d+\.\d$/);
+  });
+});
+
+describe("killerWins metric (PIN / registered rows only)", () => {
+  it("counts Killer wins from mode=killer rows and ranks them", () => {
+    const rows: MatchPlayerRow[] = [
+      row({ playerId: "p1", name: "Alex", mode: "killer", won: true }),
+      row({ playerId: "p1", name: "Alex", mode: "killer", won: true }),
+      row({ playerId: "p1", name: "Alex", mode: "x01", won: true }),
+      row({ playerId: "p2", name: "Bea", mode: "killer", won: true }),
+      row({ playerId: "p3", name: "Cara", mode: "killer", won: false }),
+      // Guest-shaped: empty playerId must never aggregate
+      row({ playerId: "", name: "Guest", mode: "killer", won: true }),
+    ];
+
+    const entries = aggregateMatchRows(rows);
+    const alex = entries.find((e) => e.playerId === "p1")!;
+    expect(alex.killerWins).toBe(2);
+    expect(alex.matchesWon).toBe(3);
+
+    const ranked = rankLeaderboard(entries, "killerWins");
+    expect(ranked.map((e) => e.playerId)).toEqual(["p1", "p2"]);
+    expect(metricValue(ranked[0], "killerWins")).toBe(2);
+  });
+
+  it("mergeKillerWins overlays all-time Killer counts", () => {
+    const base = aggregateMatchRows([
+      row({ playerId: "p1", name: "Alex", mode: "x01", won: true, dartsThrown: 9, totalScore: 90 }),
+    ]);
+    expect(base[0].killerWins).toBe(0);
+    const merged = mergeKillerWins(base, [
+      { playerId: "p1", name: "Alex", killerWins: 4 },
+      { playerId: "p9", name: "Zed", killerWins: 1 },
+    ]);
+    expect(merged.find((e) => e.playerId === "p1")!.killerWins).toBe(4);
+    expect(merged.find((e) => e.playerId === "p9")!.killerWins).toBe(1);
+    expect(rankLeaderboard(merged, "killerWins").map((e) => e.playerId)).toEqual(["p1", "p9"]);
   });
 });

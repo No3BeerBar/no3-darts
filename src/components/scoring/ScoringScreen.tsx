@@ -10,6 +10,7 @@ import {
   getRemaining,
   getTeamForPlayer,
   isTeamGame,
+  killerFocusNumber,
   parseDartLabel,
   segmentLabel,
 } from "@/engine";
@@ -145,6 +146,14 @@ export function ScoringScreen() {
           currentLabel={
             slotDart ? segmentLabel(slotDart.kind, slotDart.number) : undefined
           }
+          focusNumber={
+            state.mode === "baseball"
+              ? baseballInning(state)
+              : state.mode === "killer"
+                ? killerFocusNumber(state)
+                : null
+          }
+          focusRing={state.mode === "killer" ? "double" : "wedge"}
           onPick={(kind, number) => {
             correctDartAt(correctSlot, kind, number);
             setCorrectSlot(null);
@@ -172,6 +181,12 @@ export function ScoringScreen() {
               <span className="ml-2 font-normal text-zinc-500">throws</span>
               {(state.mode === "x01" || state.mode === "random_checkout") && (
                 <span className="ml-3 tabular-nums text-[var(--brand-red-bright)]">{remaining}</span>
+              )}
+              {state.mode === "killer" && (
+                <span className="ml-3 tabular-nums text-[var(--brand-red-bright)]">
+                  {remaining}
+                  <span className="ml-1 text-sm font-normal text-zinc-500">lives</span>
+                </span>
               )}
             </div>
             <div className="truncate text-xs text-zinc-600">
@@ -309,8 +324,13 @@ export function ScoringScreen() {
                 <Dartboard
                   marks={state.currentTurnDarts}
                   focusNumber={
-                    state.mode === "baseball" ? baseballInning(state) : null
+                    state.mode === "baseball"
+                      ? baseballInning(state)
+                      : state.mode === "killer"
+                        ? killerFocusNumber(state)
+                        : null
                   }
+                  focusRing={state.mode === "killer" ? "double" : "wedge"}
                   size={boardSize}
                   interactive
                   showLiveLabel

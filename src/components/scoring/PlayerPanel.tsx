@@ -3,6 +3,7 @@
 import {
   getRemaining,
   isTeamGame,
+  killerExtra,
   teamScoreRows,
   threeDartAverage,
   type GameState,
@@ -13,15 +14,6 @@ import { CricketMarksRow, getCricketNumbers, playerMarks } from "./CricketMarks"
 interface PlayerPanelProps {
   state: GameState;
   compact?: boolean;
-}
-
-function killerExtra(ps: { extra?: Record<string, unknown> }) {
-  return {
-    killerNumber: Number(ps.extra?.killerNumber ?? 0),
-    lives: Number(ps.extra?.lives ?? 0),
-    isKiller: Boolean(ps.extra?.isKiller),
-    eliminated: Boolean(ps.extra?.eliminated),
-  };
 }
 
 export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {

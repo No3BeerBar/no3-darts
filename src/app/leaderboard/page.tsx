@@ -1,23 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { leaderboard, type StoredPlayer } from "@/lib/storage";
+import { killerWinsByPlayerId, leaderboard, type StoredPlayer } from "@/lib/storage";
 import { formatAvg } from "@/lib/utils";
 
-type Metric = "avg" | "wins" | "oneEighties" | "checkouts" | "highestCheckout";
+type Metric = "avg" | "wins" | "killerWins" | "oneEighties" | "checkouts" | "highestCheckout";
 
 export default function LeaderboardPage() {
   const [metric, setMetric] = useState<Metric>("avg");
   const [rows, setRows] = useState<StoredPlayer[]>([]);
+  const [killerWins, setKillerWins] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     setRows(leaderboard(metric));
+    if (metric === "killerWins") setKillerWins(killerWinsByPlayerId());
   }, [metric]);
 
   const title = useMemo(() => {
     const map: Record<Metric, string> = {
       avg: "Three-dart average",
       wins: "Match wins",
+      killerWins: "Killer wins",
       oneEighties: "180s",
       checkouts: "Checkouts",
       highestCheckout: "Highest checkout",
@@ -29,7 +32,10 @@ export default function LeaderboardPage() {
     <div className="mx-auto max-w-3xl space-y-8 px-4 py-10">
       <div>
         <h1 className="text-3xl font-black text-zinc-50">Leaderboard</h1>
-        <p className="mt-1 text-zinc-500">Local standings · {title}</p>
+        <p className="mt-1 text-zinc-500">
+          Local standings · {title}
+          {metric === "killerWins" ? " · PIN players only" : ""}
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -37,6 +43,7 @@ export default function LeaderboardPage() {
           [
             ["avg", "Average"],
             ["wins", "Wins"],
+            ["killerWins", "Killer"],
             ["oneEighties", "180s"],
             ["checkouts", "Checkouts"],
             ["highestCheckout", "High out"],
@@ -56,7 +63,9 @@ export default function LeaderboardPage() {
       <ol className="space-y-2">
         {rows.length === 0 && (
           <li className="rounded-2xl border border-dashed border-zinc-800 p-8 text-center text-zinc-500">
-            Play some matches to fill the board.
+            {metric === "killerWins"
+              ? "Win a Killer match with a PIN account to appear here. Guests are not ranked."
+              : "Play some matches to fill the board."}
           </li>
         )}
         {rows.map((p, i) => {
@@ -69,11 +78,13 @@ export default function LeaderboardPage() {
               ? formatAvg(avg)
               : metric === "wins"
                 ? p.stats.matchesWon
-                : metric === "oneEighties"
-                  ? p.stats.oneEighties
-                  : metric === "checkouts"
-                    ? p.stats.checkoutsHit
-                    : p.stats.highestCheckout;
+                : metric === "killerWins"
+                  ? (killerWins.get(p.id) ?? 0)
+                  : metric === "oneEighties"
+                    ? p.stats.oneEighties
+                    : metric === "checkouts"
+                      ? p.stats.checkoutsHit
+                      : p.stats.highestCheckout;
 
           return (
             <li
@@ -96,7 +107,9 @@ export default function LeaderboardPage() {
               <div className="flex-1">
                 <div className="font-bold text-zinc-50">{p.name}</div>
                 <div className="text-xs text-zinc-500">
-                  {p.stats.matchesPlayed} matches · best avg {formatAvg(p.stats.bestThreeDartAvg)}
+                  {metric === "killerWins"
+                    ? `${killerWins.get(p.id) ?? 0} Killer wins`
+                    : `${p.stats.matchesPlayed} matches · best avg ${formatAvg(p.stats.bestThreeDartAvg)}`}
                 </div>
               </div>
               <div className="text-2xl font-black tabular-nums text-[var(--brand-red-bright)]">{value}</div>

@@ -31,6 +31,7 @@ const REFRESH_MS = 45_000;
 const EMPTY_BOARDS: Boards = {
   avg: [],
   wins: [],
+  killerWins: [],
   oneEighties: [],
   highestCheckout: [],
 };
@@ -270,8 +271,13 @@ function LeaderboardPanel({
                   {r.name}
                 </div>
                 <div className="mt-1 font-display text-xs tracking-wider text-zinc-600 lg:text-sm">
-                  {r.matchesPlayed} match{r.matchesPlayed === 1 ? "" : "es"}
-                  {r.matchesWon > 0 ? ` · ${r.matchesWon} win${r.matchesWon === 1 ? "" : "s"}` : ""}
+                  {metric === "killerWins"
+                    ? `${r.killerWins} Killer win${r.killerWins === 1 ? "" : "s"} · PIN only`
+                    : `${r.matchesPlayed} match${r.matchesPlayed === 1 ? "" : "es"}${
+                        r.matchesWon > 0
+                          ? ` · ${r.matchesWon} win${r.matchesWon === 1 ? "" : "s"}`
+                          : ""
+                      }`}
                 </div>
               </div>
               <div className="shrink-0 font-logo text-4xl tabular-nums text-[var(--brand-red-bright)] lg:text-6xl">

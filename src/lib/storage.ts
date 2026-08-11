@@ -207,9 +207,34 @@ export function mergeMatchStatsIntoPlayers(match: StoredMatch): void {
   savePlayers(players);
 }
 
+/** Killer wins for registered (non-guest) players from local match history. */
+export function killerWinsByPlayerId(): Map<string, number> {
+  const counts = new Map<string, number>();
+  const players = getPlayers();
+  for (const m of getMatches()) {
+    if (m.mode !== "killer" || !m.winnerId) continue;
+    const winner = players.find((p) => p.id === m.winnerId);
+    if (!winner || winner.isGuest) continue;
+    counts.set(m.winnerId, (counts.get(m.winnerId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export function leaderboard(
-  metric: "avg" | "wins" | "oneEighties" | "checkouts" | "highestCheckout" = "avg"
+  metric:
+    | "avg"
+    | "wins"
+    | "oneEighties"
+    | "checkouts"
+    | "highestCheckout"
+    | "killerWins" = "avg"
 ): StoredPlayer[] {
+  if (metric === "killerWins") {
+    const wins = killerWinsByPlayerId();
+    const players = getPlayers().filter((p) => !p.isGuest && (wins.get(p.id) ?? 0) > 0);
+    return players.sort((a, b) => (wins.get(b.id) ?? 0) - (wins.get(a.id) ?? 0));
+  }
+
   const players = getPlayers().filter((p) => !p.isGuest && p.stats.matchesPlayed > 0);
   return players.sort((a, b) => {
     switch (metric) {

@@ -9,8 +9,9 @@ import { cn } from "@/lib/utils";
 interface CorrectDartModalProps {
   slotIndex: number;
   currentLabel?: string;
-  /** Highlight whole wedge on correction board (e.g. Baseball target) */
+  /** Highlight target on correction board (Baseball wedge / Killer double) */
   focusNumber?: number | null;
+  focusRing?: "wedge" | "double";
   onPick: (kind: SegmentKind, number: number) => void;
   onClear: () => void;
   onClose: () => void;
@@ -23,6 +24,7 @@ export function CorrectDartModal({
   slotIndex,
   currentLabel,
   focusNumber = null,
+  focusRing = "wedge",
   onPick,
   onClear,
   onClose,
@@ -85,6 +87,8 @@ export function CorrectDartModal({
           {tab === "drag" ? (
             <DragCorrectBoard
               size={Math.min(360, typeof window !== "undefined" ? window.innerWidth - 40 : 320)}
+              focusNumber={focusNumber}
+              focusRing={focusRing}
               onConfirm={(kind, number) => onPick(kind, number)}
             />
           ) : (
