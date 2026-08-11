@@ -47,7 +47,9 @@ Response includes:
 
 Finished matches store `matches.mode` + human `mode_label` (e.g. `forty_one` / `41`) and `match_players.final_score` for high-score boards.
 
-Weekly default = **rolling last 7 days** (`weekMode=calendar` for Mon–Sun). Guests are excluded. If `DATABASE_URL` is missing or Postgres is down, the API returns empty boards (`dbAvailable: false`) and attract still shows **games + CTA** without crashing.
+**Guests vs PIN accounts:** anyone may play without an account. Guest-only matches are not persisted. Leaderboards and per-mode boards (41, Baseball, …) credit **registered players only**.
+
+Weekly default = **rolling last 7 days** (`weekMode=calendar` for Mon–Sun). If `DATABASE_URL` is missing or Postgres is down, the API returns empty boards (`dbAvailable: false`) and attract still shows **games + CTA** without crashing.
 
 Attract rotates overall X01-style boards **and** per-mode panels (e.g. **41 · HIGH SCORE**, **Baseball · WINS**) when data exists.
 

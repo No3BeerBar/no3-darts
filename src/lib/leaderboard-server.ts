@@ -136,19 +136,18 @@ async function loadMatchRows(sinceMs?: number): Promise<MatchPlayerRow[] | null>
     .from(schema.matchPlayers)
     .innerJoin(schema.matches, eq(schema.matchPlayers.matchId, schema.matches.id));
 
+  // Registered PIN accounts only — guests never appear on leaderboards
+  const registeredOnly = and(
+    isNotNull(schema.matchPlayers.playerId),
+    eq(schema.matchPlayers.isGuest, false)
+  );
+
   const rows =
     sinceMs != null
       ? await base
-          .where(
-            and(
-              isNotNull(schema.matchPlayers.playerId),
-              gte(schema.matches.finishedAt, new Date(sinceMs))
-            )
-          )
+          .where(and(registeredOnly, gte(schema.matches.finishedAt, new Date(sinceMs))))
           .orderBy(desc(schema.matches.finishedAt))
-      : await base
-          .where(isNotNull(schema.matchPlayers.playerId))
-          .orderBy(desc(schema.matches.finishedAt));
+      : await base.where(registeredOnly).orderBy(desc(schema.matches.finishedAt));
 
   return rows
     .filter((r) => r.playerId)

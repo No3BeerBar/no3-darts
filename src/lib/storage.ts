@@ -39,13 +39,14 @@ export interface StoredMatch {
   finishedAt: number;
   mode: string;
   modeLabel: string;
-  players: Array<{ id: string; name: string }>;
+  players: Array<{ id: string; name: string; isGuest?: boolean }>;
   winnerId: string | null;
   winnerName: string | null;
   state: GameState;
   summary: {
     legs: number;
     sets: number;
+    /** Registered (PIN) players only — guests never keep scores */
     playerStats: Array<{
       playerId: string;
       name: string;
@@ -152,7 +153,14 @@ export function getMatches(): StoredMatch[] {
   return read<StoredMatch[]>(KEYS.matches, []).sort((a, b) => b.finishedAt - a.finishedAt);
 }
 
+/**
+ * Persist a finished match locally for history.
+ * Guest-only matches are discarded — no history / scores for guests.
+ */
 export function saveMatch(match: StoredMatch): void {
+  if (!match.players.some((p) => p.isGuest !== true)) {
+    return;
+  }
   const matches = getMatches().filter((m) => m.id !== match.id);
   matches.unshift(match);
   // Cap history
@@ -181,6 +189,7 @@ export function saveSettings(settings: Partial<AppSettings>): AppSettings {
   return next;
 }
 
+/** Merge match into local registered-player aggregates. Guests are ignored. */
 export function mergeMatchStatsIntoPlayers(match: StoredMatch): void {
   const players = getPlayers();
   for (const ps of match.summary.playerStats) {

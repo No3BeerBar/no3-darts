@@ -7,7 +7,7 @@ Bar tablets use **display name + 4-digit PIN** instead of email/password. Guests
 1. **Create account** — player picks a display name (2–24 chars) and a 4-digit PIN on the tablet numpad.
 2. **Sign in** — same name + PIN. Session is an **httpOnly cookie** (`no3_player_session`) that stays on that tablet until **Sign out** (~30 days).
 3. **Picker** — registered names appear on setup. Tapping someone else prompts for their PIN (does not steal the tablet session). Guests stay one-tap.
-4. **Match finish** — client still saves to `localStorage`, and also `POST /api/matches/persist`. Server updates aggregates only for **registered** player ids; guests stay ephemeral.
+4. **Match finish** — **guests stay ephemeral**: no local history, no Postgres rows, no leaderboard credit. Only matches with at least one **registered** (name+PIN) player are saved (`localStorage` + `POST /api/matches/persist`). Server writes `match_players` / aggregates **only** for ids that exist in `players`.
 5. **Lockout** — after 5 bad PINs, that account locks for 60 seconds.
 
 PINs are stored as **bcrypt hashes** (`pin_hash`). APIs never return hashes.
@@ -18,7 +18,7 @@ PINs are stored as **bcrypt hashes** (`pin_hash`). APIs never return hashes.
 |-------|---------|
 | `players` | id, name, name_normalized (unique, case-insensitive), pin_hash, lockout fields, aggregate stats |
 | `matches` | finished match header with `finished_at` (weekly boards) |
-| `match_players` | per-player row linked to `player_id` (null for guests) |
+| `match_players` | per-player row for **registered** players only (`player_id` set, `is_guest=false`). Guests are never inserted. |
 
 Query personal history or future weekly tops via `match_players.player_id` + `matches.finished_at`.
 

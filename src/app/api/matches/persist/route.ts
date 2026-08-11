@@ -8,7 +8,9 @@ const persistSchema = z.object({
   finishedAt: z.number(),
   mode: z.string(),
   modeLabel: z.string(),
-  players: z.array(z.object({ id: z.string(), name: z.string() })),
+  players: z.array(
+    z.object({ id: z.string(), name: z.string(), isGuest: z.boolean().optional() })
+  ),
   winnerId: z.string().nullable(),
   winnerName: z.string().nullable(),
   state: z.any(),

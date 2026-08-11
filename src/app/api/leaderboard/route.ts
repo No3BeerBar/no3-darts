@@ -9,7 +9,8 @@ import {
 
 /**
  * GET /api/leaderboard
- * Weekly + all-time boards for registered players (TV attract / shared stats).
+ * Weekly + all-time boards for **registered (PIN) players only** (TV attract / Stats).
+ * Guests never appear — they may play, but keep no history or leaderboard credit.
  *
  * Query:
  *   weekMode=rolling7|calendar  (default rolling7)
