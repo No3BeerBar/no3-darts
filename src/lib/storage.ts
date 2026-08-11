@@ -65,6 +65,7 @@ export interface AppSettings {
   accentColor: string;
   soundEnabled: boolean;
   voiceEnabled: boolean;
+  /** When true, AppShell hides site-wide nav on every route (not only setup/play/TV). */
   kioskMode: boolean;
   roomName: string;
   /**
