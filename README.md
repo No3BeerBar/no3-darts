@@ -46,6 +46,14 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 
 Details: [`docs/PLAYERS.md`](./docs/PLAYERS.md) · [`docs/TV.md`](./docs/TV.md).
 
+### Tournament (v1)
+- Single-elim brackets with byes, **3 cooperating lanes** (`Board 1`–`Board 3`)
+- **Staff-only setup** (Admin → tournament + Staff PIN) — not in patron Play nav
+- Flexible match setup: fixed game, choose each leg, or preset sequence · first-to-N legs
+- Guests play the event only (no persistent history outside the tournament)
+- Lane tablets show “Tournament match ready” for assigned matches
+- Docs: [`docs/TOURNAMENT.md`](./docs/TOURNAMENT.md)
+
 ### Ops
 - PWA installable on tablets
 - Dockerfile + `railway.toml` for Railway

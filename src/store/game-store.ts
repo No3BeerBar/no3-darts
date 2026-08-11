@@ -17,6 +17,7 @@ import {
   type CreateGameOptions,
   type DartThrow,
   type GameState,
+  type ModeConfig,
   type SegmentKind,
 } from "@/engine";
 import { buildStoredMatch, hasRegisteredPlayers } from "@/lib/match-export";
@@ -58,7 +59,7 @@ interface GameStore {
   undo: () => void;
   pause: () => void;
   resume: () => void;
-  nextLeg: () => void;
+  nextLeg: (opts?: { modeConfig?: ModeConfig }) => void;
   finishAndSave: () => void;
   clearGame: () => void;
   /** Apply remote state (TV / multi-device) without re-posting loops when displayOnly */
@@ -207,12 +208,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state: next, lastCallout: "Resumed" });
   },
 
-  nextLeg: () => {
+  nextLeg: (opts) => {
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
     if (!assertSeatsVerified(state)) return;
-    const next = startNextLeg(state);
+    const next = startNextLeg(state, opts);
     persist(next);
     set({ state: next, lastCallout: `Leg ${next.legNumber}`, lastHighlight: null });
   },

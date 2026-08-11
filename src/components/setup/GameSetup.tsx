@@ -16,6 +16,7 @@ import {
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
 import { HowToPlayModal } from "@/components/play/HowToPlayModal";
+import { TournamentMatchBanner } from "@/components/tournament/TournamentMatchBanner";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
 import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
@@ -435,6 +436,8 @@ export function GameSetup() {
           pickSavedPlayer({ id: p.id, name: p.name, isGuest: false });
         }}
       />
+
+      {!hasActive && <TournamentMatchBanner />}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
         {sessionPlayer ? (

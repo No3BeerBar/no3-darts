@@ -13,7 +13,7 @@
  * End game is patron-visible (not behind admin).
  */
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -34,8 +34,13 @@ import {
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
 import { HowToPlayModal } from "@/components/play/HowToPlayModal";
+import {
+  LegModePicker,
+  TournamentMatchBanner,
+} from "@/components/tournament/TournamentMatchBanner";
 import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "@/lib/match-autosave";
 import { canScoreMatch } from "@/lib/seat-auth";
+import { resolveModeForLeg } from "@/lib/tournament";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
@@ -99,8 +104,10 @@ function ScoringScreenInner() {
   const [idleAuthMode, setIdleAuthMode] = useState<AuthMode>("signin");
   const [idleAuthName, setIdleAuthName] = useState("");
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [pickLegMode, setPickLegMode] = useState(false);
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boardStageRef = useRef<HTMLDivElement>(null);
+  const tournamentReportRef = useRef<string | null>(null);
 
   const admin = usePlayAdmin(settings.staffPin);
 
@@ -127,18 +134,73 @@ function ScoringScreenInner() {
     return () => ro.disconnect();
   }, [state?.id]);
 
-  // Match won → auto-save (PIN players get history; guests do not) → idle. No Save dialog.
+  const reportTournamentWin = useCallback(async (s: NonNullable<typeof state>) => {
+    const meta = s.tournamentMeta;
+    if (!meta || !s.winnerId) return;
+    if (tournamentReportRef.current === s.id) return;
+    tournamentReportRef.current = s.id;
+    const engineA = s.players[0]?.id;
+    const winnerBracketId =
+      s.winnerId === engineA ? meta.bracketPlayerAId : meta.bracketPlayerBId;
+    const legsA = s.playerStates.find((p) => p.playerId === engineA)?.legsWon ?? 0;
+    const legsB =
+      s.playerStates.find((p) => p.playerId === s.players[1]?.id)?.legsWon ?? 0;
+    try {
+      await fetch(
+        `/api/tournaments/${meta.tournamentId}/matches/${meta.matchId}/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            winnerId: winnerBracketId,
+            liveGameId: s.id,
+            legsWonA: legsA,
+            legsWonB: legsB,
+          }),
+        }
+      );
+    } catch {
+      /* lane still clears; staff can repair bracket if needed */
+    }
+  }, []);
+
+  // Match won → report tournament bracket (if any) → auto-save → idle.
   useEffect(() => {
     if (!shouldAutoSaveMatch(state)) return;
     const id = state!.id;
     const t = setTimeout(() => {
-      const cur = useGameStore.getState().state;
-      if (cur?.id === id && cur.status === "match_won") {
+      void (async () => {
+        const cur = useGameStore.getState().state;
+        if (cur?.id !== id || cur.status !== "match_won") return;
+        if (cur.tournamentMeta) await reportTournamentWin(cur);
         useGameStore.getState().finishAndSave();
-      }
+      })();
     }, MATCH_WON_AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [state]);
+  }, [state, reportTournamentWin]);
+
+  const onNextLeg = useCallback(() => {
+    const s = useGameStore.getState().state;
+    if (!s) return;
+    const meta = s.tournamentMeta;
+    if (!meta) {
+      nextLeg();
+      return;
+    }
+    const format = {
+      legsToWin: s.matchFormat.legsToWin,
+      legModePolicy: meta.legModePolicy,
+      allowedModes: meta.allowedModes,
+      fixedModeConfig: meta.fixedModeConfig,
+      presetSequence: meta.presetSequence,
+    };
+    const resolved = resolveModeForLeg(format, s.legNumber + 1);
+    if (meta.legModePolicy === "choose_each_leg" || !resolved) {
+      setPickLegMode(true);
+      return;
+    }
+    nextLeg({ modeConfig: resolved });
+  }, [nextLeg]);
 
   const seatsOk = useMemo(() => {
     void seatAuthTick;
@@ -194,6 +256,9 @@ function ScoringScreenInner() {
             Guests can play without an account. Saved players sign in with PIN.
           </p>
         )}
+        <div className="w-full max-w-md text-left">
+          <TournamentMatchBanner />
+        </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href="/" className="btn-primary min-h-12 px-8">
             Set up a game
@@ -554,13 +619,31 @@ function ScoringScreenInner() {
                     : state.players.find((p) => p.id === wid)?.name;
                 })()}
               </div>
+              {state.tournamentMeta && state.status === "match_won" && (
+                <p className="mt-1 text-xs text-zinc-500">Tournament · advancing bracket…</p>
+              )}
               {state.status === "match_won" ? (
                 <p className="mt-2 text-sm text-zinc-400">Saving…</p>
               ) : (
                 <div className="mt-3 flex flex-wrap justify-center gap-2">
-                  <button type="button" onClick={nextLeg} className="btn-primary min-h-11 px-6">
-                    Next leg
-                  </button>
+                  {pickLegMode && state.tournamentMeta ? (
+                    <LegModePicker
+                      allowedModes={state.tournamentMeta.allowedModes}
+                      onPick={(config) => {
+                        setPickLegMode(false);
+                        nextLeg({ modeConfig: config });
+                      }}
+                      onCancel={() => setPickLegMode(false)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onNextLeg}
+                      className="btn-primary min-h-11 px-6"
+                    >
+                      Next leg
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={endGame}
