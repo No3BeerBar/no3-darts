@@ -341,6 +341,7 @@ export function TvDisplay() {
           >
             <Dartboard
               marks={state.currentTurnDarts}
+              focusNumber={baseball ? inn : null}
               size={boardSize}
               showLiveLabel={false}
               className="relative z-10"

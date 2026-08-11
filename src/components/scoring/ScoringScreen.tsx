@@ -308,6 +308,9 @@ export function ScoringScreen() {
               {tab === "board" && (
                 <Dartboard
                   marks={state.currentTurnDarts}
+                  focusNumber={
+                    state.mode === "baseball" ? baseballInning(state) : null
+                  }
                   size={boardSize}
                   interactive
                   showLiveLabel
