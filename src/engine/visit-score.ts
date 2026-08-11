@@ -54,19 +54,23 @@ export function visitPointsFromTurn(mode: GameModeId, turn: Turn): number {
 
 /**
  * Per-dart points for display (current visit slots / history).
- * Pass `inning` for Baseball (1–9). Unknown context → dart.value.
+ * Pass `inning` for Baseball (1–9), `fortyOneTarget` for 41.
+ * Unknown context → dart.value.
  */
 export function dartPointsForMode(
   mode: GameModeId,
   dart: DartThrow,
-  ctx?: { inning?: number }
+  ctx?: { inning?: number; fortyOneTarget?: FortyOneTarget }
 ): number {
   if (mode === "baseball") {
     const inning = ctx?.inning;
     if (inning == null) return 0;
     return baseballDartPoints(dart, inning);
   }
-  // Hook for future modes (e.g. 41) — default to segment value.
+  if (mode === "forty_one") {
+    if (!ctx?.fortyOneTarget) return 0;
+    return fortyOneDartPoints(dart, ctx.fortyOneTarget);
+  }
   return dart.value;
 }
 
