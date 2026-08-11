@@ -10,6 +10,7 @@ import {
   getRemaining,
   getTeamForPlayer,
   isTeamGame,
+  killerBoardFocus,
   parseDartLabel,
   segmentLabel,
 } from "@/engine";
@@ -25,6 +26,7 @@ import { CameraHealthToast } from "./CameraHealthToast";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
 import { CalloutToast } from "./CalloutToast";
+import { KillerBanner } from "./KillerBanner";
 import { NumberPad } from "./NumberPad";
 import { PlayerPanel } from "./PlayerPanel";
 import { TurnDarts } from "./TurnDarts";
@@ -100,6 +102,7 @@ export function ScoringScreen() {
   const current = state.players[state.currentPlayerIndex];
   const remaining = current ? getRemaining(state, current.id) : 0;
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
+  const killerFocus = state.mode === "killer" ? killerBoardFocus(state) : null;
   const slotDart =
     correctSlot != null ? state.currentTurnDarts[correctSlot] : undefined;
 
@@ -144,6 +147,11 @@ export function ScoringScreen() {
           slotIndex={correctSlot}
           currentLabel={
             slotDart ? segmentLabel(slotDart.kind, slotDart.number) : undefined
+          }
+          focusNumber={
+            state.mode === "baseball"
+              ? baseballInning(state)
+              : killerFocus?.primary ?? null
           }
           onPick={(kind, number) => {
             correctDartAt(correctSlot, kind, number);
@@ -219,6 +227,7 @@ export function ScoringScreen() {
         <PlayerPanel state={state} compact />
 
         {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
+        {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
 
         {/* Current visit */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
@@ -309,8 +318,12 @@ export function ScoringScreen() {
                 <Dartboard
                   marks={state.currentTurnDarts}
                   focusNumber={
-                    state.mode === "baseball" ? baseballInning(state) : null
+                    state.mode === "baseball"
+                      ? baseballInning(state)
+                      : killerFocus?.primary ?? null
                   }
+                  focusNumbers={killerFocus?.secondary ?? null}
+                  focusKind={killerFocus?.focusKind ?? "wedge"}
                   size={boardSize}
                   interactive
                   showLiveLabel

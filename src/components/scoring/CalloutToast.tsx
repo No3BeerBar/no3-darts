@@ -22,7 +22,11 @@ export function CalloutToast({ message }: { message: string | null }) {
     text.includes("GAME") ||
     text.includes("SHANGHAI") ||
     text.includes("CHECKOUT") ||
-    text.includes("BUST");
+    text.includes("BUST") ||
+    text.includes("KILLER") ||
+    text.includes("OUT") ||
+    text.includes("WINS") ||
+    text.includes("SELF");
 
   return (
     <div

@@ -27,8 +27,13 @@ export interface DartboardProps {
   /**
    * Light the whole numbered wedge (single + double + triple) — e.g. Baseball
    * inning target, Autodarts-style active segment. 1–20.
+   * With `focusKind="double"`, only the double ring is lit (Killer).
    */
   focusNumber?: number | null;
+  /** Extra numbers lit more subtly (e.g. Killer opponent doubles when armed). */
+  focusNumbers?: number[] | null;
+  /** `wedge` (default) = S/D/T; `double` = double ring only. */
+  focusKind?: "wedge" | "double";
   size?: number;
   className?: string;
   interactive?: boolean;
@@ -40,6 +45,8 @@ export function Dartboard({
   highlight,
   marks,
   focusNumber = null,
+  focusNumbers = null,
+  focusKind = "wedge",
   size = 360,
   className,
   interactive = false,
@@ -109,9 +116,17 @@ export function Dartboard({
     });
   };
 
-  /** Whole wedge lit for mode target (Baseball inning, etc.) — under hover/hit. */
-  const isFocusWedge = (num: number) =>
+  /** Primary target (Baseball inning / Killer own number). */
+  const isPrimaryFocus = (num: number) =>
     typeof focusNumber === "number" && focusNumber >= 1 && focusNumber <= 20 && focusNumber === num;
+
+  /** Secondary targets (Killer opponents when armed). */
+  const isSecondaryFocus = (num: number) =>
+    Array.isArray(focusNumbers) &&
+    focusNumbers.includes(num) &&
+    num >= 1 &&
+    num <= 20 &&
+    !isPrimaryFocus(num);
 
   const pins = allMarks
     .map((d, i) => ({ pos: dartPin(d), index: i, dart: d }))
@@ -186,15 +201,29 @@ export function Dartboard({
           const multiA = dark ? "#c41e1e" : "#1a8f45";
           const multiB = dark ? "#8f1212" : "#0f6b32";
           const lit = "#f5c518";
-          // Autodarts-style target: whole wedge (S/D/T) for focusNumber
-          const focus = isFocusWedge(num);
+          // Autodarts-style target: whole wedge (Baseball) or double-only (Killer)
+          const primary = isPrimaryFocus(num);
+          const secondary = isSecondaryFocus(num);
+          const focus = primary || secondary;
+          const doubleOnly = focusKind === "double";
           const focusSingle = dark ? "#6b5a14" : "#f0e6a8";
-          const focusMulti = dark ? "#d4a017" : "#e8c547";
+          const focusMulti = primary
+            ? dark
+              ? "#d4a017"
+              : "#e8c547"
+            : dark
+              ? "#7a5a18"
+              : "#c4a84a";
           const fillRing = (
             kind: "single" | "double" | "triple",
             base: string,
             focusBase: string
-          ) => (isLit(kind, num) ? lit : focus ? focusBase : base);
+          ) => {
+            if (isLit(kind, num)) return lit;
+            if (!focus) return base;
+            if (doubleOnly && kind !== "double") return base;
+            return focusBase;
+          };
 
           return (
             <g key={num}>
@@ -222,13 +251,23 @@ export function Dartboard({
                 stroke="#050505"
                 strokeWidth={0.4}
               />
-              {focus && (
+              {focus && !doubleOnly && (
                 <path
                   d={wedgePath(i, NR.outerBull, NR.doubleOuter)}
                   fill="none"
                   stroke="#f5c518"
                   strokeWidth={2.2}
-                  opacity={0.95}
+                  opacity={primary ? 0.95 : 0.55}
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
+              {focus && doubleOnly && (
+                <path
+                  d={wedgePath(i, NR.doubleInner, NR.doubleOuter)}
+                  fill="none"
+                  stroke="#f5c518"
+                  strokeWidth={primary ? 2.4 : 1.6}
+                  opacity={primary ? 0.95 : 0.55}
                   style={{ pointerEvents: "none" }}
                 />
               )}
@@ -240,7 +279,7 @@ export function Dartboard({
                 fill={focus ? "#f5c518" : "#c4c4c8"}
                 fontFamily="Oswald, system-ui, sans-serif"
                 fontWeight={focus ? 700 : 600}
-                fontSize={focus ? 17 : 15}
+                fontSize={primary ? 17 : focus ? 16 : 15}
                 style={{ pointerEvents: "none", userSelect: "none" }}
               >
                 {num}

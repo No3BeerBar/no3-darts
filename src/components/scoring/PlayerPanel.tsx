@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  getKillerExtra,
   getRemaining,
   isTeamGame,
   teamScoreRows,
@@ -13,15 +14,6 @@ import { CricketMarksRow, getCricketNumbers, playerMarks } from "./CricketMarks"
 interface PlayerPanelProps {
   state: GameState;
   compact?: boolean;
-}
-
-function killerExtra(ps: { extra?: Record<string, unknown> }) {
-  return {
-    killerNumber: Number(ps.extra?.killerNumber ?? 0),
-    lives: Number(ps.extra?.lives ?? 0),
-    isKiller: Boolean(ps.extra?.isKiller),
-    eliminated: Boolean(ps.extra?.eliminated),
-  };
 }
 
 export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
@@ -168,7 +160,7 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
         const active = idx === state.currentPlayerIndex && state.status === "playing";
         const remaining = getRemaining(state, p.id);
         const avg = threeDartAverage(ps);
-        const k = state.mode === "killer" ? killerExtra(ps) : null;
+        const k = state.mode === "killer" ? getKillerExtra(ps) : null;
         const display =
           state.mode === "cricket"
             ? ps.score

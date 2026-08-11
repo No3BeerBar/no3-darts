@@ -21,7 +21,14 @@ type LeaderboardPayload = {
 };
 
 type PanelKind =
-  | { type: "board"; window: "week" | "all"; metric: LeaderboardMetric }
+  | {
+      type: "board";
+      window: "week" | "all";
+      metric: LeaderboardMetric;
+      /** Optional per-mode board label (e.g. Killer wins). */
+      gameMode?: string | null;
+      titleOverride?: string;
+    }
   | { type: "games" }
   | { type: "cta" };
 
@@ -50,6 +57,7 @@ export function AttractMode({
 }) {
   const modes = useMemo(() => listModes(), []);
   const [data, setData] = useState<LeaderboardPayload | null>(null);
+  const [killerData, setKillerData] = useState<LeaderboardPayload | null>(null);
   const [panelIndex, setPanelIndex] = useState(0);
   const [tick, setTick] = useState(0);
 
@@ -57,12 +65,24 @@ export function AttractMode({
     let stopped = false;
     const load = async () => {
       try {
-        const r = await fetch(`/api/leaderboard?limit=8&minMatches=1&_=${Date.now()}`, {
-          cache: "no-store",
-        });
+        const [r, rk] = await Promise.all([
+          fetch(`/api/leaderboard?limit=8&minMatches=1&_=${Date.now()}`, {
+            cache: "no-store",
+          }),
+          fetch(
+            `/api/leaderboard?gameMode=killer&limit=8&minMatches=1&_=${Date.now()}`,
+            { cache: "no-store" }
+          ),
+        ]);
         if (!r.ok) throw new Error(`status ${r.status}`);
         const json = (await r.json()) as LeaderboardPayload;
-        if (!stopped) setData(json);
+        const killerJson = rk.ok
+          ? ((await rk.json()) as LeaderboardPayload)
+          : null;
+        if (!stopped) {
+          setData(json);
+          setKillerData(killerJson);
+        }
       } catch {
         if (!stopped) {
           setData({
@@ -71,6 +91,7 @@ export function AttractMode({
             weekly: null,
             allTime: null,
           });
+          setKillerData(null);
         }
       }
     };
@@ -84,6 +105,8 @@ export function AttractMode({
 
   const weeklyBoards = data?.weekly?.boards ?? EMPTY_BOARDS;
   const allBoards = data?.allTime?.boards ?? EMPTY_BOARDS;
+  const killerWeek = killerData?.weekly?.boards ?? EMPTY_BOARDS;
+  const killerAll = killerData?.allTime?.boards ?? EMPTY_BOARDS;
   const dbOk = Boolean(data?.dbAvailable);
 
   const panels = useMemo<PanelKind[]>(() => {
@@ -99,15 +122,41 @@ export function AttractMode({
         list.push({ type: "board", window: "all", metric: m.id });
       }
     }
+    // Per-mode: Killer wins (registered PIN only)
+    if (killerWeek.wins?.length) {
+      list.push({
+        type: "board",
+        window: "week",
+        metric: "wins",
+        gameMode: "killer",
+        titleOverride: "Killer wins",
+      });
+    }
+    if (killerAll.wins?.length) {
+      list.push({
+        type: "board",
+        window: "all",
+        metric: "wins",
+        gameMode: "killer",
+        titleOverride: "Killer wins",
+      });
+    }
     // If no leaderboard data, still rotate a friendly empty board once
     if (list.length === 0) {
       list.push({ type: "board", window: "week", metric: "avg" });
       list.push({ type: "board", window: "all", metric: "wins" });
+      list.push({
+        type: "board",
+        window: "week",
+        metric: "wins",
+        gameMode: "killer",
+        titleOverride: "Killer wins",
+      });
     }
     list.push({ type: "games" });
     list.push({ type: "cta" });
     return list;
-  }, [weeklyBoards, allBoards]);
+  }, [weeklyBoards, allBoards, killerWeek, killerAll]);
 
   useEffect(() => {
     setPanelIndex(0);
@@ -124,9 +173,13 @@ export function AttractMode({
   const panel = panels[panelIndex % panels.length] ?? { type: "games" as const };
   const rows =
     panel.type === "board"
-      ? panel.window === "week"
-        ? weeklyBoards[panel.metric]
-        : allBoards[panel.metric]
+      ? panel.gameMode === "killer"
+        ? panel.window === "week"
+          ? killerWeek[panel.metric]
+          : killerAll[panel.metric]
+        : panel.window === "week"
+          ? weeklyBoards[panel.metric]
+          : allBoards[panel.metric]
       : [];
 
   return (
@@ -171,12 +224,14 @@ export function AttractMode({
           {panel.type === "board" && (
             <LeaderboardPanel
               title={panel.window === "week" ? "This week" : "All-time"}
-              subtitle={metricLabel(panel.metric)}
+              subtitle={panel.titleOverride ?? metricLabel(panel.metric)}
               metric={panel.metric}
               rows={rows}
               emptyHint={
                 dbOk
-                  ? "Play a match with a PIN account to climb the board."
+                  ? panel.gameMode === "killer"
+                    ? "Win Killer with a PIN account to climb this board. Guests play, no history."
+                    : "Play a match with a PIN account to climb the board."
                   : "Stats offline — games still open on the tablet."
               }
             />

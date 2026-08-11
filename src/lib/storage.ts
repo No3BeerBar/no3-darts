@@ -231,6 +231,48 @@ export function leaderboard(
   });
 }
 
+/**
+ * Per-mode local standings from finished matches (registered players only).
+ * Guests never appear — matches may include them but stats skip isGuest ids.
+ */
+export function leaderboardByMode(
+  gameMode: string,
+  metric: "wins" | "matches" = "wins"
+): Array<{ playerId: string; name: string; matchesPlayed: number; matchesWon: number }> {
+  const players = getPlayers();
+  const byId = new Map<
+    string,
+    { playerId: string; name: string; matchesPlayed: number; matchesWon: number }
+  >();
+
+  for (const m of getMatches()) {
+    if (m.mode !== gameMode) continue;
+    for (const p of m.players) {
+      const stored = players.find((x) => x.id === p.id);
+      if (!stored || stored.isGuest) continue;
+      let e = byId.get(p.id);
+      if (!e) {
+        e = { playerId: p.id, name: stored.name || p.name, matchesPlayed: 0, matchesWon: 0 };
+        byId.set(p.id, e);
+      }
+      e.matchesPlayed += 1;
+      if (m.winnerId === p.id) e.matchesWon += 1;
+      e.name = stored.name || p.name;
+    }
+  }
+
+  return [...byId.values()]
+    .filter((e) => (metric === "wins" ? e.matchesWon > 0 : e.matchesPlayed > 0))
+    .sort((a, b) => {
+      if (metric === "wins") {
+        const d = b.matchesWon - a.matchesWon;
+        if (d !== 0) return d;
+      }
+      if (b.matchesPlayed !== a.matchesPlayed) return b.matchesPlayed - a.matchesPlayed;
+      return a.name.localeCompare(b.name);
+    });
+}
+
 export function matchToCsv(match: StoredMatch): string {
   const lines = [
     "player,avg,180s,checkouts,highestCheckout",

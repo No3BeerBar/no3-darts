@@ -28,7 +28,30 @@ export type MatchPlayerRow = {
   dartsThrown: number;
   totalScore: number;
   won: boolean;
+  /** Game mode id when available (e.g. killer, baseball, x01). */
+  mode?: string;
 };
+
+/** Modes that prefer wins boards over X01-centric avg/180s/high-out. */
+export const WINS_FIRST_MODES = new Set(["killer", "baseball", "cricket", "countup"]);
+
+export function filterRowsByGameMode(
+  rows: MatchPlayerRow[],
+  gameMode: string | undefined | null
+): MatchPlayerRow[] {
+  if (!gameMode) return rows;
+  return rows.filter((r) => r.mode === gameMode);
+}
+
+/** Metrics to rank for a mode. Unknown / empty → full X01-style set. */
+export function metricsForGameMode(
+  gameMode?: string | null
+): Array<{ id: LeaderboardMetric; label: string; shortLabel: string }> {
+  if (gameMode && WINS_FIRST_MODES.has(gameMode)) {
+    return LEADERBOARD_METRICS.filter((m) => m.id === "wins");
+  }
+  return LEADERBOARD_METRICS;
+}
 
 const MS_DAY = 24 * 60 * 60 * 1000;
 

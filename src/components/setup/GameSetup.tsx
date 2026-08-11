@@ -31,6 +31,8 @@ const MODES: Array<{ id: GameModeId; name: string }> = [
 const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
   baseball:
     "9 innings · only hits on the current inning number count (e.g. inning 4: S4/D4/T4 = 4/8/12) · anything else = 0 · highest total wins",
+  killer:
+    "Each player gets a unique number 1–20 · hit your double to become Killer · then hit their doubles to take lives · last life standing wins · only doubles count",
 };
 
 type PlayFormat = "singles" | "teams";
@@ -78,6 +80,8 @@ export function GameSetup() {
   const [countUpTurns, setCountUpTurns] = useState(8);
   const [killerLives, setKillerLives] = useState(3);
   const [killerNumbers, setKillerNumbers] = useState<Record<string, number>>({});
+  /** Player currently picking a Killer number (tap board or chip). */
+  const [killerPickPlayerId, setKillerPickPlayerId] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [playFormat, setPlayFormat] = useState<PlayFormat>("singles");
   const [draftTeams, setDraftTeams] = useState<DraftTeam[]>([emptyTeam(1), emptyTeam(2)]);
@@ -222,6 +226,9 @@ export function GameSetup() {
         if (n === num && pid !== playerId) delete next[pid];
       }
       next[playerId] = num;
+      const order = selected.map((p) => p.id);
+      const nextMissing = order.find((id) => next[id] == null);
+      setKillerPickPlayerId(nextMissing ?? playerId);
       return next;
     });
     setSetupError(null);
@@ -238,6 +245,7 @@ export function GameSetup() {
       next[p.id] = pool[i];
     });
     setKillerNumbers(next);
+    setKillerPickPlayerId(selected[0]?.id ?? null);
     setSetupError(null);
   };
 
@@ -558,7 +566,12 @@ export function GameSetup() {
       )}
 
       {mode === "killer" && (
-        <div className="space-y-2 rounded-xl border border-zinc-800 p-3">
+        <div className="space-y-3 rounded-xl border border-zinc-800 p-3">
+          <p className="text-xs leading-relaxed text-zinc-400">
+            Optional: claim numbers by throwing with your{" "}
+            <span className="font-semibold text-zinc-200">weak hand</span> — first
+            unique double (or tap below) locks your number.
+          </p>
           <div className="flex flex-wrap gap-2">
             {[3, 5, 7].map((n) => (
               <button
@@ -574,29 +587,80 @@ export function GameSetup() {
               Auto #s
             </button>
           </div>
-          {selected.map((p) => (
-            <div key={p.id} className="flex items-center gap-2">
-              <span className="w-20 shrink-0 truncate text-sm font-semibold">{p.name}</span>
-              <select
-                className="input min-h-11 flex-1 py-2"
-                value={killerNumbers[p.id] ?? ""}
-                onChange={(e) => assignKillerNumber(p.id, parseInt(e.target.value, 10))}
-              >
-                <option value="">#</option>
-                {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-                  <option
-                    key={n}
-                    value={n}
-                    disabled={Object.entries(killerNumbers).some(
-                      ([pid, num]) => num === n && pid !== p.id
-                    )}
-                  >
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+
+          {selected.length === 0 ? (
+            <p className="text-xs text-zinc-600">Add at least 2 players, then pick numbers.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {selected.map((p) => {
+                  const active =
+                    (killerPickPlayerId ?? selected.find((x) => killerNumbers[x.id] == null)?.id) ===
+                    p.id;
+                  const num = killerNumbers[p.id];
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setKillerPickPlayerId(p.id)}
+                      className={cn(
+                        "min-h-11 rounded-xl border px-3 py-2 text-left transition",
+                        active
+                          ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.14)]"
+                          : "border-[var(--panel-border)] bg-[var(--panel)]"
+                      )}
+                    >
+                      <div className="truncate text-sm font-semibold text-zinc-100">{p.name}</div>
+                      <div className="font-display text-xs tracking-wider text-zinc-500">
+                        {num ? `D${num}` : "TAP #"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div>
+                <div className="mb-1.5 font-display text-[10px] tracking-[0.2em] text-zinc-600">
+                  TAP A NUMBER
+                  {(() => {
+                    const pid =
+                      killerPickPlayerId ??
+                      selected.find((x) => killerNumbers[x.id] == null)?.id ??
+                      selected[0]?.id;
+                    const name = selected.find((p) => p.id === pid)?.name;
+                    return name ? ` · ${name.toUpperCase()}` : "";
+                  })()}
+                </div>
+                <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                    const ownerId = Object.entries(killerNumbers).find(([, num]) => num === n)?.[0];
+                    const pickId =
+                      killerPickPlayerId ??
+                      selected.find((x) => killerNumbers[x.id] == null)?.id ??
+                      selected[0]?.id;
+                    const mine = ownerId === pickId;
+                    const taken = Boolean(ownerId) && !mine;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={taken || !pickId}
+                        onClick={() => pickId && assignKillerNumber(pickId, n)}
+                        className={cn(
+                          "min-h-11 rounded-lg font-black tabular-nums transition",
+                          mine && "bg-[var(--brand-red)] text-white",
+                          !mine && !taken && "border border-[var(--panel-border)] bg-black text-zinc-200",
+                          taken && "cursor-not-allowed bg-zinc-900 text-zinc-700 opacity-50"
+                        )}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
