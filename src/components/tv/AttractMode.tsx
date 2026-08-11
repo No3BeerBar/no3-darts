@@ -130,20 +130,7 @@ export function AttractMode({
       : [];
 
   return (
-    <div className="tv-display relative flex min-h-dvh flex-col overflow-hidden bg-[#050505]">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-10%,rgb(225_6_0/0.28),transparent_55%)]" />
-        <div className="absolute bottom-0 left-0 h-1/2 w-1/2 bg-[radial-gradient(ellipse_at_bottom_left,rgb(225_6_0/0.12),transparent_60%)]" />
-        <div className="absolute bottom-0 right-0 h-2/3 w-1/2 bg-[radial-gradient(ellipse_at_bottom_right,rgb(146_4_0/0.2),transparent_55%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(0deg, transparent, transparent 2px, #fff 2px, #fff 3px)",
-          }}
-        />
-      </div>
-
+    <div className="tv-display shell-black relative flex flex-col overflow-hidden">
       <header className="relative z-20 flex items-center justify-between px-8 pb-2 pt-6 lg:px-14 lg:pt-8">
         <div className="flex items-center gap-5">
           <Image
@@ -208,7 +195,7 @@ export function AttractMode({
                 "h-1.5 rounded-full transition-all duration-500",
                 i === panelIndex % panels.length
                   ? "w-8 bg-[var(--brand-red)]"
-                  : "w-2 bg-zinc-700"
+                  : "w-2 bg-[var(--panel-border)]"
               )}
             />
           ))}
@@ -251,7 +238,7 @@ function LeaderboardPanel({
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] px-8 py-16 text-center">
+        <div className="rounded-3xl border border-dashed border-[var(--panel-border)] bg-[var(--panel)] px-8 py-16 text-center">
           <p className="font-display text-xl tracking-wide text-zinc-500 lg:text-2xl">
             {emptyHint}
           </p>
@@ -261,7 +248,7 @@ function LeaderboardPanel({
           {rows.map((r, i) => (
             <li
               key={r.playerId}
-              className="tv-attract-row flex items-center gap-5 rounded-2xl border border-white/5 bg-white/[0.03] px-5 py-4 lg:gap-8 lg:px-8 lg:py-5"
+              className="tv-attract-row flex items-center gap-5 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-5 py-4 lg:gap-8 lg:px-8 lg:py-5"
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <div
@@ -270,10 +257,10 @@ function LeaderboardPanel({
                   i === 0
                     ? "bg-[var(--brand-red)] text-white shadow-[0_0_24px_rgb(225_6_0/0.35)]"
                     : i === 1
-                      ? "bg-zinc-300 text-zinc-900"
+                      ? "bg-[var(--panel-elevated)] text-white ring-1 ring-[var(--panel-border)]"
                       : i === 2
                         ? "bg-[var(--brand-red-dim)] text-red-100"
-                        : "bg-zinc-800 text-zinc-400"
+                        : "bg-black text-zinc-400 ring-1 ring-[var(--panel-border)]"
                 )}
               >
                 {i + 1}
@@ -317,7 +304,7 @@ function GamesPanel({
         {modes.map((m, i) => (
           <div
             key={m.id}
-            className="tv-attract-row rounded-2xl border border-white/8 bg-gradient-to-b from-white/[0.06] to-transparent px-4 py-5 lg:px-5 lg:py-7"
+            className="tv-attract-row rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-4 py-5 lg:px-5 lg:py-7"
             style={{ animationDelay: `${i * 70}ms` }}
           >
             <div className="font-logo text-2xl text-white lg:text-3xl xl:text-4xl">

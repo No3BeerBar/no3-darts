@@ -111,7 +111,7 @@ export function AuthModal({ open, mode, initialName = "", onClose, onSuccess }: 
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-md rounded-2xl border border-zinc-700 bg-[#121212] p-4 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] p-4 shadow-2xl"
       >
         <div className="mb-3 flex items-start justify-between gap-2">
           <div>
