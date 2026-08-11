@@ -148,6 +148,7 @@ export const fortyOneHandler: GameModeHandler = {
   displayName: "41",
   description:
     "Start 60 · hit the round target to add · miss all → score halved (ceil) · round 41 must total exactly 41 with 3 darts · highest wins",
+  leaderboard: { highScore: true },
 
   initLeg(state: GameState): GameState {
     const next = cloneState(state);

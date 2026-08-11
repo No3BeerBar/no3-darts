@@ -251,6 +251,8 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
       for (const ps of match.summary.playerStats) {
         const isRegistered = known.has(ps.playerId);
         const st = match.state.playerStates.find((x) => x.playerId === ps.playerId);
+        const finalScore =
+          typeof ps.finalScore === "number" ? ps.finalScore : (st?.score ?? 0);
         await tx.insert(schema.matchPlayers).values({
           id: createId("mp"),
           matchId: match.id,
@@ -263,6 +265,7 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
           highestCheckout: ps.highestCheckout,
           dartsThrown: st?.dartsThrown ?? 0,
           totalScore: st?.totalScore ?? 0,
+          finalScore,
           legsWon: st?.legsWon ?? 0,
           checkoutAttempts: st?.checkoutAttempts ?? 0,
         });

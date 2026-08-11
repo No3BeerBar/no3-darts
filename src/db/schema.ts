@@ -54,7 +54,10 @@ export const matches = pgTable(
     /** Compact summary / optional full state for export */
     summaryJson: jsonb("summary_json").notNull().default({}),
   },
-  (t) => [index("matches_finished_at_idx").on(t.finishedAt)]
+  (t) => [
+    index("matches_finished_at_idx").on(t.finishedAt),
+    index("matches_mode_idx").on(t.mode),
+  ]
 );
 
 export const matchPlayers = pgTable(
@@ -74,6 +77,8 @@ export const matchPlayers = pgTable(
     highestCheckout: integer("highest_checkout").notNull().default(0),
     dartsThrown: integer("darts_thrown").notNull().default(0),
     totalScore: integer("total_score").notNull().default(0),
+    /** Finishing score for the match (high-score modes: Baseball, 41, …) */
+    finalScore: integer("final_score").notNull().default(0),
     legsWon: integer("legs_won").notNull().default(0),
     checkoutAttempts: integer("checkout_attempts").notNull().default(0),
   },

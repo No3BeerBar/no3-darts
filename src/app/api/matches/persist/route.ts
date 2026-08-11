@@ -23,6 +23,7 @@ const persistSchema = z.object({
         oneEighties: z.number(),
         checkouts: z.number(),
         highestCheckout: z.number(),
+        finalScore: z.number().optional(),
       })
     ),
   }),

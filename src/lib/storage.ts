@@ -53,6 +53,8 @@ export interface StoredMatch {
       oneEighties: number;
       checkouts: number;
       highestCheckout: number;
+      /** Finishing score (playerStates.score) for high-score mode boards */
+      finalScore?: number;
     }>;
   };
 }

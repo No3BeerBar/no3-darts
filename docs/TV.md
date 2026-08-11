@@ -19,14 +19,37 @@ Room name comes from **Admin → room** (must match the iPad / board-station `ro
 
 ## Leaderboards (server)
 
-`GET /api/leaderboard` returns weekly + all-time boards for **registered** players (Postgres):
+`GET /api/leaderboard` returns weekly + all-time boards for **registered** players (Postgres).
 
-- Three-dart average  
-- Match wins  
-- 180s  
-- Highest checkout  
+### Query
+
+| Param | Values | Default |
+|-------|--------|---------|
+| `weekMode` | `rolling7` \| `calendar` | `rolling7` |
+| `mode` | `all` \| game mode id (`x01`, `baseball`, `forty_one`, …) | `all` |
+| `minMatches` | number ≥ 1 | `1` |
+| `limit` | 1–25 | `8` |
+
+### Metrics
+
+| id | Meaning | Which modes |
+|----|---------|-------------|
+| `avg` | Three-dart average | Modes with `leaderboard.average` (e.g. X01) |
+| `wins` | Match wins | **Every** registered mode |
+| `oneEighties` | 180s | Checkout-stat modes (X01) |
+| `highestCheckout` | Highest checkout | Checkout-stat modes |
+| `highScore` | Best **finishing** score | Modes with `leaderboard.highScore` (Baseball, **41**, Count-Up, Shanghai, …) |
+
+Response includes:
+
+- `modeCatalog` — each engine mode + which metrics it ranks (new modes are automatically wins-eligible when registered in the engine)
+- `weekly` / `allTime` → `boards` (filtered by `mode=`) and `byMode` (per-mode sections for TV attract / Stats)
+
+Finished matches store `matches.mode` + human `mode_label` (e.g. `forty_one` / `41`) and `match_players.final_score` for high-score boards.
 
 Weekly default = **rolling last 7 days** (`weekMode=calendar` for Mon–Sun). Guests are excluded. If `DATABASE_URL` is missing or Postgres is down, the API returns empty boards (`dbAvailable: false`) and attract still shows **games + CTA** without crashing.
+
+Attract rotates overall X01-style boards **and** per-mode panels (e.g. **41 · HIGH SCORE**, **Baseball · WINS**) when data exists.
 
 ## Board station
 

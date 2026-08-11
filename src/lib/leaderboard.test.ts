@@ -3,24 +3,26 @@ import {
   aggregateMatchRows,
   calendarWeekStart,
   filterByFinishedSince,
-  filterRowsByGameMode,
+  filterRowsByMode,
   formatLeaderboardValue,
-  metricsForGameMode,
   metricValue,
   rankLeaderboard,
   rollingWeekStart,
   threeDartAvg,
   type MatchPlayerRow,
 } from "./leaderboard";
+import { listModeLeaderboardSpecs, metricsForMode } from "./mode-leaderboards";
 
 function row(partial: Partial<MatchPlayerRow> & Pick<MatchPlayerRow, "playerId" | "name">): MatchPlayerRow {
   return {
     finishedAt: Date.now(),
+    mode: "x01",
     avg: 0,
     oneEighties: 0,
     highestCheckout: 0,
     dartsThrown: 0,
     totalScore: 0,
+    finalScore: 0,
     won: false,
     ...partial,
   };
@@ -51,7 +53,7 @@ describe("rollingWeekStart / calendarWeekStart", () => {
   });
 });
 
-describe("filterByFinishedSince", () => {
+describe("filterByFinishedSince / filterRowsByMode", () => {
   it("keeps only rows at or after since", () => {
     const since = 1_000;
     const rows = [
@@ -60,6 +62,16 @@ describe("filterByFinishedSince", () => {
       row({ playerId: "c", name: "C", finishedAt: 2000 }),
     ];
     expect(filterByFinishedSince(rows, since).map((r) => r.playerId)).toEqual(["b", "c"]);
+  });
+
+  it("filters by game mode", () => {
+    const rows = [
+      row({ playerId: "a", name: "A", mode: "forty_one", finalScore: 90 }),
+      row({ playerId: "b", name: "B", mode: "baseball", finalScore: 40 }),
+      row({ playerId: "c", name: "C", mode: "forty_one", finalScore: 70 }),
+    ];
+    expect(filterRowsByMode(rows, "forty_one").map((r) => r.playerId)).toEqual(["a", "c"]);
+    expect(filterRowsByMode(rows, "all")).toHaveLength(3);
   });
 });
 
@@ -73,6 +85,7 @@ describe("aggregateMatchRows + rankLeaderboard", () => {
       totalScore: 600, // avg 60
       oneEighties: 1,
       highestCheckout: 80,
+      finalScore: 0,
       won: true,
     }),
     row({
@@ -122,6 +135,18 @@ describe("aggregateMatchRows + rankLeaderboard", () => {
     expect(bea.highestCheckout).toBe(120);
   });
 
+  it("tracks highScore as max finalScore", () => {
+    const rows = [
+      row({ playerId: "p1", name: "Alex", mode: "forty_one", finalScore: 88, won: true }),
+      row({ playerId: "p1", name: "Alex", mode: "forty_one", finalScore: 120, won: false }),
+      row({ playerId: "p2", name: "Bea", mode: "forty_one", finalScore: 95, won: true }),
+    ];
+    const entries = aggregateMatchRows(rows);
+    expect(entries.find((e) => e.playerId === "p1")!.highScore).toBe(120);
+    const ranked = rankLeaderboard(entries, "highScore");
+    expect(ranked.map((e) => e.playerId)).toEqual(["p1", "p2"]);
+  });
+
   it("ranks by avg descending", () => {
     const ranked = rankLeaderboard(aggregateMatchRows(sample), "avg", { limit: 10 });
     expect(ranked.map((e) => e.playerId)).toEqual(["p2", "p1", "p3"]);
@@ -146,23 +171,30 @@ describe("aggregateMatchRows + rankLeaderboard", () => {
   });
 });
 
-describe("per-mode leaderboard helpers", () => {
-  it("filters rows by gameMode", () => {
-    const rows = [
-      row({ playerId: "a", name: "A", mode: "killer", won: true }),
-      row({ playerId: "b", name: "B", mode: "x01", won: true }),
-      row({ playerId: "c", name: "C", mode: "killer", won: false }),
-    ];
-    expect(filterRowsByGameMode(rows, "killer").map((r) => r.playerId)).toEqual([
-      "a",
-      "c",
-    ]);
-    expect(filterRowsByGameMode(rows, null)).toHaveLength(3);
+describe("mode leaderboard catalog", () => {
+  it("every registered mode is leaderboard-eligible (at least wins)", () => {
+    const specs = listModeLeaderboardSpecs();
+    expect(specs.length).toBeGreaterThan(0);
+    for (const s of specs) {
+      expect(s.metrics).toContain("wins");
+      expect(s.label.length).toBeGreaterThan(0);
+    }
   });
 
-  it("wins-first modes only expose wins metric", () => {
-    expect(metricsForGameMode("killer").map((m) => m.id)).toEqual(["wins"]);
-    expect(metricsForGameMode("baseball").map((m) => m.id)).toEqual(["wins"]);
-    expect(metricsForGameMode(null).length).toBeGreaterThan(1);
+  it("41 and Baseball expose wins + highScore", () => {
+    expect(metricsForMode("forty_one")).toEqual(
+      expect.arrayContaining(["wins", "highScore"])
+    );
+    expect(metricsForMode("baseball")).toEqual(
+      expect.arrayContaining(["wins", "highScore"])
+    );
+    expect(metricsForMode("forty_one")).not.toContain("avg");
+  });
+
+  it("X01 exposes avg / wins / checkout metrics", () => {
+    const m = metricsForMode("x01");
+    expect(m).toEqual(
+      expect.arrayContaining(["wins", "avg", "oneEighties", "highestCheckout"])
+    );
   });
 });

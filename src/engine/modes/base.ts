@@ -11,10 +11,25 @@ import type {
   PlayerRef,
 } from "../types";
 
+/**
+ * How a mode appears on TV / API leaderboards.
+ * Every registered mode is eligible for **wins**. Opt into more via flags.
+ */
+export interface ModeLeaderboardMeta {
+  /** Track finishing `playerStates.score` for high-score boards (Baseball, 41, …) */
+  highScore?: boolean;
+  /** Include matches in 3-dart average boards (X01-style scoring) */
+  average?: boolean;
+  /** Include 180s / highest-checkout boards */
+  checkoutStats?: boolean;
+}
+
 export interface GameModeHandler {
   id: string;
   displayName: string;
   description: string;
+  /** Leaderboard eligibility — omit for wins-only (default for new modes) */
+  leaderboard?: ModeLeaderboardMeta;
 
   /** Initialize player states for a new leg */
   initLeg(state: GameState): GameState;
