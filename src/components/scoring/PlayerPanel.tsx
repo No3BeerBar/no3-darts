@@ -1,12 +1,9 @@
 "use client";
 
 import {
-<<<<<<< HEAD
   computePlayerRoundStats,
   formatRoundStat,
-=======
   getBotProfile,
->>>>>>> 919b385 (Add bot opponents on /play with Luke Littler as hardest)
   getKillerExtra,
   getRemaining,
   isTeamGame,
