@@ -109,7 +109,7 @@ export default function PlayersPage() {
       </div>
 
       {me && (
-        <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-5 py-4">
+        <section className="space-y-3 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-5 py-4">
           <h2 className="font-display text-sm tracking-wider text-zinc-400">Your stats</h2>
           <div className="flex flex-wrap gap-4 text-sm text-zinc-400">
             <span>
@@ -167,7 +167,7 @@ export default function PlayersPage() {
           return (
             <li
               key={p.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-5 py-4"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-5 py-4"
             >
               <div>
                 <div className="text-lg font-bold text-zinc-50">

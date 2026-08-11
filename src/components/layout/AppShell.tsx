@@ -30,8 +30,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col text-zinc-100">
-      <header className="shrink-0 border-b border-[rgb(225_6_0/0.28)] bg-[rgba(5,5,5,0.95)]">
+    <div className="shell-black flex flex-col">
+      <header className="shrink-0 border-b border-[var(--panel-border)] bg-black">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2">
           <Link href="/" className="flex min-w-0 items-center gap-2">
             <Image
@@ -56,7 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
                   pathname === item.href
                     ? "bg-[var(--brand-red)] text-white"
-                    : "text-zinc-400 active:bg-zinc-800"
+                    : "text-zinc-400 active:bg-[var(--panel)]"
                 )}
               >
                 {item.label}

@@ -34,7 +34,7 @@ export function VisitHistory({
     return (
       <div
         className={cn(
-          "rounded-xl border border-zinc-800/60 bg-zinc-950/40 px-3 py-2 text-center text-sm text-zinc-600",
+          "rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2 text-center text-sm text-zinc-600",
           className
         )}
       >
@@ -68,7 +68,7 @@ export function VisitHistory({
             <div
               key={`${turn.timestamp}-${turn.playerId}-${i}`}
               className={cn(
-                "shrink-0 rounded-xl border border-zinc-800 bg-[#121212]/90",
+                "shrink-0 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)]",
                 sm ? "min-w-[7.5rem] px-2.5 py-2" : lg ? "min-w-[11rem] px-4 py-3" : "min-w-[9rem] px-3 py-2.5",
                 turn.bust && "border-zinc-700 opacity-80",
                 turn.checkout && "border-[rgb(225_6_0/0.45)]"

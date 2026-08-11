@@ -82,7 +82,7 @@ export function ScoringScreen() {
 
   if (!state) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
         <Link href="/" className="btn-primary min-h-12 px-8">
@@ -132,7 +132,7 @@ export function ScoringScreen() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col text-zinc-100">
+    <div className="shell-black flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
 
@@ -155,7 +155,7 @@ export function ScoringScreen() {
       )}
 
       {/* Top bar — thrower prominent */}
-      <header className="shrink-0 border-b border-[rgb(225_6_0/0.2)] bg-black/85 px-3 py-2 backdrop-blur">
+      <header className="shrink-0 border-b border-[var(--panel-border)] bg-black px-3 py-2">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Image src="/brand/logo.png" alt="" width={36} height={36} className="rounded-full" />
           <div className="min-w-0 flex-1">
@@ -216,7 +216,7 @@ export function ScoringScreen() {
         <PlayerPanel state={state} compact />
 
         {/* Current visit */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-[#121212]/70 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
           <div className="min-w-0">
             <TurnDarts
               darts={state.currentTurnDarts}
@@ -271,7 +271,7 @@ export function ScoringScreen() {
 
         {state.status === "playing" && (
           <>
-            <div className="flex gap-1 rounded-lg bg-[#121212] p-0.5">
+            <div className="flex gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] p-0.5">
               {(
                 [
                   ["board", "Board"],

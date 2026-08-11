@@ -34,7 +34,7 @@ export function CameraHealthToast({ notice }: { notice: CameraHealthNotice }) {
           "rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-lg backdrop-blur",
           notice.restarting || notice.level === "unhealthy"
             ? "border-amber-500/50 bg-amber-950/95 text-amber-100"
-            : "border-zinc-500/50 bg-zinc-900/95 text-zinc-100"
+            : "border-[var(--panel-border)] bg-[var(--panel)] text-zinc-100"
         )}
       >
         {notice.restarting

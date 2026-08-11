@@ -36,7 +36,7 @@ export function CalloutToast({ message }: { message: string | null }) {
           "rounded-2xl border-2 px-8 py-4 shadow-2xl backdrop-blur-md",
           big
             ? "border-[var(--brand-red)] bg-black/90 text-[var(--brand-red-bright)]"
-            : "border-zinc-600 bg-zinc-900/90 text-zinc-100"
+            : "border-[var(--panel-border)] bg-[var(--panel)] text-zinc-100"
         )}
       >
         <span className={cn("font-black tracking-wide", big ? "text-4xl sm:text-5xl" : "text-2xl")}>
