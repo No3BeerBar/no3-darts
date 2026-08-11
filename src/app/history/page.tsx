@@ -27,7 +27,7 @@ export default function HistoryPage() {
         {matches.map((m) => (
           <li
             key={m.id}
-            className="rounded-2xl border border-zinc-800 bg-zinc-900/50 px-5 py-4"
+            className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-5 py-4"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -41,7 +41,7 @@ export default function HistoryPage() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-400">
                   {m.summary.playerStats.map((ps) => (
-                    <span key={ps.playerId} className="rounded-lg bg-zinc-950 px-2 py-1">
+                    <span key={ps.playerId} className="rounded-lg bg-black px-2 py-1">
                       {ps.name}: avg {ps.avg} · {ps.oneEighties}×180
                     </span>
                   ))}

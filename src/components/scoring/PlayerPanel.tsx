@@ -60,7 +60,7 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                 compact ? "py-2.5" : "py-3",
                 row.active
                   ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.14)] shadow-[0_0_24px_rgb(225_6_0/0.22)]"
-                  : "border-zinc-800/80 bg-[#121212]/95"
+                  : "border-[var(--panel-border)] bg-[var(--panel)]"
               )}
             >
               {row.active && (
@@ -182,11 +182,11 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
             className={cn(
               "relative overflow-hidden rounded-2xl border px-3.5 transition",
               compact ? "py-2.5" : "py-3",
-              k?.eliminated && "opacity-40 border-zinc-800 bg-zinc-950/80",
+              k?.eliminated && "opacity-40 border-[var(--panel-border)] bg-black",
               !k?.eliminated &&
                 active &&
                 "border-[var(--brand-red)] bg-[rgb(225_6_0/0.14)] shadow-[0_0_24px_rgb(225_6_0/0.22)]",
-              !k?.eliminated && !active && "border-zinc-800/80 bg-[#121212]/95",
+              !k?.eliminated && !active && "border-[var(--panel-border)] bg-[var(--panel)]",
               k?.isKiller && !k.eliminated && !active && "border-red-900/50"
             )}
           >

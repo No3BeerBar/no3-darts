@@ -78,17 +78,17 @@ export default function LeaderboardPage() {
           return (
             <li
               key={p.id}
-              className="flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-5 py-4"
+              className="flex items-center gap-4 rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-5 py-4"
             >
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg font-black ${
                   i === 0
-                    ? "bg-[var(--brand-red)] text-zinc-950"
+                    ? "bg-[var(--brand-red)] text-white"
                     : i === 1
-                      ? "bg-zinc-300 text-zinc-900"
+                      ? "bg-[var(--panel-elevated)] text-white ring-1 ring-[var(--panel-border)]"
                       : i === 2
                         ? "bg-[var(--brand-red-dim)] text-red-100"
-                        : "bg-zinc-800 text-zinc-400"
+                        : "bg-black text-zinc-400 ring-1 ring-[var(--panel-border)]"
                 }`}
               >
                 {i + 1}

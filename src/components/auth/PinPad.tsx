@@ -44,7 +44,7 @@ export function PinPad({
               "flex h-12 w-12 items-center justify-center rounded-xl border text-2xl font-bold",
               value.length > i
                 ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.15)] text-[var(--brand-red-bright)]"
-                : "border-zinc-700 bg-zinc-900 text-zinc-600"
+                : "border-[var(--panel-border)] bg-black text-zinc-600"
             )}
           >
             {value.length > i ? "•" : ""}

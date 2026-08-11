@@ -69,7 +69,7 @@ export function TvDisplay() {
   const teamMode = isTeamGame(state) && state.mode !== "killer";
 
   return (
-    <div className="tv-display relative min-h-dvh overflow-hidden bg-[#050505]">
+    <div className="tv-display shell-black relative overflow-hidden">
       {cameraNotice && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-50 flex justify-center px-4">
           <div className="rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur">
@@ -77,20 +77,6 @@ export function TvDisplay() {
           </div>
         </div>
       )}
-      {/* Atmosphere */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_45%,rgb(225_6_0/0.14),transparent_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_80%_at_0%_50%,rgb(225_6_0/0.08),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#050505_0%,#050505_38%,transparent_72%)]" />
-        {/* subtle scan / grain */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(0deg, transparent, transparent 2px, #fff 2px, #fff 3px)",
-          }}
-        />
-      </div>
 
       {/* Top brand strip */}
       <header className="relative z-20 flex items-center justify-between px-6 py-4 lg:px-10">
@@ -140,7 +126,7 @@ export function TvDisplay() {
         <aside className="relative z-20 flex w-[min(48vw,640px)] shrink-0 flex-col justify-between px-6 pb-8 pt-2 lg:w-[min(46vw,680px)] lg:px-10">
           <div className="flex flex-1 flex-col justify-center gap-3 lg:gap-4">
             {state.mode === "cricket" ? (
-              <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-4 backdrop-blur-sm lg:px-5 lg:py-6">
+              <div className="rounded-2xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-4 lg:px-5 lg:py-6">
                 <div className="mb-3 font-display text-[10px] tracking-[0.35em] text-zinc-600">
                   CRICKET{teamMode ? " · DOUBLES" : ""}
                 </div>
@@ -160,8 +146,8 @@ export function TvDisplay() {
                     key={row.team.id}
                     className={`relative overflow-hidden rounded-2xl border px-5 py-4 transition-all duration-300 lg:px-6 lg:py-5 ${
                       row.active
-                        ? "border-[var(--brand-red)] bg-gradient-to-r from-[rgb(225_6_0/0.28)] via-[rgb(225_6_0/0.12)] to-transparent shadow-[0_0_48px_rgb(225_6_0/0.25)]"
-                        : "border-white/5 bg-white/[0.03] backdrop-blur-sm"
+                        ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.18)] shadow-[0_0_48px_rgb(225_6_0/0.25)]"
+                        : "border-[var(--panel-border)] bg-[var(--panel)]"
                     }`}
                   >
                     {row.active && (
@@ -211,8 +197,8 @@ export function TvDisplay() {
                     key={p.id}
                     className={`relative overflow-hidden rounded-2xl border px-5 py-4 transition-all duration-300 lg:px-6 lg:py-5 ${
                       active
-                        ? "border-[var(--brand-red)] bg-gradient-to-r from-[rgb(225_6_0/0.28)] via-[rgb(225_6_0/0.12)] to-transparent shadow-[0_0_48px_rgb(225_6_0/0.25)]"
-                        : "border-white/5 bg-white/[0.03] backdrop-blur-sm"
+                        ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.18)] shadow-[0_0_48px_rgb(225_6_0/0.25)]"
+                        : "border-[var(--panel-border)] bg-[var(--panel)]"
                     }`}
                   >
                     {active && (
@@ -311,13 +297,10 @@ export function TvDisplay() {
 
         {/* RIGHT — board, oversized, bleeds left slightly */}
         <div className="relative flex min-w-0 flex-1 items-center justify-end pr-2 lg:pr-6">
-          {/* Soft vignette behind board */}
-          <div className="pointer-events-none absolute right-[8%] top-1/2 h-[90%] w-[90%] -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgb(225_6_0/0.18)_0%,transparent_65%)] blur-2xl" />
-
           <div
             className="relative -ml-16 origin-right scale-100 lg:-ml-28"
             style={{
-              filter: "drop-shadow(0 24px 80px rgba(0,0,0,0.65)) drop-shadow(0 0 60px rgba(225,6,0,0.12))",
+              filter: "drop-shadow(0 24px 80px rgba(0,0,0,0.85))",
             }}
           >
             <Dartboard

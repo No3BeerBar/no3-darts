@@ -58,7 +58,7 @@ export function CricketMarksRow({
               compact ? "px-0.5 py-0.5" : "px-1 py-1",
               closed
                 ? "border-[rgb(225_6_0/0.45)] bg-[rgb(225_6_0/0.15)]"
-                : "border-zinc-800/80 bg-zinc-950/50"
+                : "border-[var(--panel-border)] bg-black"
             )}
           >
             <span

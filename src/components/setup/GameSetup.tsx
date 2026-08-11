@@ -349,7 +349,7 @@ export function GameSetup() {
         onSuccess={onAuthSuccess}
       />
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-[#121212] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
         {sessionPlayer ? (
           <>
             <div className="min-w-0 flex-1">
@@ -651,7 +651,7 @@ export function GameSetup() {
                   "rounded-2xl border p-3 transition",
                   holding && team.players.length < 2
                     ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.08)]"
-                    : "border-zinc-800 bg-[#121212]"
+                    : "border-[var(--panel-border)] bg-[var(--panel)]"
                 )}
               >
                 <label className="mb-2 block">
@@ -747,7 +747,7 @@ export function GameSetup() {
                     "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
                     holding?.id === p.id
                       ? "border-[var(--brand-red)] bg-[var(--brand-red)] text-white"
-                      : "border-zinc-800 bg-zinc-900"
+                      : "border-[var(--panel-border)] bg-[var(--panel)]"
                   )}
                 >
                   {p.name}
@@ -824,7 +824,7 @@ export function GameSetup() {
                       "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
                       on
                         ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.2)]"
-                        : "border-zinc-800 bg-zinc-900"
+                        : "border-[var(--panel-border)] bg-[var(--panel)]"
                     )}
                   >
                     {p.name}

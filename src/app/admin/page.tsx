@@ -50,7 +50,7 @@ export default function AdminPage() {
           <strong className="text-white">no3-darts</strong> service (reference the Postgres plugin).
           See <code className="text-zinc-300">docs/PLAYERS.md</code>.
         </p>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm">
+        <div className="rounded-xl border border-[var(--panel-border)] bg-black px-4 py-3 text-sm">
           {dbStatus === null ? (
             <span className="text-zinc-500">Checking database…</span>
           ) : dbStatus.available ? (
@@ -95,7 +95,7 @@ export default function AdminPage() {
         </ol>
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+      <section className="panel-card space-y-4 p-6">
         <label className="block">
           <span className="section-title">Bar name</span>
           <input
@@ -141,7 +141,7 @@ export default function AdminPage() {
         </label>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+      <section className="panel-card space-y-3 p-6">
         <h2 className="section-title">Throw detection (Autodarts → No3)</h2>
         <p className="text-sm text-zinc-400">
           Recommended: Autodarts Board Manager detects throws; the companion bridge on the board PC
@@ -149,10 +149,18 @@ export default function AdminPage() {
           <code className="text-[var(--brand-red)]">CAMERA_API_KEY</code> when set.
         </p>
         <ul className="space-y-2 font-mono text-sm text-zinc-300">
-          <li className="rounded-lg bg-zinc-950 px-3 py-2">POST /api/camera/dart</li>
-          <li className="rounded-lg bg-zinc-950 px-3 py-2">POST /api/camera/end-turn</li>
-          <li className="rounded-lg bg-zinc-950 px-3 py-2">GET /api/camera/stream (SSE)</li>
-          <li className="rounded-lg bg-zinc-950 px-3 py-2">GET /api/matches/active</li>
+          <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
+            POST /api/camera/dart
+          </li>
+          <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
+            POST /api/camera/end-turn
+          </li>
+          <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
+            GET /api/camera/stream (SSE)
+          </li>
+          <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
+            GET /api/matches/active
+          </li>
         </ul>
         <p className="text-xs text-zinc-500">
           Setup:{" "}

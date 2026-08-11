@@ -4,8 +4,8 @@
   "description": "Self-hosted darts scoring for No. 3 Craft Beer Bar",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#e10600",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "any",
   "icons": [
     {
