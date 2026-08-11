@@ -35,7 +35,8 @@ export type GameModeId =
   | "bermuda"
   | "random_checkout"
   | "killer"
-  | "baseball";
+  | "baseball"
+  | "forty_one";
 
 export type InOutRule = "straight" | "double" | "master";
 
@@ -106,6 +107,11 @@ export interface BaseballConfig {
   innings?: number;
 }
 
+export interface FortyOneConfig {
+  /** Fixed 10-round sequence (John’s rules) */
+  rounds?: number;
+}
+
 export type ModeConfig =
   | { mode: "x01"; config: X01Config }
   | { mode: "cricket"; config: CricketConfig }
@@ -115,7 +121,8 @@ export type ModeConfig =
   | { mode: "bermuda"; config: BermudaConfig }
   | { mode: "random_checkout"; config: RandomCheckoutConfig }
   | { mode: "killer"; config: KillerConfig }
-  | { mode: "baseball"; config: BaseballConfig };
+  | { mode: "baseball"; config: BaseballConfig }
+  | { mode: "forty_one"; config: FortyOneConfig };
 
 export interface MatchFormat {
   legsToWin: number; // first to N legs (best of = 2N-1)
@@ -202,7 +209,7 @@ export interface GameState {
   turns: Turn[];
   legNumber: number;
   setNumber: number;
-  /** Current Bermuda / Shanghai / Baseball round (inning) index */
+  /** Current Bermuda / Shanghai / Baseball / 41 round (inning) index */
   roundIndex: number;
   /** Winning player id (thrower) — use team via getTeamForPlayer for display */
   winnerId: string | null;

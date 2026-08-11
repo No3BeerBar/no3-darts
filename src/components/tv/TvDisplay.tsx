@@ -5,6 +5,9 @@ import Image from "next/image";
 import {
   baseballDartPoints,
   baseballInning,
+  fortyOneBoardFocus,
+  fortyOneDartPoints,
+  fortyOneTarget,
   getHandler,
   getKillerExtra,
   getRemaining,
@@ -18,6 +21,7 @@ import {
 } from "@/engine";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "@/components/scoring/BaseballBanner";
+import { FortyOneBanner } from "@/components/scoring/FortyOneBanner";
 import { CricketScoreboard } from "@/components/scoring/CricketMarks";
 import { KillerBanner } from "@/components/scoring/KillerBanner";
 import { VisitHistory } from "@/components/scoring/VisitHistory";
@@ -72,14 +76,23 @@ export function TvDisplay() {
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const baseball = state.mode === "baseball";
   const killer = state.mode === "killer";
+  const fortyOne = state.mode === "forty_one";
   const inn = baseball ? baseballInning(state) : 0;
   const killerFocus = killer ? killerBoardFocus(state) : null;
-  const turnTotal = state.currentTurnDarts.reduce(
-    (a, d) => a + (baseball ? baseballDartPoints(d, inn) : d.value),
-    0
-  );
+  const f41Target = fortyOne ? fortyOneTarget(state) : null;
+  const f41Focus = f41Target ? fortyOneBoardFocus(f41Target) : null;
+  const turnTotal = state.currentTurnDarts.reduce((a, d) => {
+    if (baseball) return a + baseballDartPoints(d, inn);
+    if (fortyOne && f41Target) {
+      return a + (f41Target.type === "exact_41" ? d.value : fortyOneDartPoints(d, f41Target));
+    }
+    return a + d.value;
+  }, 0);
   const checkout = suggestCheckout(state);
   const teamMode = isTeamGame(state) && state.mode !== "killer";
+  const boardFocusNumber = baseball
+    ? inn
+    : (killerFocus?.primary ?? f41Focus?.focusNumber ?? null);
 
   return (
     <div className="tv-display shell-black relative overflow-hidden">
@@ -145,6 +158,11 @@ export function TvDisplay() {
           {killer && (
             <div className="mb-3">
               <KillerBanner state={state} size="lg" />
+            </div>
+          )}
+          {fortyOne && (
+            <div className="mb-3">
+              <FortyOneBanner state={state} size="lg" />
             </div>
           )}
           <div className="flex flex-1 flex-col justify-center gap-3 lg:gap-4">
@@ -312,7 +330,12 @@ export function TvDisplay() {
             <div className="mt-3 flex items-center gap-3">
               {[0, 1, 2].map((i) => {
                 const d = state.currentTurnDarts[i];
-                const pts = d && baseball ? baseballDartPoints(d, inn) : d?.value;
+                const pts =
+                  d && baseball
+                    ? baseballDartPoints(d, inn)
+                    : d && fortyOne && f41Target
+                      ? fortyOneDartPoints(d, f41Target)
+                      : d?.value;
                 return (
                   <div
                     key={i}
@@ -323,7 +346,7 @@ export function TvDisplay() {
                     }`}
                   >
                     <span>{d ? segmentLabel(d.kind, d.number) : "—"}</span>
-                    {d && baseball && (
+                    {d && (baseball || fortyOne) && (
                       <span className="font-display text-sm tabular-nums text-zinc-400">
                         {pts && pts > 0 ? `+${pts}` : "0"}
                       </span>
@@ -360,9 +383,11 @@ export function TvDisplay() {
           >
             <Dartboard
               marks={state.currentTurnDarts}
-              focusNumber={baseball ? inn : killerFocus?.primary ?? null}
+              focusNumber={boardFocusNumber}
               focusNumbers={killerFocus?.secondary ?? null}
               focusKind={killerFocus?.focusKind ?? "wedge"}
+              focusRing={f41Focus?.focusRing ?? null}
+              focusBull={f41Focus?.focusBull ?? false}
               size={boardSize}
               showLiveLabel={false}
               className="relative z-10"

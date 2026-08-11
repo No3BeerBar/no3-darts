@@ -1,13 +1,15 @@
 "use client";
 
 import type { SegmentKind } from "@/engine";
-import { Dartboard } from "@/components/board/Dartboard";
+import { Dartboard, type BoardFocusRing } from "@/components/board/Dartboard";
 import { cn } from "@/lib/utils";
 
 interface DragCorrectBoardProps {
   size?: number;
   /** Highlight whole wedge (e.g. Baseball inning target) */
   focusNumber?: number | null;
+  focusRing?: BoardFocusRing | null;
+  focusBull?: boolean;
   onConfirm: (kind: SegmentKind, number: number) => void;
   className?: string;
 }
@@ -16,6 +18,8 @@ interface DragCorrectBoardProps {
 export function DragCorrectBoard({
   size = 320,
   focusNumber = null,
+  focusRing = null,
+  focusBull = false,
   onConfirm,
   className,
 }: DragCorrectBoardProps) {
@@ -24,6 +28,8 @@ export function DragCorrectBoard({
       <Dartboard
         size={size}
         focusNumber={focusNumber}
+        focusRing={focusRing}
+        focusBull={focusBull}
         interactive
         showLiveLabel
         onScore={(kind, number) => onConfirm(kind, number)}

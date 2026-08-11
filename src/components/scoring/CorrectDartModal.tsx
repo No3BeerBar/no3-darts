@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SegmentKind } from "@/engine";
 import { segmentLabel } from "@/engine";
+import type { BoardFocusRing } from "@/components/board/Dartboard";
 import { DragCorrectBoard } from "./DragCorrectBoard";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,8 @@ interface CorrectDartModalProps {
   currentLabel?: string;
   /** Highlight whole wedge on correction board (e.g. Baseball target) */
   focusNumber?: number | null;
+  focusRing?: BoardFocusRing | null;
+  focusBull?: boolean;
   onPick: (kind: SegmentKind, number: number) => void;
   onClear: () => void;
   onClose: () => void;
@@ -23,6 +26,8 @@ export function CorrectDartModal({
   slotIndex,
   currentLabel,
   focusNumber = null,
+  focusRing = null,
+  focusBull = false,
   onPick,
   onClear,
   onClose,
@@ -85,6 +90,9 @@ export function CorrectDartModal({
           {tab === "drag" ? (
             <DragCorrectBoard
               size={Math.min(360, typeof window !== "undefined" ? window.innerWidth - 40 : 320)}
+              focusNumber={focusNumber}
+              focusRing={focusRing}
+              focusBull={focusBull}
               onConfirm={(kind, number) => onPick(kind, number)}
             />
           ) : (
