@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  computePlayerRoundStats,
+  formatRoundStat,
   getKillerExtra,
   getRemaining,
   isTeamGame,
+  roundStatsForMode,
   teamScoreRows,
   threeDartAverage,
   type GameState,
@@ -14,6 +17,42 @@ import { CricketMarksRow, getCricketNumbers, playerMarks } from "./CricketMarks"
 interface PlayerPanelProps {
   state: GameState;
   compact?: boolean;
+}
+
+/** Live MPR / PPR line for a seat (mode-aware; multi-leg → current / overall). */
+function RoundStatsLine({
+  state,
+  playerId,
+  className,
+}: {
+  state: GameState;
+  playerId: string;
+  className?: string;
+}) {
+  const show = roundStatsForMode(state.mode);
+  if (!show.mpr && !show.ppr) return null;
+  const stats = computePlayerRoundStats(state, playerId);
+  const multiLeg = state.matchFormat.legsToWin > 1;
+  const parts: string[] = [];
+  if (show.mpr) {
+    const m = formatRoundStat(stats.mpr, multiLeg);
+    if (m) parts.push(`MPR ${m}`);
+  }
+  if (show.ppr) {
+    const p = formatRoundStat(stats.ppr, multiLeg);
+    if (p) parts.push(`PPR ${p}`);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <div
+      className={cn(
+        "font-semibold tabular-nums tracking-wide text-zinc-500",
+        className
+      )}
+    >
+      {parts.join(" · ")}
+    </div>
+  );
 }
 
 export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
@@ -123,6 +162,34 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                     className="mt-2"
                   />
                 </>
+              )}
+
+              {(roundStatsForMode(state.mode).mpr ||
+                roundStatsForMode(state.mode).ppr) && (
+                <div
+                  className={cn(
+                    "mt-1.5 space-y-0.5",
+                    compact ? "text-[11px]" : "text-xs"
+                  )}
+                >
+                  {row.team.playerIds.map((pid, i) => (
+                    <div
+                      key={pid}
+                      className="flex items-baseline justify-between gap-2"
+                    >
+                      {row.team.playerIds.length > 1 && (
+                        <span className="truncate text-zinc-600">
+                          {row.playerNames[i] ?? "—"}
+                        </span>
+                      )}
+                      <RoundStatsLine
+                        state={state}
+                        playerId={pid}
+                        className="shrink-0 text-[11px]"
+                      />
+                    </div>
+                  ))}
+                </div>
               )}
 
               {state.matchFormat.legsToWin > 1 && (
@@ -250,7 +317,12 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
               />
             )}
 
-            {!compact && !isCricket && state.mode !== "killer" && (
+            <RoundStatsLine
+              state={state}
+              playerId={p.id}
+              className={cn("mt-1", compact ? "text-[11px]" : "text-xs")}
+            />
+            {!compact && !isCricket && state.mode !== "killer" && !roundStatsForMode(state.mode).ppr && (
               <div className="mt-1 text-sm text-zinc-500">
                 avg {formatAvg(avg)}
                 {ps.oneEighties > 0 && (
