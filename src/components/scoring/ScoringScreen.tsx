@@ -83,7 +83,6 @@ function ScoringScreenInner() {
     pause,
     resume,
     nextLeg,
-    clearGame,
     getCheckout,
     setDisplayOnly,
   } = useGameStore();
