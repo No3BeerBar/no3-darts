@@ -2,13 +2,17 @@
 
 /**
  * Robust TV match feed: poll + SSE with reconnect + session cache.
- * Survives server restarts (once the tablet heartbeats again).
+ * Exposes `idle` so attract mode can show when no match is running.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameState } from "@/engine/types";
 
 const CACHE_KEY = "no3_tv_match_cache";
+/** Clear live UI after this many ms with no active match on the server. */
+const IDLE_GRACE_MS = 8_000;
+/** After match_won, linger then return to attract if still won / gone. */
+const MATCH_WON_ATTRACT_MS = 20_000;
 
 function cacheKey(room: string) {
   return `${CACHE_KEY}:${room}`;
@@ -38,8 +42,18 @@ function saveCache(room: string, state: GameState | null) {
   }
 }
 
+function isLiveStatus(status: GameState["status"] | undefined): boolean {
+  return (
+    status === "playing" ||
+    status === "paused" ||
+    status === "leg_won" ||
+    status === "match_won"
+  );
+}
+
 export function useTvMatchFeed(room: string) {
   const [state, setState] = useState<GameState | null>(null);
+  const [idle, setIdle] = useState(true);
   const [connected, setConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("Connecting…");
@@ -49,6 +63,9 @@ export function useTvMatchFeed(room: string) {
   roomRef.current = room;
   const calloutTimer = useRef<number | null>(null);
   const healthTimer = useRef<number | null>(null);
+  const idleTimer = useRef<number | null>(null);
+  const matchWonTimer = useRef<number | null>(null);
+  const lastSeenLiveAt = useRef<number | null>(null);
 
   const flashCallout = useCallback((text?: string) => {
     if (!text) return;
@@ -57,38 +74,90 @@ export function useTvMatchFeed(room: string) {
     calloutTimer.current = window.setTimeout(() => setCallout(null), 2200);
   }, []);
 
-  const apply = useCallback((match: GameState | null, source: string) => {
-    if (!match) return;
-    const roomNow = roomRef.current;
-    // Accept match if same room, or no room on match, or only live match
-    const matchRoom = (match.roomId || "").trim().toLowerCase();
-    const want = roomNow.trim().toLowerCase();
-    if (matchRoom && want && matchRoom !== want) {
-      // still allow if rooms loosely equal after normalize
-      if (matchRoom.replace(/\s+/g, " ") !== want.replace(/\s+/g, " ")) {
-        return;
-      }
+  const goIdle = useCallback((reason: string) => {
+    if (idleTimer.current) {
+      window.clearTimeout(idleTimer.current);
+      idleTimer.current = null;
     }
-
-    setState((prev) => {
-      if (prev && match.updatedAt < prev.updatedAt) return prev;
-      saveCache(roomNow, match);
-      return match;
-    });
-    setLastSyncAt(Date.now());
-    setStatusText(source === "cache" ? "Restored (waiting for tablet)" : "Live");
+    if (matchWonTimer.current) {
+      window.clearTimeout(matchWonTimer.current);
+      matchWonTimer.current = null;
+    }
+    setState(null);
+    saveCache(roomRef.current, null);
+    setIdle(true);
+    setStatusText(reason);
   }, []);
+
+  const scheduleIdle = useCallback(
+    (delayMs: number, reason: string) => {
+      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      idleTimer.current = window.setTimeout(() => goIdle(reason), delayMs);
+    },
+    [goIdle]
+  );
+
+  const apply = useCallback(
+    (match: GameState | null, source: string) => {
+      if (!match || !isLiveStatus(match.status)) return;
+      const roomNow = roomRef.current;
+      const matchRoom = (match.roomId || "").trim().toLowerCase();
+      const want = roomNow.trim().toLowerCase();
+      if (matchRoom && want && matchRoom !== want) {
+        if (matchRoom.replace(/\s+/g, " ") !== want.replace(/\s+/g, " ")) {
+          return;
+        }
+      }
+
+      if (idleTimer.current) {
+        window.clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+
+      lastSeenLiveAt.current = Date.now();
+      setIdle(false);
+
+      setState((prev) => {
+        if (prev && match.updatedAt < prev.updatedAt) return prev;
+        saveCache(roomNow, match);
+        return match;
+      });
+      setLastSyncAt(Date.now());
+      setStatusText(source === "cache" ? "Restored (waiting for tablet)" : "Live");
+
+      if (match.status === "match_won") {
+        if (matchWonTimer.current) window.clearTimeout(matchWonTimer.current);
+        matchWonTimer.current = window.setTimeout(() => {
+          // Still showing a finished match with no newer live state → attract
+          setState((cur) => {
+            if (cur && cur.id === match.id && cur.status === "match_won") {
+              saveCache(roomRef.current, null);
+              setIdle(true);
+              setStatusText("Match over · attract");
+              return null;
+            }
+            return cur;
+          });
+        }, MATCH_WON_ATTRACT_MS);
+      } else if (matchWonTimer.current) {
+        window.clearTimeout(matchWonTimer.current);
+        matchWonTimer.current = null;
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!room) return;
 
-    // Seed from session cache immediately (survives TV page refresh)
     const cached = loadCache(room);
-    if (cached) {
+    if (cached && isLiveStatus(cached.status)) {
       apply(cached, "cache");
       setStatusText("Restored cache · reconnecting…");
+      setIdle(false);
     } else {
       setState(null);
+      setIdle(true);
       setStatusText("Waiting for match…");
     }
 
@@ -112,15 +181,21 @@ export function useTvMatchFeed(room: string) {
         }
         const data = await r.json();
         setConnected(true);
-        if (data.match) {
+        if (data.match && isLiveStatus((data.match as GameState).status)) {
           apply(data.match as GameState, "poll");
         } else {
-          // Don't clear existing state — tablet may re-publish after deploy
-          setStatusText((prev) =>
-            prev.startsWith("Live") || prev.includes("Restored")
-              ? "Waiting for tablet sync…"
-              : "Waiting for match…"
-          );
+          // No active match — grace period so brief tablet gaps don't flash attract
+          const seen = lastSeenLiveAt.current;
+          if (!seen) {
+            goIdle("Waiting for match…");
+          } else {
+            scheduleIdle(IDLE_GRACE_MS, "Board idle · attract");
+            setStatusText((prev) =>
+              prev.startsWith("Live") || prev.includes("Restored")
+                ? "Waiting for tablet sync…"
+                : "Waiting for match…"
+            );
+          }
         }
       } catch {
         setConnected(false);
@@ -155,6 +230,10 @@ export function useTvMatchFeed(room: string) {
         } catch {
           /* */
         }
+      });
+
+      es.addEventListener("match_removed", () => {
+        scheduleIdle(1_500, "Match cleared · attract");
       });
 
       es.addEventListener("dart_detected", (ev) => {
@@ -243,14 +322,17 @@ export function useTvMatchFeed(room: string) {
       if (pollTimer) window.clearInterval(pollTimer);
       if (sseRetryTimer) window.clearTimeout(sseRetryTimer);
       if (healthTimer.current) window.clearTimeout(healthTimer.current);
+      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      if (matchWonTimer.current) window.clearTimeout(matchWonTimer.current);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("online", fetchActive);
     };
-  }, [room, apply, flashCallout]);
+  }, [room, apply, flashCallout, goIdle, scheduleIdle]);
 
   return {
     state,
     setState,
+    idle,
     connected,
     lastSyncAt,
     statusText,

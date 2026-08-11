@@ -11,7 +11,7 @@ Bar ops guide for **No. 3 Craft Beer Bar**: Autodarts detects throws; No3 scores
 | **Windows mini-PC** | Autodarts Board Manager, companion bridge, optional TV browser kiosk |
 | **3× USB cams + ring light** | Autodarts hardware (calibrate in Board Manager) |
 | **iPad** | Player interaction — No3 `/play` (setup, undo, fix dart, end turn) |
-| **TV (HDMI)** | Match view — No3 `/tv` (same mini-PC HDMI out **or** second display) |
+| **TV (HDMI)** | Match view — No3 `/tv` (attract when idle; live scores when a match is on). Same mini-PC HDMI out **or** second display. |
 
 ```
 [Cams] → Autodarts Board Manager :3180
@@ -55,6 +55,7 @@ Bridge-only knobs also live in `tools/autodarts-companion/config.example.yaml` (
 
 - **Same PC → TV:** set Windows to extend or duplicate to the HDMI display; open kiosk on that monitor (drag once, or set Windows “show on” before kiosk).
 - **Second browser window:** `kiosk.open_tv: true` launches `--kiosk {no3.url}/tv`.
+- **Idle / attract:** with no active match for `room_id`, `/tv` rotates weekly + all-time leaderboards, available games, and a start-on-iPad CTA. Starting a match on the iPad flips to live scoring; saving/discarding returns to attract. Details: [`docs/TV.md`](./TV.md).
 - If kiosk lands on the wrong screen: exit kiosk (`Alt+F4`), move a normal window to the TV, re-run with kiosk, or use Windows display settings to make the TV primary for that session.
 
 ### iPad
@@ -120,6 +121,7 @@ When the board is empty after takeout (safe window), bridge probes local HTTP re
 2. Edit `tools/board-station/config.yaml` (`exe_path`, No3 URL, room)  
 3. Double-click `start-board.bat`  
 4. iPad → play URL → start match on that room  
-5. TV shows `/tv`  
+5. TV shows `/tv` (attract until a match starts)  
 6. Throw; if misread → tap dart on iPad **or** correct in Board Manager (bridge syncs)  
-7. If cams die → wait for toast + auto-restart; if still dead, relaunch Board Manager manually  
+7. End match on iPad → TV returns to attract  
+8. If cams die → wait for toast + auto-restart; if still dead, relaunch Board Manager manually  

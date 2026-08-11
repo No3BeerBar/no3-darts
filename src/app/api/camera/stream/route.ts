@@ -1,18 +1,11 @@
-import { checkCameraAuth, subscribe } from "@/lib/server-game-store";
+import { subscribe } from "@/lib/server-game-store";
 
 /**
  * GET /api/camera/stream
  * Server-Sent Events stream of dart detections + match updates.
- * Camera software or secondary displays can subscribe.
+ * Public read for TV / tablet displays. Camera POST routes stay keyed.
  */
-export async function GET(request: Request) {
-  if (!checkCameraAuth(request)) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
+export async function GET() {
   const encoder = new TextEncoder();
   let unsubscribe: (() => void) | undefined;
 

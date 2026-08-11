@@ -25,6 +25,12 @@ const listeners = new Set<Listener>();
 const cameraHealthByRoom = new Map<string, CameraHealth>();
 
 export function upsertServerMatch(state: GameState): void {
+  // Finished matches leave the live registry so TV returns to attract.
+  if (state.status === "finished" || state.status === "setup") {
+    removeServerMatch(state.id);
+    return;
+  }
+
   const existing = matches.get(state.id);
   // Never let a stale tablet heartbeat wipe newer camera darts.
   // Heartbeats re-push local state every ~2.5s; if the camera scored first,

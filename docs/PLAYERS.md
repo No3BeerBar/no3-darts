@@ -74,6 +74,7 @@ Schema tables are created automatically on first DB use (no separate migrate job
 | GET | `/api/auth/me` | current session player |
 | GET | `/api/players` | public names + stats (no hashes) |
 | GET | `/api/players/:id/stats` | aggregates + recent history |
+| GET | `/api/leaderboard` | weekly + all-time boards (TV attract; registered only) |
 | POST | `/api/matches/persist` | finished match → server history + aggregates |
 
 ## Local dev with Postgres

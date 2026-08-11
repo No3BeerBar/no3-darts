@@ -35,7 +35,8 @@ kiosk:
   enabled: true
   # msedge | chrome | none
   browser: "msedge"
-  # Open match view on the TV / second display (kiosk fullscreen)
+  # Open TV on HDMI / second display (kiosk fullscreen).
+  # /tv shows attract (leaderboards + games) when idle, live match when active.
   open_tv: true
   tv_url: "{no3.url}/tv"
   # Optional: also open play URL on this PC (usually leave false — use iPad)

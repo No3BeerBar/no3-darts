@@ -193,6 +193,64 @@ body {
   user-select: none;
 }
 
+/* Attract / idle mode motion */
+@keyframes tvAttractIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tvAttractRowIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes tvAttractPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(225 6 0 / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 28px 4px rgb(225 6 0 / 0.25);
+  }
+}
+@keyframes tvAttractLogo {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 12px rgb(225 6 0 / 0.25));
+  }
+  50% {
+    transform: scale(1.03);
+    filter: drop-shadow(0 0 28px rgb(225 6 0 / 0.45));
+  }
+}
+.tv-attract-panel {
+  animation: tvAttractIn 0.55s ease-out both;
+}
+.tv-attract-row {
+  animation: tvAttractRowIn 0.45s ease-out both;
+}
+.tv-attract-pulse {
+  animation: tvAttractPulse 2.4s ease-in-out infinite;
+}
+.tv-attract-logo {
+  animation: tvAttractLogo 4.5s ease-in-out infinite;
+}
+.tv-attract-scroll {
+  max-height: min(62vh, 720px);
+  overflow: hidden;
+}
+
 @supports (padding: env(safe-area-inset-bottom)) {
   body {
     padding-bottom: env(safe-area-inset-bottom);
