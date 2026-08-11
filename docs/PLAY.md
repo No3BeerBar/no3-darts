@@ -47,9 +47,55 @@ Ending a completed match clears the **match** and match seat-auth — it does **
 - **Cold start** (nobody signed in on this tablet): idle `/play` and setup do **not** dump the full roster. Use **Saved players** → searchable picker → name → PIN.
 - **Already signed in** (haven’t logged out): setup shows those PIN-trusted names as quick chips so you can re-seat them between games without opening the picker. **Saved players** remains available to add someone new from the directory.
 - **Guests** still use + Guest with no PIN.
+- **Bots** — see [Bot opponents](#bot-opponents) below.
 - Empty directory: picker says so and offers **Create account**.
 - Wired to `GET /api/players` (same register + PIN data as before).
 - After **2 minutes idle** (not mid-match) everyone is signed out → next visit is the cold picker path again.
+
+## Bot opponents
+
+From match setup (`/`), patrons can seat one or more **bot** opponents alongside guests / PIN players (or play human vs bot).
+
+### How to add a bot
+
+1. Open setup (`/` from idle `/play`).
+2. Pick a mode (X01 recommended; Cricket works too).
+3. Under **Bot opponent**, tap a difficulty chip, then **+ {name}**.
+4. Seat humans as usual (Saved players / Guest). Start the match.
+
+Bot seats show a red **BOT** badge (and difficulty) on setup chips and on `/play` score cards.
+
+### Difficulty ladder
+
+| Chip | Role |
+|------|------|
+| Rookie | Easy — low averages, shaky doubles |
+| Pub Regular | Medium pub night |
+| League Night | Harder league pace |
+| Match Sharp | Strong scoring |
+| Pro | High finish rate |
+| **Luke Littler** | Hardest — elite scoring + checkouts |
+
+The hardest bot is always named exactly **Luke Littler**.
+
+### How bots throw
+
+- When it’s a bot’s turn, the tablet **generates darts itself** after a short delay (~0.7s before the first dart, ~0.85s between darts) so the visit reads naturally — not instant spam.
+- Manual board / keys input is disabled for that visit; Autodarts/camera scoring is paused for bot throwers so camera darts don’t collide.
+- When a human’s turn returns, camera + board behave as before.
+- Ending / aborting the match cancels any pending bot timer.
+
+### Stats & PIN
+
+- Bots are **not** registered PIN players. No account, no seat PIN, no leaderboard / history credit for the bot seat.
+- Human PIN players still get credit for **their own** performance when a registered player is in the match (same rules as guest-mixed games).
+- Guest-only vs bots: no history (ephemeral), same as guest-only matches.
+
+### Modes (v1)
+
+- **X01** (301/501/…) — full visit generator (scoring + checkout routes).
+- **Cricket** — marks / scoring aim by difficulty.
+- Baseball / 41 / Killer and other modes use a simple target-hit path so bots can sit in; extend `generateGenericBotDart` in `src/engine/bot/generate-visit.ts` for richer play.
 
 ## Resume & sign-in
 

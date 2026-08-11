@@ -63,10 +63,12 @@ export function clearSeatAuth(): void {
 /** Seed verification when a match starts (all registered seats just passed PIN/session). */
 export function seedSeatAuthForMatch(
   matchId: string,
-  players: Array<Pick<PlayerRef, "id" | "isGuest">>,
+  players: Array<Pick<PlayerRef, "id" | "name" | "isGuest" | "isBot">>,
   sessionPlayerId: string | null
 ): SeatAuthState {
-  const verifiedPlayerIds = players.filter((p) => p.isGuest !== true).map((p) => p.id);
+  const verifiedPlayerIds = players
+    .filter((p) => p.isGuest !== true && p.isBot !== true)
+    .map((p) => p.id);
   const next: SeatAuthState = {
     matchId,
     verifiedPlayerIds,
@@ -136,20 +138,20 @@ export function effectiveVerifiedSeatIds(
 /** Registered seats that must enter PIN before scoring may continue. */
 export function seatsNeedingReauth(
   matchId: string,
-  players: Array<Pick<PlayerRef, "id" | "name" | "isGuest">>,
+  players: Array<Pick<PlayerRef, "id" | "name" | "isGuest" | "isBot">>,
   sessionPlayerId: string | null,
   seatAuth: SeatAuthState | null = getSeatAuth()
 ): Array<{ id: string; name: string }> {
   const verified = new Set(effectiveVerifiedSeatIds(matchId, seatAuth, sessionPlayerId));
   return players
-    .filter((p) => p.isGuest !== true && !verified.has(p.id))
+    .filter((p) => p.isGuest !== true && p.isBot !== true && !verified.has(p.id))
     .map((p) => ({ id: p.id, name: p.name }));
 }
 
 /** True when an in-progress match may accept scoring input. */
 export function canScoreMatch(
   matchId: string,
-  players: Array<Pick<PlayerRef, "id" | "name" | "isGuest">>,
+  players: Array<Pick<PlayerRef, "id" | "name" | "isGuest" | "isBot">>,
   sessionPlayerId: string | null,
   seatAuth: SeatAuthState | null = getSeatAuth()
 ): boolean {

@@ -110,6 +110,11 @@ function resolveMatch(opts: {
   return listServerMatches().find((m) => m.status === "playing");
 }
 
+function currentThrowerIsBot(state: GameState): boolean {
+  const p = state.players[state.currentPlayerIndex];
+  return Boolean(p?.isBot || p?.botDifficulty != null);
+}
+
 export function applyCameraDart(
   event: DartDetectedEvent
 ): { ok: true; state: GameState; callout?: string; turnEnded: boolean } | { ok: false; error: string } {
@@ -117,6 +122,10 @@ export function applyCameraDart(
 
   if (!state) return { ok: false, error: "No active match found" };
   if (state.status !== "playing") return { ok: false, error: `Match status is ${state.status}` };
+  // Bot seats generate their own darts on the tablet — ignore Autodarts/camera
+  if (currentThrowerIsBot(state)) {
+    return { ok: false, error: "Bot thrower — camera scoring paused" };
+  }
 
   const beforePlayer = state.currentPlayerIndex;
   const beforeTurnLen = state.currentTurnDarts.length;
@@ -158,6 +167,9 @@ export function applyCameraEndTurn(opts: {
   if (!state) return { ok: false, error: "No active match found" };
   if (state.status !== "playing") {
     return { ok: false, error: `Match status is ${state.status}` };
+  }
+  if (currentThrowerIsBot(state)) {
+    return { ok: false, error: "Bot thrower — camera scoring paused" };
   }
 
   // Visit already empty (3rd dart auto-ended) — just re-broadcast state
@@ -205,6 +217,9 @@ export function applyCameraCorrect(opts: {
   if (!state) return { ok: false, error: "No active match found" };
   if (state.status !== "playing" && state.status !== "leg_won" && state.status !== "match_won") {
     return { ok: false, error: `Match status is ${state.status}` };
+  }
+  if (state.status === "playing" && currentThrowerIsBot(state)) {
+    return { ok: false, error: "Bot thrower — camera scoring paused" };
   }
 
   const beforePlayer = state.currentPlayerIndex;

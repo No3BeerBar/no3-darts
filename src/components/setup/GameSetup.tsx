@@ -2,10 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { GameModeId, ModeConfig, PlayerRef } from "@/engine";
+import type { BotDifficulty, GameModeId, ModeConfig, PlayerRef } from "@/engine";
 import {
+  BOT_DIFFICULTY_ORDER,
+  BOT_PROFILES,
   buildTeamsFromDraft,
+  createBotSeat,
   createId,
+  getBotProfile,
   modeSupportsTeams,
   validateKillerNumbers,
 } from "@/engine";
@@ -87,6 +91,7 @@ export function GameSetup() {
   const [setsToWin, setSetsToWin] = useState(1);
   const [selected, setSelected] = useState<PlayerRef[]>([]);
   const [guestName, setGuestName] = useState("");
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>("pub");
   const [countUpTurns, setCountUpTurns] = useState(8);
   const [killerLives, setKillerLives] = useState(3);
   const [killerNumbers, setKillerNumbers] = useState<Record<string, number>>({});
@@ -271,6 +276,23 @@ export function GameSetup() {
       setSelected((prev) => (prev.length >= 8 ? prev : [...prev, g]));
     }
     setGuestName("");
+  };
+
+  const addBot = (difficulty: BotDifficulty = botDifficulty) => {
+    const bot = createBotSeat(difficulty, () => createId("bot"));
+    if (isTeams) {
+      setHolding(bot);
+    } else {
+      setSelected((prev) => (prev.length >= 8 ? prev : [...prev, bot]));
+    }
+    // Killer: auto-pick a free number for the new bot seat
+    if (mode === "killer" && !isTeams) {
+      const used = new Set(Object.values(killerNumbers));
+      const free = Array.from({ length: 20 }, (_, i) => i + 1).find((n) => !used.has(n));
+      if (free != null) {
+        setKillerNumbers((prev) => ({ ...prev, [bot.id]: free }));
+      }
+    }
   };
 
   const buildConfig = (): ModeConfig => {
@@ -657,6 +679,9 @@ export function GameSetup() {
                     (killerPickPlayerId ?? selected.find((x) => killerNumbers[x.id] == null)?.id) ===
                     p.id;
                   const num = killerNumbers[p.id];
+                  const botBadge = p.isBot
+                    ? getBotProfile(p.botDifficulty ?? "pub").badge
+                    : null;
                   return (
                     <button
                       key={p.id}
@@ -669,7 +694,14 @@ export function GameSetup() {
                           : "border-[var(--panel-border)] bg-[var(--panel)]"
                       )}
                     >
-                      <div className="truncate text-sm font-semibold text-zinc-100">{p.name}</div>
+                      <div className="truncate text-sm font-semibold text-zinc-100">
+                        {p.name}
+                        {botBadge && (
+                          <span className="ml-1.5 align-middle text-[9px] font-bold tracking-wider text-[var(--brand-red-bright)]">
+                            BOT · {botBadge}
+                          </span>
+                        )}
+                      </div>
                       <div className="font-display text-xs tracking-wider text-zinc-500">
                         {num ? `D${num}` : "TAP #"}
                       </div>
@@ -945,6 +977,44 @@ export function GameSetup() {
               Create account
             </button>
           </div>
+
+          <div className="mt-3 rounded-xl border border-[var(--panel-border)] bg-[#050505] p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-[10px] tracking-[0.2em] text-zinc-500">
+                BOT OPPONENT
+              </h3>
+              <button
+                type="button"
+                onClick={() => addBot()}
+                className="btn-ghost min-h-10 shrink-0 px-3 text-xs"
+              >
+                + {BOT_PROFILES[botDifficulty].displayName}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {BOT_DIFFICULTY_ORDER.map((id) => {
+                const profile = BOT_PROFILES[id];
+                const elite = id === "luke_littler";
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setBotDifficulty(id)}
+                    className={cn(
+                      "chip min-h-10 px-2.5 text-xs",
+                      botDifficulty === id && "chip-active",
+                      elite && botDifficulty === id && "border-[var(--brand-red)]"
+                    )}
+                  >
+                    {profile.displayName}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] text-zinc-600">
+              Bots throw automatically · no PIN · no stats. Hardest: Luke Littler.
+            </p>
+          </div>
         </section>
       ) : (
         /* ——— SINGLES / KILLER player pick ——— */
@@ -961,7 +1031,13 @@ export function GameSetup() {
                   onClick={() => togglePlayer(p)}
                   className="chip chip-active min-h-10 px-3"
                 >
-                  {i + 1}. {p.name} ×
+                  {i + 1}. {p.name}
+                  {p.isBot && (
+                    <span className="ml-1 text-[9px] tracking-wider text-[var(--brand-red-bright)]">
+                      BOT
+                    </span>
+                  )}{" "}
+                  ×
                 </button>
               ))}
             </div>
@@ -1028,6 +1104,44 @@ export function GameSetup() {
             >
               Create account
             </button>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-[var(--panel-border)] bg-[#050505] p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-[10px] tracking-[0.2em] text-zinc-500">
+                BOT OPPONENT
+              </h3>
+              <button
+                type="button"
+                onClick={() => addBot()}
+                className="btn-ghost min-h-10 shrink-0 px-3 text-xs"
+              >
+                + {BOT_PROFILES[botDifficulty].displayName}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {BOT_DIFFICULTY_ORDER.map((id) => {
+                const profile = BOT_PROFILES[id];
+                const elite = id === "luke_littler";
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setBotDifficulty(id)}
+                    className={cn(
+                      "chip min-h-10 px-2.5 text-xs",
+                      botDifficulty === id && "chip-active",
+                      elite && botDifficulty === id && "border-[var(--brand-red)]"
+                    )}
+                  >
+                    {profile.displayName}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] text-zinc-600">
+              Bots throw automatically · no PIN · no stats. Hardest: Luke Littler.
+            </p>
           </div>
         </section>
       )}

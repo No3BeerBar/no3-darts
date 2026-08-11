@@ -23,7 +23,7 @@ export interface DartThrow {
   /** Optional polar position for CV/heatmap (degrees 0–360, radius 0–1) */
   angle?: number;
   radius?: number;
-  source?: "manual" | "camera" | "api";
+  source?: "manual" | "camera" | "api" | "bot";
 }
 
 export type GameModeId =
@@ -129,10 +129,26 @@ export interface MatchFormat {
   setsToWin: number; // 1 = legs only
 }
 
+/** Bot difficulty ladder — hardest is always `luke_littler` ("Luke Littler"). */
+export type BotDifficulty =
+  | "rookie"
+  | "pub"
+  | "league"
+  | "match"
+  | "pro"
+  | "luke_littler";
+
 export interface PlayerRef {
   id: string;
   name: string;
+  /**
+   * Guests (and bots) skip PIN / seat re-auth and never receive
+   * leaderboard / history credit.
+   */
   isGuest: boolean;
+  /** Ephemeral AI opponent — not a PIN account. Implies isGuest. */
+  isBot?: boolean;
+  botDifficulty?: BotDifficulty;
 }
 
 /**

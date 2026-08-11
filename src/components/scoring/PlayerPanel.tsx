@@ -1,8 +1,12 @@
 "use client";
 
 import {
+<<<<<<< HEAD
   computePlayerRoundStats,
   formatRoundStat,
+=======
+  getBotProfile,
+>>>>>>> 919b385 (Add bot opponents on /play with Luke Littler as hardest)
   getKillerExtra,
   getRemaining,
   isTeamGame,
@@ -13,6 +17,15 @@ import {
 } from "@/engine";
 import { cn, formatAvg } from "@/lib/utils";
 import { CricketMarksRow, getCricketNumbers, playerMarks } from "./CricketMarks";
+
+function BotBadge({ difficulty }: { difficulty?: Parameters<typeof getBotProfile>[0] }) {
+  const badge = difficulty ? getBotProfile(difficulty).badge : "BOT";
+  return (
+    <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[9px] font-bold tracking-wider text-[var(--brand-red-bright)]">
+      BOT · {badge}
+    </span>
+  );
+}
 
 interface PlayerPanelProps {
   state: GameState;
@@ -117,7 +130,13 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                   "text-zinc-400"
                 )}
               >
-                {row.playerNames.join("  ·  ")}
+                {row.team.playerIds
+                  .map((id) => {
+                    const p = state.players.find((x) => x.id === id);
+                    if (!p) return "?";
+                    return p.isBot ? `${p.name} (bot)` : p.name;
+                  })
+                  .join("  ·  ")}
               </div>
 
               {/* Who throws */}
@@ -263,11 +282,12 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
                   )}
                 >
                   {p.name}
+                  {p.isBot && <BotBadge difficulty={p.botDifficulty} />}
                 </div>
                 {active && !k?.eliminated && (
                   <div className="mt-1 inline-flex bg-[var(--brand-red)] px-2 py-0.5">
                     <span className="font-display text-[10px] font-bold tracking-wide text-white">
-                      Throwing
+                      {p.isBot ? "Bot throwing" : "Throwing"}
                     </span>
                   </div>
                 )}
