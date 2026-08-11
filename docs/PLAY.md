@@ -78,6 +78,19 @@ Bot seats show a red **BOT** badge (and difficulty) on setup chips and on `/play
 
 The hardest bot is always named exactly **Luke Littler**.
 
+### Luke Littler calibration (Aug 2026)
+
+Tuned toward real-world recent form (not a perfect aimbot):
+
+| Knob | Target feel |
+|------|-------------|
+| 3-dart scoring average | **~100–103** (profile `scoringAvg` 101; 12-mo ~101.1 / L200 ~103) |
+| Checkout conversion | **~43–46%** (`checkoutSkill` 0.45) — misses doubles like elite humans |
+| Scoring style | Heavy **T20** (“Nuke”); lots of 180s when hot |
+| Finish routes | Classic table routes when reasonable — e.g. **141 = T20 T19 D12**, **170 = T20 T20 Bull** |
+
+Knobs live in `src/engine/bot/profiles.ts`. Aim/treble bias are paired so simulated T20-lane scoring visits land near that average band (see bot unit smoke test).
+
 ### How bots throw
 
 - When it’s a bot’s turn, the tablet **generates darts itself** after a short delay (~0.7s before the first dart, ~0.85s between darts) so the visit reads naturally — not instant spam.
@@ -91,11 +104,20 @@ The hardest bot is always named exactly **Luke Littler**.
 - Human PIN players still get credit for **their own** performance when a registered player is in the match (same rules as guest-mixed games).
 - Guest-only vs bots: no history (ephemeral), same as guest-only matches.
 
-### Modes (v1)
+### Modes (bot AI)
 
-- **X01** (301/501/…) — full visit generator (scoring + checkout routes).
-- **Cricket** — marks / scoring aim by difficulty.
-- Baseball / 41 / Killer and other modes use a simple target-hit path so bots can sit in; extend `generateGenericBotDart` in `src/engine/bot/generate-visit.ts` for richer play.
+Bots are **mode-aware** — they aim at the current mode’s target, not blind T20:
+
+| Mode | Bot behaviour |
+|------|----------------|
+| **X01** | T20/T19 scoring lanes + checkout table (Luke prefers classic routes) |
+| **Cricket** | Marks on open numbers (highest first), not blind T20 |
+| **41** | Current round target (20 → 19 → any double → … → exact 41 → bulls). Exact-41 plans a 3-dart sum of 41 |
+| **Baseball** | Only the inning number (S/D/T) |
+| **Killer** | Arm / kill on doubles of the assigned number |
+| Other | ATC follows next target; Shanghai / Count-Up / Bermuda score T20-ish |
+
+Planners live in `src/engine/bot/generate-visit.ts` (`planFortyOneAim`, etc.).
 
 ## Resume & sign-in
 
