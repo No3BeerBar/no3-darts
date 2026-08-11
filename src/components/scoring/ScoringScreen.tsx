@@ -462,9 +462,9 @@ function ScoringScreenInner() {
       <main
         className={cn(
           "mx-auto grid w-full max-w-6xl flex-1 min-h-0 gap-2 px-2 py-2",
-          // Portrait stack
-          "grid-rows-[minmax(0,32%)_minmax(220px,38%)_minmax(0,1fr)]",
-          // Landscape: chrome | board
+          // Portrait: scrollable chrome on top, fixed board band below
+          "grid-rows-[minmax(0,1fr)_minmax(240px,46%)]",
+          // Landscape / iPad: chrome | fixed board column
           "md:grid-cols-[minmax(0,1fr)_minmax(280px,44%)] md:grid-rows-1"
         )}
       >
