@@ -1,4 +1,6 @@
-# No3 Darts – DIY Detection System
+# No3 Darts – DIY Detection System (experimental)
+
+> **Not the recommended bar path.** For production at the bar, use **Autodarts Board Manager as the detector** and the companion bridge under [`tools/autodarts-companion/`](../tools/autodarts-companion/README.md) so No3 keeps game modes / scoring UI. This OpenCV stack remains for experiments.
 
 **This is our own computer-vision stack.** It does **not** use Autodarts hardware or software.
 

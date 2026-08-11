@@ -16,6 +16,7 @@ from rich.table import Table
 from .client import (
     AutodartsClient,
     dart_coords,
+    extract_status,
     extract_throws,
     format_dart,
     throws_signature,
@@ -73,7 +74,7 @@ def run_spy(
                 continue
 
             throws = extract_throws(state)
-            status = str(state.get("status") or state.get("Status") or "")
+            status = extract_status(state)
             sig = throws_signature(throws)
 
             if status and status != last_status:

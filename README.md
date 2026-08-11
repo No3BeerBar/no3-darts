@@ -1,8 +1,10 @@
 # No3 Darts
 
-Self-hosted automatic darts scoring for **No. 3 Craft Beer Bar**, inspired by autodarts.io.
+Self-hosted automatic darts scoring for **No. 3 Craft Beer Bar**.
 
-Modern Next.js app with a modular game engine, TV/tablet-friendly scoring UI, local multiplayer, stats, and a **DIY camera detection stack** (Python + OpenCV — **not Autodarts**).
+**Detection:** Autodarts Board Manager on the board PC.  
+**Games / UI:** No3 (X01, Cricket, Killer, … on tablet + TV).  
+A local bridge polls Autodarts and POSTs throws into No3.
 
 ![Stack](https://img.shields.io/badge/Next.js-15-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Railway](https://img.shields.io/badge/Deploy-Railway-purple)
 
@@ -41,7 +43,7 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 ### Ops
 - PWA installable on tablets
 - Dockerfile + `railway.toml` for Railway
-- REST API for camera software
+- REST API for camera / Autodarts bridge
 - Optional `CAMERA_API_KEY`
 
 ---
@@ -61,16 +63,33 @@ npm run build && npm start   # production
 
 ---
 
-## Windows mini-PC (cameras) — one-liner
+## Recommended detection: Autodarts → No3 bridge
 
-On the board PC, PowerShell:
+Autodarts owns cameras / throw detection. No3 owns match setup and game modes so the bar can run X01, Cricket, Killer, etc. without playing inside Autodarts.
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-irm https://raw.githubusercontent.com/No3BeerBar/no3-darts/main/detection/scripts/install-from-github.ps1 | iex
+```
+[Autodarts cams] → Board Manager :3180 → companion bridge → No3 /api/camera/dart
 ```
 
-Details: [`detection/INSTALL-MINIPC.md`](./detection/INSTALL-MINIPC.md) · [`detection/WINDOWS.md`](./detection/WINDOWS.md)
+### Bar mini-PC one-liner
+
+On the board PC (Windows), with Autodarts Board Manager running:
+
+```powershell
+cd C:\No3Darts\no3-darts\tools\autodarts-companion
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy config.example.yaml config.yaml
+# edit no3.url + room_id (+ camera_api_key if set on Railway)
+python -m companion bridge
+```
+
+Or: `tools\autodarts-companion\scripts\run-bridge.bat`
+
+Then start any No3 match on that room and throw. Details: [`tools/autodarts-companion/README.md`](./tools/autodarts-companion/README.md) · API: [`docs/CAMERA.md`](./docs/CAMERA.md).
+
+> Experimental DIY OpenCV under [`detection/`](./detection/README.md) is **not** the recommended bar path.
 
 ---
 
@@ -107,43 +126,23 @@ src/
   app/
     play/           # Full-screen scorer
     api/
-      camera/       # dart webhook + SSE stream
+      camera/       # dart webhook + end-turn + SSE stream
       matches/      # REST match control
+tools/
+  autodarts-companion/   # Autodarts → No3 bridge (recommended)
+detection/               # Experimental DIY OpenCV (not recommended for bar)
 ```
 
 **Client** holds the live match in `localStorage` (and Zustand).  
-On each change it **syncs** state to the server in-memory registry so camera software can post darts.
+On each change it **syncs** state to the server in-memory registry so the bridge can post darts.
 
 ```
 [Tablet UI] --localStorage--> [Zustand]
      |                            |
      +---- POST /api/matches -----+
                                   |
-[Camera / CV] --POST /api/camera/dart--> [Server engine] --> SSE subscribers
+[Autodarts bridge] --POST /api/camera/dart--> [Server engine] --> SSE subscribers
 ```
-
----
-
-## DIY camera detection (not Autodarts)
-
-We build our **own** detector under [`detection/`](./detection/README.md):
-
-1. Cameras around the board (1–3 USB/RTSP)
-2. Python OpenCV process on a bar PC / Pi
-3. Posts hits to `POST /api/camera/dart`
-4. Play UI merges them via SSE
-
-```bash
-cd detection
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -m no3_detect test-geometry
-python -m no3_detect calibrate --camera 0 --id cam0 --out ./calib/cam0.json
-# edit config.yaml, then:
-python -m no3_detect run --config config.yaml
-```
-
-API payload and auth: [`docs/CAMERA.md`](./docs/CAMERA.md).
 
 > Server match state is **in-memory** (per instance). Fine for a single Railway service. For multi-instance scale-out, swap `src/lib/server-game-store.ts` for Redis.
 
@@ -184,8 +183,7 @@ Change bar name, room name, and toggles under **Admin**.
 - [ ] Heatmaps from `angle` / `radius` on darts
 - [ ] Multi-room dashboard
 - [ ] Postgres persistence via `DATABASE_URL`
-- [ ] Detection v2: ellipse unwarp, multi-cam triangulation, ML tip refine
-- [ ] systemd / Docker image for bar mini-PC detector
+- [ ] Harden Autodarts bridge autostart on the bar mini-PC
 
 ---
 
