@@ -207,9 +207,10 @@ export default function AdminPage() {
             }
           />
           <p className="mt-1 text-xs text-zinc-500">
-            4 digits · default 1234 · unlocks /play staff tools (this browser). PIN reset on the
-            server uses <code className="text-zinc-400">STAFF_PIN</code> env (same default) — keep
-            them matched.
+            4 digits · default 1234 · unlocks /play staff tools and tournament setup (this
+            browser). Server APIs (PIN reset, tournament create/start/assign) use{" "}
+            <code className="text-zinc-400">STAFF_PIN</code> env — keep them matched or mutations
+            return 401.
           </p>
         </label>
       </section>

@@ -4,6 +4,7 @@
  */
 
 import type { GameState } from "@/engine/types";
+import { DEFAULT_STAFF_PIN } from "@/lib/auth/staff-constants";
 
 const KEYS = {
   players: "no3_players",
@@ -83,7 +84,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceEnabled: false,
   kioskMode: false,
   roomName: "Board 1",
-  staffPin: "1234", // keep in sync with DEFAULT_STAFF_PIN / STAFF_PIN env
+  staffPin: DEFAULT_STAFF_PIN, // keep matched with Railway STAFF_PIN
 };
 
 function emptyStats(): PlayerAggregateStats {
