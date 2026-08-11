@@ -4,11 +4,12 @@
  * `/play` scoring UI.
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
- * recent visits, dartboard, Stats link. End-of-match Next leg / Save stay available.
+ * recent visits, dartboard, Stats + End game. End-of-match Next leg / Save stay available.
  * No global AppShell nav — see docs/PLAY.md.
  *
- * Staff (admin unlocked): Undo / Edit / End / Pause / Cancel / Home + Keys/Pad.
+ * Staff (admin unlocked): Undo / Edit / End turn / Pause / Home + Keys/Pad.
  * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
+ * End game is patron-visible (not behind admin).
  */
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +36,7 @@ import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
-import { statsHrefFromPlay } from "@/lib/play-kiosk";
+import { matchScoringStarted, statsHrefFromPlay } from "@/lib/play-kiosk";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -154,6 +155,17 @@ function ScoringScreenInner() {
     : (killerFocus?.primary ?? fortyOneFocus?.focusNumber ?? null);
   const isAdmin = admin.isAdmin;
 
+  const endGame = () => {
+    if (!state) return;
+    if (
+      matchScoringStarted(state) &&
+      !confirm("End this game? Scores will not be saved.")
+    ) {
+      return;
+    }
+    clearGame();
+  };
+
   const submitPad = () => {
     const dart = parseDartLabel(pad);
     if (dart) {
@@ -263,6 +275,13 @@ function ScoringScreenInner() {
             >
               Stats
             </Link>
+            <button
+              type="button"
+              onClick={endGame}
+              className="btn-ghost min-h-11 px-3 font-display text-xs tracking-wider text-red-300"
+            >
+              End game
+            </button>
             {isAdmin ? (
               <>
                 <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
@@ -272,7 +291,7 @@ function ScoringScreenInner() {
                   Edit
                 </button>
                 <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
-                  End
+                  End turn
                 </button>
                 {state.status === "playing" ? (
                   <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
@@ -283,17 +302,8 @@ function ScoringScreenInner() {
                     ▶
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="btn-ghost min-h-10 px-3 text-xs text-red-300"
-                  onClick={() => {
-                    if (confirm("Cancel match?")) clearGame();
-                  }}
-                >
-                  ✕
-                </button>
                 <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
-                  Home
+                  Setup
                 </Link>
                 <button type="button" onClick={admin.lock} className="btn-ghost min-h-10 px-3 text-xs">
                   Lock
@@ -374,11 +384,13 @@ function ScoringScreenInner() {
               <button type="button" onClick={finishAndSave} className="btn-primary min-h-11 px-6">
                 Save
               </button>
-              {isAdmin && (
-                <button type="button" onClick={clearGame} className="btn-ghost min-h-11 px-6">
-                  Discard
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={endGame}
+                className="btn-ghost min-h-11 px-6 text-red-300"
+              >
+                End game
+              </button>
             </div>
           </div>
         )}
@@ -448,6 +460,15 @@ function ScoringScreenInner() {
             </div>
           </>
         )}
+
+        {/* Thumb-zone abort for iPad kiosk (same as header End game) */}
+        <button
+          type="button"
+          onClick={endGame}
+          className="btn-ghost mt-auto min-h-14 w-full border border-[rgb(225_6_0/0.35)] font-display text-base tracking-wider text-red-300"
+        >
+          End game
+        </button>
       </main>
     </div>
   );

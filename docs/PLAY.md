@@ -1,6 +1,6 @@
 # Play screen — patron vs staff
 
-The tablet scoring UI is **`/play`**. Match setup is **`/`**.
+The tablet scoring UI is **`/play`**. Match setup is **`/`**. Idle play landing is **`/play`** with no active match (“Set up a game”).
 
 ## Patron chrome (kiosk)
 
@@ -9,6 +9,13 @@ On setup and scoring:
 - Site-wide AppShell nav (Play · TV · Players · …) is **hidden**
 - A single **Stats** link opens the leaderboard (`/leaderboard?from=play&back=…`)
 - Staff still reach admin via long-press logo + PIN, tiny Admin control, `?admin=1`, or direct **`/admin`**
+
+**Leaving without the browser back button**
+
+| Screen | Control | Result |
+|--------|---------|--------|
+| Setup `/` | **Cancel** (header + next to Start) | Returns to idle `/play` without starting a match |
+| Active `/play` | **End game** (header + bottom; also after leg/match win) | Tears down the match → idle `/play`. Confirms if any scoring has started |
 
 On secondary screens opened from play (e.g. Stats):
 
@@ -27,9 +34,9 @@ Clean bar / kiosk UI for players:
 - Current visit with **tap-to-correct** (Autodarts misreads)
 - Recent visits (mode-correct Σ — Baseball does **not** sum raw bull values)
 - Dartboard for manual entry if needed
-- End of leg/match: **Next leg** / **Save**
+- End of leg/match: **Next leg** / **Save** / **End game**
 
-Hidden from patrons: Undo, Edit last, End turn, Pause, Cancel match, Home, Keys/Pad tabs, Discard.
+Hidden from patrons: Undo, Edit last, End turn, Pause, Setup, Keys/Pad tabs.
 
 ## Staff (admin)
 
@@ -44,6 +51,6 @@ Unlock on the same screen:
 
 Staff PIN is set under **Admin → Staff PIN** (default `1234`).
 
-When unlocked, staff get Undo / Edit / End / Pause / Cancel / Home + Keys/Pad tabs and Discard after a match.
+When unlocked, staff get Undo / Edit / End turn / Pause / Setup + Keys/Pad tabs. **End game** is always available (patrons and staff) — same clear path for a stuck match.
 
 Full bar settings remain on **`/admin`**.

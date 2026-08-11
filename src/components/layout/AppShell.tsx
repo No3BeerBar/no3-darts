@@ -2,10 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { usePlayReturnIdle } from "@/hooks/usePlayReturnIdle";
-import { isFromPlaySearch, statsHrefFromPlay } from "@/lib/play-kiosk";
+import {
+  PLAY_IDLE_HREF,
+  isFromPlaySearch,
+  statsHrefFromPlay,
+} from "@/lib/play-kiosk";
 import { useSettingsStore } from "@/store/settings-store";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +29,7 @@ function isBareRoute(pathname: string) {
 
 function ShellBrand() {
   return (
-    <Link href="/" className="flex min-w-0 items-center gap-2">
+    <Link href={PLAY_IDLE_HREF} className="flex min-w-0 items-center gap-2">
       <Image
         src="/brand/logo.png"
         alt="No.3"
@@ -39,6 +43,49 @@ function ShellBrand() {
         </div>
       </div>
     </Link>
+  );
+}
+
+/** Setup (`/`): Cancel → idle `/play`, plus Stats. No browser-back reliance. */
+function SetupChromeActions() {
+  const router = useRouter();
+  return (
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+      <button
+        type="button"
+        onClick={() => router.replace(PLAY_IDLE_HREF)}
+        className="btn-ghost min-h-11 px-4 font-display text-xs tracking-wider text-red-300"
+      >
+        Cancel
+      </button>
+      <Link
+        href={statsHrefFromPlay("/")}
+        className="btn-ghost min-h-11 px-4 font-display text-xs tracking-wider text-zinc-300"
+      >
+        Stats
+      </Link>
+    </div>
+  );
+}
+
+function MainNav({ pathname }: { pathname: string }) {
+  return (
+    <nav className="flex flex-wrap justify-end gap-0.5" aria-label="Main">
+      {NAV.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={cn(
+            "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
+            pathname === item.href
+              ? "bg-[var(--brand-red)] text-white"
+              : "text-zinc-400 active:bg-[var(--panel)]"
+          )}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -67,29 +114,9 @@ function ShellHeaderInner({
             Back to play
           </Link>
         ) : pathname === "/" ? (
-          <Link
-            href={statsHrefFromPlay("/")}
-            className="btn-ghost min-h-11 shrink-0 px-4 font-display text-xs tracking-wider text-zinc-300"
-          >
-            Stats
-          </Link>
+          <SetupChromeActions />
         ) : !hideNav ? (
-          <nav className="flex flex-wrap justify-end gap-0.5" aria-label="Main">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
-                  pathname === item.href
-                    ? "bg-[var(--brand-red)] text-white"
-                    : "text-zinc-400 active:bg-[var(--panel)]"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <MainNav pathname={pathname} />
         ) : null}
       </div>
     </header>
@@ -109,29 +136,9 @@ function ShellHeaderFallback({
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2">
         <ShellBrand />
         {pathname === "/" ? (
-          <Link
-            href={statsHrefFromPlay("/")}
-            className="btn-ghost min-h-11 shrink-0 px-4 font-display text-xs tracking-wider text-zinc-300"
-          >
-            Stats
-          </Link>
+          <SetupChromeActions />
         ) : !hideNav ? (
-          <nav className="flex flex-wrap justify-end gap-0.5" aria-label="Main">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
-                  pathname === item.href
-                    ? "bg-[var(--brand-red)] text-white"
-                    : "text-zinc-400 active:bg-[var(--panel)]"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <MainNav pathname={pathname} />
         ) : null}
       </div>
     </header>

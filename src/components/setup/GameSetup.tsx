@@ -14,6 +14,7 @@ import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
+import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { cn } from "@/lib/utils";
 
 const MODES: Array<{ id: GameModeId; name: string }> = [
@@ -952,14 +953,23 @@ export function GameSetup() {
         </div>
       )}
 
-      <button
-        type="button"
-        disabled={!canStart}
-        onClick={onStart}
-        className="btn-primary min-h-14 w-full text-lg disabled:opacity-40"
-      >
-        Start {isTeams ? "team match" : "match"}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => router.replace(PLAY_IDLE_HREF)}
+          className="btn-ghost min-h-14 flex-1 px-4 font-display text-base tracking-wider text-red-300"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!canStart}
+          onClick={onStart}
+          className="btn-primary min-h-14 flex-[2] text-lg disabled:opacity-40"
+        >
+          Start {isTeams ? "team match" : "match"}
+        </button>
+      </div>
     </div>
   );
 }
