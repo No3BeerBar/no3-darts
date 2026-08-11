@@ -21,8 +21,14 @@ import {
 } from "@/engine";
 import { buildStoredMatch, hasRegisteredPlayers } from "@/lib/match-export";
 import { persistMatchToServer } from "@/lib/persist-match";
+import {
+  canScoreMatch,
+  clearSeatAuth,
+  seedSeatAuthForMatch,
+} from "@/lib/seat-auth";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
 import { syncMatchToServer } from "@/lib/sync-server";
+import { useSessionStore } from "@/store/session-store";
 
 /** Save history / stats / Postgres only when a PIN account played. Guests are ephemeral. */
 function recordFinishedMatch(stored: ReturnType<typeof buildStoredMatch>): void {
@@ -67,6 +73,12 @@ function persist(state: GameState | null, skipServer = false) {
   }
 }
 
+/** Block scoring mutations when registered seats are no longer verified. */
+function assertSeatsVerified(state: GameState): boolean {
+  const sessionId = useSessionStore.getState().player?.id ?? null;
+  return canScoreMatch(state.id, state.players, sessionId);
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
   state: null,
   lastCallout: null,
@@ -95,6 +107,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   startGame: (opts) => {
     if (get().displayOnly) return;
     const state = createGame(opts);
+    const sessionId = useSessionStore.getState().player?.id ?? null;
+    seedSeatAuthForMatch(state.id, state.players, sessionId);
     persist(state);
     set({ state, lastCallout: "Game on!", lastHighlight: null });
   },
@@ -103,6 +117,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state || state.status !== "playing") return;
+    if (!assertSeatsVerified(state)) return;
     const dart = createDart(kind, number, { ...extra, source: extra?.source ?? "manual" });
     get().throwDartObject(dart);
   },
@@ -111,6 +126,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state || state.status !== "playing") return;
+    if (!assertSeatsVerified(state)) return;
     const result = applyDart(state, dart);
     persist(result.state);
     set({
@@ -128,6 +144,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state || state.status !== "playing") return;
+    if (!assertSeatsVerified(state)) return;
     const dart = kind === null ? null : createDart(kind, number, { source: "manual" });
     const result = correctTurnDartAt(state, index, dart);
     persist(result.state);
@@ -142,6 +159,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    if (!assertSeatsVerified(state)) return;
     const result = editLastTurn(state);
     persist(result.state);
     set({
@@ -155,6 +173,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    if (!assertSeatsVerified(state)) return;
     const result = endTurn(state);
     persist(result.state);
     set({ state: result.state, lastCallout: result.callout ?? "Turn end" });
@@ -164,6 +183,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    if (!assertSeatsVerified(state)) return;
     const result = undo(state);
     persist(result.state);
     set({ state: result.state, lastCallout: result.callout ?? "Undo", lastHighlight: null });
@@ -191,6 +211,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    if (!assertSeatsVerified(state)) return;
     const next = startNextLeg(state);
     persist(next);
     set({ state: next, lastCallout: `Leg ${next.legNumber}`, lastHighlight: null });
@@ -200,9 +221,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
+    if (!assertSeatsVerified(state)) return;
     const prevId = state.id;
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
     recordFinishedMatch(buildStoredMatch(finished));
+    clearSeatAuth();
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
     // Drop server copy so TV returns to attract mode
@@ -214,6 +237,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearGame: () => {
     if (get().displayOnly) return;
     const prev = get().state;
+    clearSeatAuth();
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
     // Drop server copy so TV stops showing the match
@@ -223,6 +247,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setState: (state, opts) => {
+    // Camera / remote sync must not advance a match when PIN seats need re-auth
+    if (
+      state &&
+      !get().displayOnly &&
+      !assertSeatsVerified(state)
+    ) {
+      return;
+    }
     if (get().displayOnly || opts?.localOnly) {
       setActiveGame(state);
       set({ state });

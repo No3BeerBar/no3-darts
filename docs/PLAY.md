@@ -26,6 +26,19 @@ On secondary screens opened from play (e.g. Stats):
 
 Optional **Admin → Kiosk mode** hides site-wide nav on every route.
 
+## Resume & sign-in
+
+In-progress matches are kept in the tablet’s `localStorage` (`no3_active_game`) so **Resume** on the home setup screen can return to `/play`.
+
+Registered (name + PIN) seats are **not** trusted from that blob alone:
+
+- Starting a match records seat verification (`no3_seat_auth`).
+- **Sign out** (or a lost session cookie) invalidates that player’s seats.
+- Loading / resuming an in-progress match re-checks every non-guest seat. If any need PIN again, scoring is blocked until they re-enter PIN (or **Abort match**).
+- Pure **guest** matches resume with no PIN. Mixed matches only re-prompt the registered seats.
+
+Guests stay ephemeral (no history / leaderboard). Do not continue scoring under a signed-out registered name.
+
 ## Patron (default)
 
 Clean bar / kiosk UI for players:
