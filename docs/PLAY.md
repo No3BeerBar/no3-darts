@@ -72,11 +72,26 @@ Registered (name + PIN) seats are **not** trusted from that blob alone:
 
 Guests stay ephemeral (no history / leaderboard). Do not continue scoring under a signed-out registered name.
 
+## Live MPR / PPR
+
+During active scoring, each seat shows a live per-round rate (updates as darts land and after undo/correct):
+
+| Mode | Shown | Definition |
+|------|--------|------------|
+| **Cricket** | **MPR** | Marks ÷ visits (Autodarts/league marks-per-round) |
+| **X01** (also Count-Up, Shanghai, Random Checkout) | **PPR** | Points scored ÷ visits (bust visit = 0 points) |
+| Baseball / 41 / Killer / Bermuda / ATC | — | Hidden (no clean mapping) |
+
+**Multi-leg** matches (`legsToWin > 1`) format as `currentLeg / overall` (e.g. MPR `2.45 / 2.61`). **Single-leg** matches show one number only.
+
+Also on the TV view when those modes apply.
+
 ## Patron (default)
 
 Clean bar / kiosk UI for players:
 
 - Big scores, thrower name, mode banner (Baseball / Killer / …)
+- Live **MPR** (Cricket) / **PPR** (X01) on seat cards
 - X01 outshot suggestions when finishing
 - Current visit with **tap-to-correct** (Autodarts misreads)
 - Recent visits (mode-correct Σ — Baseball does **not** sum raw bull values)

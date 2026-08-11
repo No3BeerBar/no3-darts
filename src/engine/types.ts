@@ -182,6 +182,8 @@ export interface Turn {
   bust: boolean;
   checkout: boolean;
   timestamp: number;
+  /** Leg this visit belongs to (for live MPR/PPR current vs overall). */
+  legNumber?: number;
 }
 
 export type GameStatus = "setup" | "playing" | "leg_won" | "match_won" | "paused" | "finished";

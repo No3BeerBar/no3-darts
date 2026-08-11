@@ -5,16 +5,19 @@ import Image from "next/image";
 import {
   baseballDartPoints,
   baseballInning,
+  computePlayerRoundStats,
   fortyOneBoardFocus,
   fortyOneDartPoints,
   fortyOneExact41DartContributes,
   fortyOneTarget,
+  formatRoundStat,
   getHandler,
   getKillerExtra,
   getRemaining,
   getTeamForPlayer,
   isTeamGame,
   killerBoardFocus,
+  roundStatsForMode,
   segmentLabel,
   suggestCheckout,
   teamScoreRows,
@@ -214,6 +217,38 @@ export function TvDisplay() {
                             </span>
                           </div>
                         )}
+                        {(() => {
+                          const show = roundStatsForMode(state.mode);
+                          if (!show.mpr && !show.ppr) return null;
+                          const multi = state.matchFormat.legsToWin > 1;
+                          return (
+                            <div className="mt-2 space-y-0.5 font-display text-[11px] tracking-wider text-zinc-600">
+                              {row.team.playerIds.map((pid, i) => {
+                                const rs = computePlayerRoundStats(state, pid);
+                                const bits: string[] = [];
+                                if (show.mpr) {
+                                  const m = formatRoundStat(rs.mpr, multi);
+                                  if (m) bits.push(`MPR ${m}`);
+                                }
+                                if (show.ppr) {
+                                  const pr = formatRoundStat(rs.ppr, multi);
+                                  if (pr) bits.push(`PPR ${pr}`);
+                                }
+                                if (bits.length === 0) return null;
+                                const label =
+                                  row.team.playerIds.length > 1
+                                    ? `${row.playerNames[i] ?? ""} · `
+                                    : "";
+                                return (
+                                  <div key={pid}>
+                                    {label}
+                                    {bits.join(" · ")}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div
                         className={`shrink-0 font-black tabular-nums leading-none tracking-tighter ${
@@ -289,7 +324,24 @@ export function TvDisplay() {
                           </div>
                         ) : (
                           <div className="mt-1 font-display text-[11px] tracking-wider text-zinc-600">
-                            AVG {formatAvg(avg)}
+                            {(() => {
+                              const show = roundStatsForMode(state.mode);
+                              const rs = computePlayerRoundStats(state, p.id);
+                              const multi = state.matchFormat.legsToWin > 1;
+                              const bits: string[] = [];
+                              if (show.mpr) {
+                                const m = formatRoundStat(rs.mpr, multi);
+                                if (m) bits.push(`MPR ${m}`);
+                              }
+                              if (show.ppr) {
+                                const pr = formatRoundStat(rs.ppr, multi);
+                                if (pr) bits.push(`PPR ${pr}`);
+                              }
+                              if (bits.length === 0 && !show.mpr && !show.ppr) {
+                                bits.push(`AVG ${formatAvg(avg)}`);
+                              }
+                              return bits.join(" · ");
+                            })()}
                             {ps.oneEighties > 0 && (
                               <span className="ml-2 text-[var(--style-orange)]">
                                 {ps.oneEighties}×180

@@ -34,6 +34,7 @@ import {
   nextLegStartingIndex,
   soloTeamsFromPlayers,
 } from "./teams";
+import { tagNewTurnsWithLeg } from "./player-stats";
 
 const HANDLERS: Record<GameModeId, GameModeHandler> = {
   x01: x01Handler,
@@ -178,8 +179,10 @@ export function applyDartRaw(state: GameState, dart: DartThrow): ApplyDartResult
   if (state.currentTurnDarts.length >= 3) {
     return { state, events: [], callout: "Turn full" };
   }
+  const prevTurns = state.turns.length;
   const handler = getHandler(state.mode);
   const result = handler.applyDart(state, dart);
+  tagNewTurnsWithLeg(result.state, prevTurns);
   result.state.updatedAt = Date.now();
   return result;
 }
@@ -199,16 +202,19 @@ export function applyDart(state: GameState, dart: DartThrow): ApplyDartResult {
     working = captureBaseline(working);
   }
 
+  const prevTurns = working.turns.length;
   const handler = getHandler(working.mode);
   let result = handler.applyDart(working, dart);
-  result.state.updatedAt = Date.now();
+  tagNewTurnsWithLeg(result.state, prevTurns);
 
   // Auto end turn when appropriate (and not already leg/match over)
   if (
     result.state.status === "playing" &&
     handler.shouldEndTurn(result.state)
   ) {
+    const beforeFin = result.state.turns.length;
     const fin = FINALIZERS[result.state.mode](result.state);
+    tagNewTurnsWithLeg(fin.state, beforeFin);
     // New visit baseline for next thrower
     fin.state.turnBaseline = structuredClone(fin.state.playerStates);
     result = {
@@ -372,7 +378,9 @@ export function endTurn(state: GameState): ApplyDartResult {
     next.updatedAt = Date.now();
     return { state: next, events: [{ type: "turn_end", timestamp: Date.now() }], callout: "PASS" };
   }
+  const prevTurns = state.turns.length;
   const result = FINALIZERS[state.mode](state);
+  tagNewTurnsWithLeg(result.state, prevTurns);
   result.state.turnBaseline = structuredClone(result.state.playerStates);
   result.state.updatedAt = Date.now();
   return result;

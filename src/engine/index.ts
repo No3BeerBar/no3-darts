@@ -41,3 +41,12 @@ export {
   dartPointsForMode,
   visitPointsFromTurn,
 } from "./visit-score";
+export {
+  computePlayerRoundStats,
+  formatRoundStat,
+  marksFromDart,
+  roundStatsForMode,
+  type PlayerRoundStats,
+  type RoundStatKind,
+  type RoundStatValue,
+} from "./player-stats";
