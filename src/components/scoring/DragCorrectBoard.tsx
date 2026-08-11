@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 
 interface DragCorrectBoardProps {
   size?: number;
+  /** Highlight whole wedge (e.g. Baseball inning target) */
+  focusNumber?: number | null;
   onConfirm: (kind: SegmentKind, number: number) => void;
   className?: string;
 }
@@ -13,6 +15,7 @@ interface DragCorrectBoardProps {
 /** Correction board — drag/tap; pin sits exactly under finger. */
 export function DragCorrectBoard({
   size = 320,
+  focusNumber = null,
   onConfirm,
   className,
 }: DragCorrectBoardProps) {
@@ -20,6 +23,7 @@ export function DragCorrectBoard({
     <div className={cn("flex flex-col items-center gap-1", className)}>
       <Dartboard
         size={size}
+        focusNumber={focusNumber}
         interactive
         showLiveLabel
         onScore={(kind, number) => onConfirm(kind, number)}

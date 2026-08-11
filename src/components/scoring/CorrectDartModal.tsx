@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 interface CorrectDartModalProps {
   slotIndex: number;
   currentLabel?: string;
+  /** Highlight whole wedge on correction board (e.g. Baseball target) */
+  focusNumber?: number | null;
   onPick: (kind: SegmentKind, number: number) => void;
   onClear: () => void;
   onClose: () => void;
@@ -20,6 +22,7 @@ interface CorrectDartModalProps {
 export function CorrectDartModal({
   slotIndex,
   currentLabel,
+  focusNumber = null,
   onPick,
   onClear,
   onClose,

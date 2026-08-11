@@ -20,12 +20,18 @@ const MODES: Array<{ id: GameModeId; name: string }> = [
   { id: "x01", name: "X01" },
   { id: "cricket", name: "Cricket" },
   { id: "shanghai", name: "Shanghai" },
+  { id: "baseball", name: "Baseball" },
   { id: "countup", name: "Count-Up" },
   { id: "around_the_clock", name: "Around Clock" },
   { id: "bermuda", name: "Bermuda" },
   { id: "random_checkout", name: "Checkout" },
   { id: "killer", name: "Killer" },
 ];
+
+const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
+  baseball:
+    "9 innings · only hits on the current inning number count (e.g. inning 4: S4/D4/T4 = 4/8/12) · anything else = 0 · highest total wins",
+};
 
 type PlayFormat = "singles" | "teams";
 
@@ -270,6 +276,8 @@ export function GameSetup() {
           mode: "killer",
           config: { lives: killerLives, playerNumbers: killerNumbers, doublesOnly: true },
         };
+      case "baseball":
+        return { mode: "baseball", config: { innings: 9 } };
     }
   };
 
@@ -447,6 +455,9 @@ export function GameSetup() {
             </button>
           ))}
         </div>
+        {MODE_BLURBS[mode] && (
+          <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">{MODE_BLURBS[mode]}</p>
+        )}
       </section>
 
       {teamsAllowed && (

@@ -18,6 +18,7 @@ export const TEAM_MODES: GameModeId[] = [
   "countup",
   "around_the_clock",
   "bermuda",
+  "baseball",
 ];
 
 export function modeSupportsTeams(mode: GameModeId): boolean {

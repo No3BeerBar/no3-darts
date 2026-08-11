@@ -24,6 +24,11 @@ export interface DartboardProps {
   highlight?: DartThrow | null;
   /** All darts to show as laser marks (e.g. current visit) */
   marks?: DartThrow[];
+  /**
+   * Light the whole numbered wedge (single + double + triple) — e.g. Baseball
+   * inning target, Autodarts-style active segment. 1–20.
+   */
+  focusNumber?: number | null;
   size?: number;
   className?: string;
   interactive?: boolean;
@@ -34,6 +39,7 @@ export interface DartboardProps {
 export function Dartboard({
   highlight,
   marks,
+  focusNumber = null,
   size = 360,
   className,
   interactive = false,
@@ -102,6 +108,10 @@ export function Dartboard({
       return d.kind === kind && d.number === num;
     });
   };
+
+  /** Whole wedge lit for mode target (Baseball inning, etc.) — under hover/hit. */
+  const isFocusWedge = (num: number) =>
+    typeof focusNumber === "number" && focusNumber >= 1 && focusNumber <= 20 && focusNumber === num;
 
   const pins = allMarks
     .map((d, i) => ({ pos: dartPin(d), index: i, dart: d }))
@@ -176,42 +186,61 @@ export function Dartboard({
           const multiA = dark ? "#c41e1e" : "#1a8f45";
           const multiB = dark ? "#8f1212" : "#0f6b32";
           const lit = "#f5c518";
+          // Autodarts-style target: whole wedge (S/D/T) for focusNumber
+          const focus = isFocusWedge(num);
+          const focusSingle = dark ? "#6b5a14" : "#f0e6a8";
+          const focusMulti = dark ? "#d4a017" : "#e8c547";
+          const fillRing = (
+            kind: "single" | "double" | "triple",
+            base: string,
+            focusBase: string
+          ) => (isLit(kind, num) ? lit : focus ? focusBase : base);
 
           return (
             <g key={num}>
               <path
                 d={wedgePath(i, NR.doubleInner, NR.doubleOuter)}
-                fill={isLit("double", num) ? lit : multiA}
+                fill={fillRing("double", multiA, focusMulti)}
                 stroke="#050505"
                 strokeWidth={0.6}
               />
               <path
                 d={wedgePath(i, NR.tripleOuter, NR.doubleInner)}
-                fill={isLit("single", num) ? lit : singleA}
+                fill={fillRing("single", singleA, focusSingle)}
                 stroke="#050505"
                 strokeWidth={0.4}
               />
               <path
                 d={wedgePath(i, NR.tripleInner, NR.tripleOuter)}
-                fill={isLit("triple", num) ? lit : multiB}
+                fill={fillRing("triple", multiB, focusMulti)}
                 stroke="#050505"
                 strokeWidth={0.6}
               />
               <path
                 d={wedgePath(i, NR.outerBull, NR.tripleInner)}
-                fill={isLit("single", num) ? lit : singleB}
+                fill={fillRing("single", singleB, focusSingle)}
                 stroke="#050505"
                 strokeWidth={0.4}
               />
+              {focus && (
+                <path
+                  d={wedgePath(i, NR.outerBull, NR.doubleOuter)}
+                  fill="none"
+                  stroke="#f5c518"
+                  strokeWidth={2.2}
+                  opacity={0.95}
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
               <text
                 x={CX + BOARD_R * NR.number * Math.cos(((i * 18 - 90) * Math.PI) / 180)}
                 y={CY + BOARD_R * NR.number * Math.sin(((i * 18 - 90) * Math.PI) / 180)}
                 textAnchor="middle"
                 dominantBaseline="central"
-                fill="#c4c4c8"
+                fill={focus ? "#f5c518" : "#c4c4c8"}
                 fontFamily="Oswald, system-ui, sans-serif"
-                fontWeight={600}
-                fontSize={15}
+                fontWeight={focus ? 700 : 600}
+                fontSize={focus ? 17 : 15}
                 style={{ pointerEvents: "none", userSelect: "none" }}
               >
                 {num}
