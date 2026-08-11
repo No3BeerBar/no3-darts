@@ -1,6 +1,8 @@
 # Play screen — patron vs staff
 
-The tablet scoring UI is **`/play`**.
+The tablet scoring UI is **`/play`**. Match setup is **`/`**.
+
+Site-wide AppShell nav (Play · TV · Players · …) is **hidden** on `/`, `/play`, and `/tv`. Optional **Admin → Kiosk mode** hides that nav on every route. Staff still reach **`/admin`** via direct URL, or unlock tools on `/play` (below).
 
 ## Patron (default)
 

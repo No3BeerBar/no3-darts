@@ -139,12 +139,18 @@ export default function AdminPage() {
           />
         </label>
         <label className="flex items-center justify-between gap-4 rounded-xl border border-zinc-800 px-4 py-3">
-          <span className="font-semibold">Kiosk / TV mode flag</span>
+          <div className="min-w-0">
+            <span className="font-semibold">Kiosk mode</span>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Hide site-wide nav everywhere (setup/play/TV already hide it). Staff:
+              open /admin directly or long-press logo on /play.
+            </p>
+          </div>
           <input
             type="checkbox"
             checked={settings.kioskMode}
             onChange={(e) => settings.update({ kioskMode: e.target.checked })}
-            className="h-5 w-5 accent-[var(--brand-red)]"
+            className="h-5 w-5 shrink-0 accent-[var(--brand-red)]"
           />
         </label>
         <label className="block">

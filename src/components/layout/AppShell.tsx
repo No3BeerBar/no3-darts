@@ -16,10 +16,30 @@ const NAV = [
   { href: "/admin", label: "Admin" },
 ];
 
+/** Fullscreen / kiosk surfaces — no AppShell chrome at all. */
+function isBareRoute(pathname: string) {
+  return pathname === "/play" || pathname === "/tv";
+}
+
+/**
+ * Hide site-wide nav on match setup + play/TV.
+ * When Admin → Kiosk mode is on, hide nav on every route (staff: `/admin` URL
+ * or long-press logo unlock on `/play`).
+ */
+function shouldHideNav(pathname: string, kioskMode: boolean) {
+  return (
+    kioskMode ||
+    pathname === "/" ||
+    pathname === "/play" ||
+    pathname === "/tv"
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const settings = useSettingsStore();
-  const bare = pathname === "/play" || pathname === "/tv";
+  const bare = isBareRoute(pathname);
+  const hideNav = shouldHideNav(pathname, settings.kioskMode);
 
   useEffect(() => {
     settings.hydrate();
@@ -47,22 +67,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </Link>
-          <nav className="flex flex-wrap justify-end gap-0.5">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
-                  pathname === item.href
-                    ? "bg-[var(--brand-red)] text-white"
-                    : "text-zinc-400 active:bg-[var(--panel)]"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          {!hideNav && (
+            <nav className="flex flex-wrap justify-end gap-0.5" aria-label="Main">
+              {NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "min-h-10 rounded-lg px-2.5 py-2 font-display text-[11px] tracking-wider sm:px-3 sm:text-xs",
+                    pathname === item.href
+                      ? "bg-[var(--brand-red)] text-white"
+                      : "text-zinc-400 active:bg-[var(--panel)]"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
       </header>
       <main className="min-h-0 flex-1">{children}</main>
