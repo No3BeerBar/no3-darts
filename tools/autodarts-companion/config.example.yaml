@@ -1,10 +1,18 @@
 # Copy to config.yaml and edit for your bar mini-PC.
 # Autodarts detects throws; No3 runs game modes / scoring UI.
+# Prefer tools/board-station/config.yaml for the one-script board stack.
 
 autodarts:
   host: "127.0.0.1"   # PC running Autodarts Board Manager
   port: 3180          # default Board Manager port
   poll_ms: 300        # how often to poll /api/state (~300ms is typical)
+  # Editable install path (used for health auto-restart). Leave blank to skip Start.
+  # Example: "C:\\Program Files\\Autodarts\\Autodarts.exe"
+  exe_path: ""
+  process_names:
+    - "Autodarts"
+    - "autodarts"
+    - "AutodartsDesktop"
 
 no3:
   # Required for `bridge` (and optional for `compare`)
@@ -12,5 +20,12 @@ no3:
   room_id: "Board 1"
   # Same value as CAMERA_API_KEY on Railway (leave blank if unset)
   camera_api_key: ""
+
+health:
+  enabled: true
+  fps_min: 5.0                 # treat below this as unhealthy when FPS is exposed
+  unhealthy_seconds: 15.0      # how long degraded before restart attempt
+  restart_cooldown_seconds: 60.0
+  between_games_recal: true    # probe Board Manager reset/calibrate when board empty
 
 logs_dir: "./logs"

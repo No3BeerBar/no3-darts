@@ -13,9 +13,11 @@ import {
 } from "@/engine";
 import { useGameStore } from "@/store/game-store";
 import { useSettingsStore } from "@/store/settings-store";
+import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { Dartboard } from "@/components/board/Dartboard";
+import { CameraHealthToast } from "./CameraHealthToast";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
 import { CalloutToast } from "./CalloutToast";
@@ -70,6 +72,7 @@ export function ScoringScreen() {
   useCameraSync(true);
   // Re-publish match to server so TV recovers after deploys / refreshes
   useMatchHeartbeat(true);
+  const { notice: cameraNotice } = useCameraHealth(state?.roomId, Boolean(state));
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
 
@@ -127,6 +130,7 @@ export function ScoringScreen() {
   return (
     <div className="flex min-h-dvh flex-col text-zinc-100">
       <CalloutToast message={lastCallout} />
+      <CameraHealthToast notice={cameraNotice} />
 
       {correctSlot != null && (
         <CorrectDartModal
@@ -208,11 +212,18 @@ export function ScoringScreen() {
 
         {/* Current visit */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-[#121212]/70 px-3 py-2">
-          <TurnDarts
-            darts={state.currentTurnDarts}
-            interactive={state.status === "playing"}
-            onSlotClick={(i) => setCorrectSlot(i)}
-          />
+          <div className="min-w-0">
+            <TurnDarts
+              darts={state.currentTurnDarts}
+              interactive={state.status === "playing"}
+              onSlotClick={(i) => setCorrectSlot(i)}
+            />
+            {state.status === "playing" && (
+              <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
+                Tap a dart to fix · pick the right segment
+              </p>
+            )}
+          </div>
           {checkout && (
             <div className="text-right">
               <div className="font-display text-[10px] tracking-wider text-zinc-500">Checkout</div>

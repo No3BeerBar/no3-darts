@@ -3,8 +3,10 @@
 **Recommended bar path:** Autodarts Board Manager **detects** throws; No3 runs **game modes and scoring UI** (X01, Cricket, Killer, …). A small local bridge on the board PC polls Autodarts and POSTs darts into No3.
 
 ```
-[Autodarts cams] → Board Manager :3180 → companion bridge → POST /api/camera/dart → No3 (tablet / TV)
+[Autodarts cams] → Board Manager :3180 → companion bridge → POST /api/camera/dart|correct|end-turn|health → No3 (tablet / TV)
 ```
+
+**Bar one-script start** (Board Manager + bridge + TV kiosk URL): [`tools/board-station/`](../board-station/) — see [`docs/BOARD-STATION.md`](../../docs/BOARD-STATION.md).
 
 Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no need to play the match inside Autodarts).
 
@@ -16,6 +18,8 @@ Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no
 | Poll `GET /api/state` and mirror throws into No3 | Require playing the game inside Autodarts |
 | Map segments (`T20`, `S5`, bull, miss…) → No3 `{kind,number}` | Guarantee raw per-camera tip pixels |
 | Call No3 `end-turn` on Autodarts takeout | Steal Autodarts detection models |
+| Sync mid-visit **corrections** via `/api/camera/correct` | Ignore Autodarts throw edits |
+| Watch FPS/cam health, restart Board Manager, toast No3 | Reverse-engineer Autodarts CV |
 | Spy / compare / viz helpers for debugging | Need internet (stays local except No3 POST) |
 
 Community tools (ioBroker, Tools for Autodarts) use the same local Board Manager HTTP API.
@@ -68,6 +72,9 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 2. On the board PC: Autodarts Board Manager **Start** (detecting).  
 3. Run `bridge` — each new Autodarts dart is POSTed to No3.  
 4. When Autodarts signals **Takeout** (or clears throws), bridge calls `POST /api/camera/end-turn` so early 1–2 dart visits advance correctly. After a full 3-dart visit No3 usually auto-ends the turn already; the extra call is harmless.
+5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit — no double-scoring.
+6. Players can also fix on the iPad: tap the dart → pick the right segment.
+7. Health: FPS / disconnect → notify No3 + restart Board Manager (needs `exe_path` in config).
 
 ## Commands
 
@@ -77,6 +84,7 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 python -m companion bridge
 python -m companion bridge --dry-run
 python -m companion bridge --no-end-turn
+python -m companion bridge --no-health
 ```
 
 ### `spy` — watch Autodarts live
@@ -134,20 +142,44 @@ POST /api/camera/end-turn
 
 Disable with `--no-end-turn` if you only want dart posts.
 
+## Corrections
+
+Append-only polls still use `/api/camera/dart`. When the throw list **diverges** (e.g. T20→T19) or **shrinks** mid-visit, the bridge posts:
+
+```http
+POST /api/camera/correct
+{ "roomId": "Board 1", "darts": [ /* full current visit */ ] }
+```
+
+See [`docs/CAMERA.md`](../../docs/CAMERA.md) and [`docs/BOARD-STATION.md`](../../docs/BOARD-STATION.md).
+
+## Health / restart
+
+With `health.enabled: true` (default), the bridge posts `/api/camera/health` and may restart Board Manager when offline or FPS stays below `fps_min`. Set `autodarts.exe_path` (or `health.exe_path`) so restart can relaunch the app.
+
+Between games (empty board after takeout), the bridge probes local reset/calibrate HTTP paths; if none exist, calibrate manually in Board Manager.
+
 ## Config
 
-See `config.example.yaml`:
+See `config.example.yaml` (board-station overwrites this when you use `start-board.bat`):
 
 ```yaml
 autodarts:
   host: "127.0.0.1"
   port: 3180
   poll_ms: 300
+  exe_path: ""   # editable path for auto-restart
 
 no3:
   url: "https://no3-darts-production.up.railway.app"
   room_id: "Board 1"
   camera_api_key: ""
+
+health:
+  enabled: true
+  fps_min: 5.0
+  unhealthy_seconds: 15.0
+  between_games_recal: true
 
 logs_dir: "./logs"
 ```

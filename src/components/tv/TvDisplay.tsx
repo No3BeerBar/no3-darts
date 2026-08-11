@@ -34,9 +34,8 @@ export function TvDisplay() {
   }, [settings]);
 
   const room = settings.roomName || "Board 1";
-  const { state, connected, statusText, callout, lastSyncAt } = useTvMatchFeed(
-    hydrated ? room : ""
-  );
+  const { state, connected, statusText, callout, cameraNotice, lastSyncAt } =
+    useTvMatchFeed(hydrated ? room : "");
 
   useEffect(() => {
     const fit = () => {
@@ -91,6 +90,13 @@ export function TvDisplay() {
 
   return (
     <div className="tv-display relative min-h-dvh overflow-hidden bg-[#050505]">
+      {cameraNotice && (
+        <div className="pointer-events-none absolute inset-x-0 top-6 z-50 flex justify-center px-4">
+          <div className="rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur">
+            {cameraNotice}
+          </div>
+        </div>
+      )}
       {/* Atmosphere */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_70%_45%,rgb(225_6_0/0.14),transparent_55%)]" />

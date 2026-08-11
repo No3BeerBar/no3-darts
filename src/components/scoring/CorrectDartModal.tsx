@@ -45,7 +45,10 @@ export function CorrectDartModal({
               Dart {slotIndex + 1}
               {currentLabel ? ` · was ${currentLabel}` : ""}
             </div>
-            <div className="font-display text-lg text-white">Fix score</div>
+            <div className="font-display text-lg text-white">Fix wrong dart</div>
+            <p className="text-xs text-zinc-500">
+              Choose the correct segment — same idea as Autodarts Board Manager
+            </p>
           </div>
           <button type="button" className="btn-ghost min-h-11 px-4" onClick={onClose}>
             Close

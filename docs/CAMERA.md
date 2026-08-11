@@ -12,14 +12,21 @@ An experimental DIY OpenCV stack still lives under [`detection/`](../detection/R
 2. The browser syncs match state to the server.
 3. Your detector calls `POST /api/camera/dart` when a dart is recognized.
 4. On takeout / visit end, call `POST /api/camera/end-turn` (Autodarts bridge does this automatically).
-5. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
+5. On mid-visit correction (changed / removed throw), call `POST /api/camera/correct` with the full visit.
+6. Optional: `POST /api/camera/health` so iPad/TV can toast FPS / restart notices.
+7. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
+
+Bar mini-PC wiring + one-script start: [`docs/BOARD-STATION.md`](./BOARD-STATION.md).
 
 ```
 [Autodarts Board Manager :3180]
         │  poll /api/state
         ▼
 [companion bridge on board PC]
-        │  POST /api/camera/dart (+ end-turn on takeout)
+        │  POST /api/camera/dart
+        │  POST /api/camera/correct  (visit replace)
+        │  POST /api/camera/end-turn (takeout)
+        │  POST /api/camera/health   (FPS / restart)
         ▼
 [No3 server] ──SSE──► tablet / TV scoring UI
 ```
@@ -72,6 +79,52 @@ Content-Type: application/json
 
 Call this when the player pulls darts early (1–2 darts) or when the detector signals takeout. After a full 3-dart visit No3 usually auto-ends the turn; a redundant end-turn is safe (returns `READY`).
 
+## Correct visit (Autodarts-style)
+
+When Board Manager **changes or removes** a prior throw in the current visit (not just appends), replace the open turn in one shot:
+
+```http
+POST /api/camera/correct
+Content-Type: application/json
+
+{
+  "roomId": "Board 1",
+  "darts": [
+    { "kind": "triple", "number": 19 },
+    { "kind": "single", "number": 5 }
+  ],
+  "reason": "autodarts_state_diff"
+}
+```
+
+- `darts` is the **full** current visit (0–3 items). Empty array clears the open visit without advancing the thrower.
+- Server rebuilds from `turnBaseline` via `correctCurrentTurn` — idempotent, no double-scoring.
+- Prefer this over undo + re-post from the bridge.
+- Players can also fix on the iPad: tap the dart slot → pick the right segment.
+
+## Camera health
+
+```http
+POST /api/camera/health
+Content-Type: application/json
+
+{
+  "roomId": "Board 1",
+  "ok": false,
+  "level": "unhealthy",
+  "message": "Detection restarting…",
+  "restarting": true,
+  "fps": [0, 12, 30],
+  "minFps": 0
+}
+```
+
+```http
+GET /api/camera/health?room=Board%201
+```
+
+SSE event `camera_health` fans the same payload to `/play` and `/tv` for toasts.
+
 ## Sequence (recommended — Autodarts bridge)
 
 ```
@@ -79,13 +132,19 @@ UI:     createGame (any mode) → sync POST /api/matches { state }
 AD:     Board Manager Start (Throw)
 Bridge: poll GET http://127.0.0.1:3180/api/state
         → new dart → POST /api/camera/dart { kind, number, roomId }
+        → corrected / shrunk visit → POST /api/camera/correct { darts[] }
         → takeout / throws cleared → POST /api/camera/end-turn
-UI:     SSE / poll merges camera darts into the live match
+        → FPS / cam failure → POST /api/camera/health (+ restart Board Manager)
+UI:     SSE / poll merges camera darts + health toasts
 ```
 
-Bar one-liner and CLI: [`tools/autodarts-companion/README.md`](../tools/autodarts-companion/README.md).
+Bar one-script start: [`docs/BOARD-STATION.md`](./BOARD-STATION.md)  
+Bridge CLI: [`tools/autodarts-companion/README.md`](../tools/autodarts-companion/README.md).
 
 ```powershell
+cd tools\board-station
+.\start-board.bat
+# or:
 cd tools\autodarts-companion
 python -m companion bridge --no3-url https://your-app.up.railway.app --room "Board 1"
 ```
@@ -97,6 +156,11 @@ curl -X POST https://your-app.up.railway.app/api/camera/dart \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CAMERA_API_KEY" \
   -d '{"kind":"triple","number":20,"roomId":"Board 1","confidence":0.95}'
+
+curl -X POST https://your-app.up.railway.app/api/camera/correct \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CAMERA_API_KEY" \
+  -d '{"roomId":"Board 1","darts":[{"kind":"triple","number":19},{"kind":"single","number":5}]}'
 
 curl -X POST https://your-app.up.railway.app/api/camera/end-turn \
   -H "Content-Type: application/json" \
