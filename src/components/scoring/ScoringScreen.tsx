@@ -30,10 +30,13 @@ import {
   parseDartLabel,
   segmentLabel,
 } from "@/engine";
+import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
+import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
 import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "@/lib/match-autosave";
 import { canScoreMatch } from "@/lib/seat-auth";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
+import { usePlayersStore } from "@/store/players-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { useCameraHealth } from "@/hooks/useCameraHealth";
@@ -78,11 +81,19 @@ function ScoringScreenInner() {
   const sessionPlayer = useSessionStore((s) => s.player);
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrate);
+  const logoutSession = useSessionStore((s) => s.logout);
+  const rememberRegistered = usePlayersStore((s) => s.rememberRegistered);
+  const syncPlayers = usePlayersStore((s) => s.syncFromServer);
+  const hydratePlayers = usePlayersStore((s) => s.hydrate);
   const [pad, setPad] = useState("");
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState(340);
   const [seatAuthTick, setSeatAuthTick] = useState(0);
+  const [idlePickerOpen, setIdlePickerOpen] = useState(false);
+  const [idleAuthOpen, setIdleAuthOpen] = useState(false);
+  const [idleAuthMode, setIdleAuthMode] = useState<AuthMode>("signin");
+  const [idleAuthName, setIdleAuthName] = useState("");
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const admin = usePlayAdmin(settings.staffPin);
@@ -91,8 +102,9 @@ function ScoringScreenInner() {
     setDisplayOnly(false);
     hydrate();
     settings.hydrate();
+    hydratePlayers();
     void hydrateSession();
-  }, [hydrate, settings, setDisplayOnly, hydrateSession]);
+  }, [hydrate, settings, setDisplayOnly, hydrateSession, hydratePlayers]);
 
   useEffect(() => {
     const fit = () => {
@@ -157,14 +169,67 @@ function ScoringScreenInner() {
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
+        {sessionPlayer ? (
+          <p className="text-sm text-zinc-400">
+            Signed in · <span className="text-white">{sessionPlayer.name}</span>
+          </p>
+        ) : (
+          <p className="max-w-sm text-sm text-zinc-500">
+            Guests can play without an account. Saved players sign in with PIN.
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href="/" className="btn-primary min-h-12 px-8">
             Set up a game
           </Link>
-          <Link href={statsHrefFromPlay("/")} className="btn-ghost min-h-12 px-6">
+          <button
+            type="button"
+            className="btn-ghost min-h-12 px-6"
+            onClick={() => setIdlePickerOpen(true)}
+          >
+            Saved players
+          </button>
+          <Link href={statsHrefFromPlay("/play")} className="btn-ghost min-h-12 px-6">
             Stats
           </Link>
         </div>
+        {sessionPlayer && (
+          <button
+            type="button"
+            className="text-xs text-zinc-600 hover:text-zinc-400"
+            onClick={() => void logoutSession()}
+          >
+            Sign out
+          </button>
+        )}
+        <SavedPlayersPicker
+          open={idlePickerOpen}
+          onClose={() => setIdlePickerOpen(false)}
+          sessionPlayerId={sessionPlayer?.id ?? null}
+          onCreateAccount={() => {
+            setIdleAuthMode("register");
+            setIdleAuthName("");
+            setIdleAuthOpen(true);
+          }}
+          onPick={(p) => {
+            if (sessionPlayer?.id === p.id) return;
+            // Idle picker always establishes / switches the tablet session
+            setIdleAuthMode("signin");
+            setIdleAuthName(p.name);
+            setIdleAuthOpen(true);
+          }}
+        />
+        <AuthModal
+          open={idleAuthOpen}
+          mode={idleAuthMode}
+          initialName={idleAuthName}
+          onClose={() => setIdleAuthOpen(false)}
+          onSuccess={(player) => {
+            rememberRegistered(player);
+            void syncPlayers();
+            void hydrateSession();
+          }}
+        />
       </div>
     );
   }

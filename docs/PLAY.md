@@ -42,6 +42,16 @@ When a match is **won**, the tablet **saves automatically** (no “Save?” dial
 
 Ending a completed match clears the **match** and match seat-auth — it does **not** sign the tablet out.
 
+## Saved players (50+ directory)
+
+Idle `/play` and setup do **not** dump every registered name on screen.
+
+- **Saved players** opens a searchable, scrollable picker (type-ahead by name, thumb-friendly on iPad).
+- Tap a name → enter PIN (existing pad). That player is signed in / available for seats.
+- **Guests** still use + Guest with no PIN.
+- Empty directory: picker says so and offers **Create account**.
+- Wired to `GET /api/players` (same register + PIN data as before).
+
 ## Resume & sign-in
 
 In-progress matches are kept in the tablet’s `localStorage` (`no3_active_game`) so **Resume** on the home setup screen can return to `/play`.

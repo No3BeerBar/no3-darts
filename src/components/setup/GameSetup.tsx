@@ -10,6 +10,7 @@ import {
   validateKillerNumbers,
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
+import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,7 @@ export function GameSetup() {
   const [authMode, setAuthMode] = useState<AuthMode>("signin");
   const [authName, setAuthName] = useState("");
   const [pendingSelect, setPendingSelect] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [mode, setMode] = useState<GameModeId>("x01");
   const [startScore, setStartScore] = useState<301 | 501 | 701 | 901>(501);
@@ -378,6 +380,28 @@ export function GameSetup() {
         onSuccess={onAuthSuccess}
       />
 
+      <SavedPlayersPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        sessionPlayerId={sessionPlayer?.id ?? null}
+        selectedIds={
+          isTeams
+            ? [...assignedIds]
+            : selected.map((p) => p.id)
+        }
+        onCreateAccount={() => openAuth("register", "", true)}
+        onPick={(p) => {
+          if (!isTeams) {
+            const on = selected.some((s) => s.id === p.id);
+            if (on) {
+              togglePlayer({ id: p.id, name: p.name, isGuest: false });
+              return;
+            }
+          }
+          pickSavedPlayer({ id: p.id, name: p.name, isGuest: false });
+        }}
+      />
+
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
         {sessionPlayer ? (
           <>
@@ -396,6 +420,14 @@ export function GameSetup() {
               type="button"
               className="btn-ghost min-h-10 text-xs"
               onClick={() => {
+                if (isTeams) {
+                  pickSavedPlayer({
+                    id: sessionPlayer.id,
+                    name: sessionPlayer.name,
+                    isGuest: false,
+                  });
+                  return;
+                }
                 if (!selected.some((s) => s.id === sessionPlayer.id)) {
                   togglePlayer({
                     id: sessionPlayer.id,
@@ -406,6 +438,13 @@ export function GameSetup() {
               }}
             >
               Add me
+            </button>
+            <button
+              type="button"
+              className="btn-primary min-h-10 text-xs"
+              onClick={() => setPickerOpen(true)}
+            >
+              Saved players
             </button>
             <button
               type="button"
@@ -420,19 +459,19 @@ export function GameSetup() {
             <div className="min-w-0 flex-1 text-xs text-zinc-500">
               {sessionDbConfigured && !sessionDbAvailable
                 ? "Accounts offline — guests still work"
-                : "Walk-up account · name + 4-digit PIN"}
+                : "Saved players · PIN · or play as guest"}
             </div>
             <button
               type="button"
-              className="btn-ghost min-h-10 text-xs"
-              onClick={() => openAuth("signin")}
+              className="btn-primary min-h-10 text-xs"
+              onClick={() => setPickerOpen(true)}
               disabled={sessionHydrated && sessionDbConfigured && !sessionDbAvailable}
             >
-              Sign in
+              Saved players
             </button>
             <button
               type="button"
-              className="btn-primary min-h-10 text-xs"
+              className="btn-ghost min-h-10 text-xs"
               onClick={() => openAuth("register")}
               disabled={sessionHydrated && sessionDbConfigured && !sessionDbAvailable}
             >
@@ -824,32 +863,30 @@ export function GameSetup() {
             </button>
           )}
 
-          <div>
-            <h3 className="section-title mb-1.5">
-              {holding ? "Or pick someone else" : "Tap a player, then a team slot"}
+          <div className="space-y-2">
+            <h3 className="section-title">
+              {holding
+                ? `Holding ${holding.name} — tap a team slot`
+                : "Add players to teams"}
             </h3>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {freePlayers.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => pickSavedPlayer({ id: p.id, name: p.name, isGuest: false })}
-                  className={cn(
-                    "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
-                    holding?.id === p.id
-                      ? "border-[var(--brand-red)] bg-[var(--brand-red)] text-white"
-                      : "border-[var(--panel-border)] bg-[var(--panel)]"
-                  )}
-                >
-                  {p.name}
-                  {playersStore.isRegistered(p.id) && (
-                    <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">PIN</span>
-                  )}
-                </button>
-              ))}
-            </div>
-            {freePlayers.length === 0 && !holding && (
-              <p className="mt-2 text-center text-xs text-zinc-600">
+            {holding && (
+              <button
+                type="button"
+                className="btn-ghost min-h-11 w-full text-xs"
+                onClick={() => setHolding(null)}
+              >
+                Cancel pick · {holding.name}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-primary min-h-12 w-full"
+              onClick={() => setPickerOpen(true)}
+            >
+              Saved players
+            </button>
+            {freePlayers.length === 0 && !holding && assignedIds.size > 0 && (
+              <p className="text-center text-xs text-zinc-600">
                 All saved players are on teams — add a guest or remove someone.
               </p>
             )}
@@ -895,40 +932,17 @@ export function GameSetup() {
               ))}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {playersStore.players
-              .filter((p) => !p.isGuest)
-              .map((p) => {
-                const on = selected.some((s) => s.id === p.id);
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      if (on) {
-                        togglePlayer({ id: p.id, name: p.name, isGuest: false });
-                        return;
-                      }
-                      pickSavedPlayer({ id: p.id, name: p.name, isGuest: false });
-                    }}
-                    className={cn(
-                      "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
-                      on
-                        ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.2)]"
-                        : "border-[var(--panel-border)] bg-[var(--panel)]"
-                    )}
-                  >
-                    {p.name}
-                    {playersStore.isRegistered(p.id) && (
-                      <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
-                        {sessionPlayer?.id === p.id ? "You" : "PIN"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn-primary mb-2 min-h-12 w-full"
+            onClick={() => setPickerOpen(true)}
+          >
+            Saved players
+          </button>
+          <p className="mb-2 text-xs text-zinc-600">
+            Search the directory for PIN accounts — or add a guest below.
+          </p>
+          <div className="flex flex-wrap gap-2">
             <input
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
@@ -942,13 +956,6 @@ export function GameSetup() {
             <button
               type="button"
               className="btn-ghost min-h-11 shrink-0"
-              onClick={() => openAuth("signin", "", true)}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className="btn-primary min-h-11 shrink-0"
               onClick={() => openAuth("register", "", true)}
             >
               Create account
