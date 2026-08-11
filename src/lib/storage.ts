@@ -83,7 +83,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceEnabled: false,
   kioskMode: false,
   roomName: "Board 1",
-  staffPin: "1234",
+  staffPin: "1234", // keep in sync with DEFAULT_STAFF_PIN / STAFF_PIN env
 };
 
 function emptyStats(): PlayerAggregateStats {

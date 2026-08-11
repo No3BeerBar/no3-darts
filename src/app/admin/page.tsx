@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ResetPlayerPinPanel } from "@/components/admin/ResetPlayerPinPanel";
 import { useSettingsStore } from "@/store/settings-store";
 import { useGameStore } from "@/store/game-store";
 
@@ -66,6 +67,8 @@ export default function AdminPage() {
           )}
         </div>
       </section>
+
+      <ResetPlayerPinPanel />
 
       <section className="panel-card space-y-3 p-6">
         <h2 className="section-title">Devices at the board</h2>
@@ -168,7 +171,9 @@ export default function AdminPage() {
             }
           />
           <p className="mt-1 text-xs text-zinc-500">
-            4 digits · default 1234 · used when long-pressing the logo on /play
+            4 digits · default 1234 · unlocks /play staff tools (this browser). PIN reset on the
+            server uses <code className="text-zinc-400">STAFF_PIN</code> env (same default) — keep
+            them matched.
           </p>
         </label>
       </section>

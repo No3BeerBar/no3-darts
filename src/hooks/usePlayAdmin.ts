@@ -13,11 +13,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { DEFAULT_STAFF_PIN } from "@/lib/auth/staff-constants";
+
+export { DEFAULT_STAFF_PIN };
 
 const STORAGE_KEY = "no3_play_admin";
-
-/** Default staff PIN when settings.staffPin is empty. Change in /admin. */
-export const DEFAULT_STAFF_PIN = "1234";
 
 export function usePlayAdmin(staffPin: string) {
   const searchParams = useSearchParams();
