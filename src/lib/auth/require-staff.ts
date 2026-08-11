@@ -19,7 +19,11 @@ export function readStaffPin(request: Request, body: unknown): string | null {
 export function staffUnauthorized(pin: string | null): NextResponse | null {
   if (!pin || !verifyStaffPin(pin)) {
     return NextResponse.json(
-      { ok: false, error: "Staff PIN required (Admin / STAFF_PIN)" },
+      {
+        ok: false,
+        error:
+          "Staff PIN incorrect — match Admin → Staff PIN with Railway STAFF_PIN (default 1234)",
+      },
       { status: 401 }
     );
   }

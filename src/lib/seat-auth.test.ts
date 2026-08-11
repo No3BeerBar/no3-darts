@@ -120,6 +120,43 @@ describe("seat auth / resume re-verification", () => {
     ]);
   });
 
+  it("re-PIN after sign-out rebinds session so cookie loss still requires PIN", () => {
+    installMemoryStorage();
+    const players = [
+      { id: "alice", name: "Alice", isGuest: false },
+      { id: "bob", name: "Bob", isGuest: true },
+    ];
+    seedSeatAuthForMatch("m1", players, "alice");
+    invalidateSeat("alice");
+    expect(canScoreMatch("m1", players, null)).toBe(false);
+
+    // ResumeAuthGate / AuthModal: unlock with empty session → bind Alice
+    markSeatVerified("m1", "alice", "alice");
+    expect(getSeatAuth()).toMatchObject({
+      matchId: "m1",
+      verifiedPlayerIds: ["alice"],
+      boundSessionPlayerId: "alice",
+    });
+    expect(canScoreMatch("m1", players, "alice")).toBe(true);
+
+    // Later reload with cleared cookie must not stay open under Alice
+    expect(canScoreMatch("m1", players, null)).toBe(false);
+    expect(seatsNeedingReauth("m1", players, null)).toEqual([
+      { id: "alice", name: "Alice" },
+    ]);
+  });
+
+  it("markSeatVerified with null session still binds the unlocked seat", () => {
+    installMemoryStorage();
+    const players = [{ id: "alice", name: "Alice", isGuest: false }];
+    seedSeatAuthForMatch("m1", players, "alice");
+    invalidateSeat("alice");
+    // Stale React sessionPlayer?.id === null (bug that used to leave bound null)
+    markSeatVerified("m1", "alice", null);
+    expect(getSeatAuth()?.boundSessionPlayerId).toBe("alice");
+    expect(canScoreMatch("m1", players, null)).toBe(false);
+  });
+
   it("only requires PIN for registered seats in a mixed match", () => {
     installMemoryStorage();
     const players = [

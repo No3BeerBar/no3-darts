@@ -85,12 +85,16 @@ export function markSeatVerified(matchId: string, playerId: string, sessionPlaye
     prev?.matchId === matchId ? prev.verifiedPlayerIds : []
   );
   verified.add(playerId);
+  // Prefer the live tablet session; else keep prior bind; else bind the seat
+  // just unlocked (empty-session resume PIN establishes that player's session).
+  const boundSessionPlayerId =
+    sessionPlayerId ??
+    (prev?.matchId === matchId ? prev.boundSessionPlayerId : null) ??
+    playerId;
   const next: SeatAuthState = {
     matchId,
     verifiedPlayerIds: [...verified],
-    boundSessionPlayerId:
-      sessionPlayerId ??
-      (prev?.matchId === matchId ? prev.boundSessionPlayerId : null),
+    boundSessionPlayerId,
   };
   setSeatAuth(next);
   return next;

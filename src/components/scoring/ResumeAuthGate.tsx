@@ -114,7 +114,12 @@ export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAut
             setAuthOpen(false);
             return;
           }
-          markSeatVerified(matchId, player.id, sessionPlayer?.id ?? null);
+          // AuthModal may have just established the tablet session (Zustand is
+          // sync; this component's sessionPlayer hook can still be stale null).
+          // Bind the live session so a later cookie clear re-triggers the gate.
+          const liveSessionId =
+            useSessionStore.getState().player?.id ?? player.id;
+          markSeatVerified(matchId, player.id, liveSessionId);
           setError(null);
           setTick((t) => t + 1);
           onVerifiedChange();
