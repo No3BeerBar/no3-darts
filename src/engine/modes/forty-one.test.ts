@@ -116,18 +116,21 @@ describe("fortyOneVisitResult", () => {
     expect(r).toEqual({ kind: "scored", points: 41 });
   });
 
-  it("exact_41 T7 + S20 + MISS sums to 41 arithmetically but must HALVE", () => {
+  it("exact_41 T7 + S20 + MISS → halved (not +41)", () => {
     const t = { type: "exact_41" as const };
-    // 21 + 20 + 0 = 41 — miss does not contribute → void
+    // Live bug: 21 + 20 + 0 = 41 if MISS counts as 0 — must HALVE
     const darts = [
       createDart("triple", 7),
       createDart("single", 20),
       createDart("miss", 0),
     ];
+    expect(darts[2].kind).toBe("miss");
+    expect(darts[2].value).toBe(0);
     expect(darts.reduce((a, d) => a + d.value, 0)).toBe(41);
     expect(fortyOneExact41DartContributes(darts[2])).toBe(false);
     expect(fortyOneExact41VisitOk(darts)).toBe(false);
     expect(fortyOneVisitResult(darts, t)).toEqual({ kind: "halved" });
+    expect(fortyOneVisitResult(darts, t)).not.toEqual({ kind: "scored", points: 41 });
   });
 
   it("exact_41 wrong sum → halved", () => {

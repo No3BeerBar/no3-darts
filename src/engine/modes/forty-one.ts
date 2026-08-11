@@ -127,11 +127,11 @@ export function fortyOneExact41DartContributes(dart: DartThrow): boolean {
 
 /** Exact-41 success: 3 contributing darts whose face values sum to exactly 41. */
 export function fortyOneExact41VisitOk(darts: DartThrow[]): boolean {
-  return (
-    darts.length === 3 &&
-    darts.every(fortyOneExact41DartContributes) &&
-    darts.reduce((a, d) => a + d.value, 0) === 41
-  );
+  if (darts.length !== 3) return false;
+  for (const d of darts) {
+    if (d.kind === "miss" || d.value <= 0) return false;
+  }
+  return darts.reduce((a, d) => a + d.value, 0) === 41;
 }
 
 export function fortyOneVisitRawSum(darts: DartThrow[], target: FortyOneTarget): number {
@@ -141,15 +141,23 @@ export function fortyOneVisitRawSum(darts: DartThrow[], target: FortyOneTarget):
 /**
  * Result of a completed visit against a target.
  * - Normal rounds: add sum of valid dart points; 0 valid → halved
- * - exact_41: all 3 darts must contribute and sum to 41 → add 41; else halved
- *   (e.g. T7 + S20 + MISS sums to 41 arithmetically but must HALVE)
+ * - exact_41: exactly 3 darts, each must contribute (not miss / value<=0),
+ *   sum must be 41 → +41; else halved.
+ *   T7(21)+S20(20)+MISS(0) = 41 arithmetically → HALVED (miss does not contribute).
  */
 export function fortyOneVisitResult(
   darts: DartThrow[],
   target: FortyOneTarget
 ): { kind: "scored"; points: number } | { kind: "halved" } {
   if (target.type === "exact_41") {
-    if (fortyOneExact41VisitOk(darts)) return { kind: "scored", points: 41 };
+    // Require exactly 3 darts
+    if (darts.length !== 3) return { kind: "halved" };
+    // Every dart must contribute — reject miss or non-positive value
+    for (const d of darts) {
+      if (d.kind === "miss" || d.value <= 0) return { kind: "halved" };
+    }
+    const sum = darts[0].value + darts[1].value + darts[2].value;
+    if (sum === 41) return { kind: "scored", points: 41 };
     return { kind: "halved" };
   }
   const pts = fortyOneVisitRawSum(darts, target);
