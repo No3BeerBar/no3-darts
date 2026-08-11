@@ -244,7 +244,7 @@ export function getCheckoutSuggestion(
     return {
       remaining,
       darts: steps,
-      description: steps.map((s) => s.label).join(" → "),
+      description: formatCheckoutDescription(steps),
     };
   }
 
@@ -255,7 +255,7 @@ export function getCheckoutSuggestion(
     return {
       remaining,
       darts: preferred,
-      description: preferred.map((s) => s.label).join(" → "),
+      description: formatCheckoutDescription(preferred),
     };
   }
 
@@ -272,9 +272,14 @@ export function getCheckoutSuggestion(
     ? {
         remaining,
         darts: preferred,
-        description: preferred.map((s) => s.label).join(" → "),
+        description: formatCheckoutDescription(preferred),
       }
     : null;
+}
+
+/** iPad-readable path, e.g. "T20 T19 D12". */
+export function formatCheckoutDescription(steps: Array<{ label: string }>): string {
+  return steps.map((s) => s.label).join(" ");
 }
 
 /** All finishable totals in one dart (double out) */
