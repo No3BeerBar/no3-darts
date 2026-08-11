@@ -9,8 +9,10 @@ import {
   modeSupportsTeams,
   validateKillerNumbers,
 } from "@/engine";
+import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
+import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +47,18 @@ export function GameSetup() {
   const active = useGameStore((s) => s.state);
   const hydrateGame = useGameStore((s) => s.hydrate);
   const playersStore = usePlayersStore();
+  const sessionPlayer = useSessionStore((s) => s.player);
+  const sessionDbConfigured = useSessionStore((s) => s.dbConfigured);
+  const sessionDbAvailable = useSessionStore((s) => s.dbAvailable);
+  const sessionHydrated = useSessionStore((s) => s.hydrated);
+  const hydrateSession = useSessionStore((s) => s.hydrate);
+  const logoutSession = useSessionStore((s) => s.logout);
   const settings = useSettingsStore();
+
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("signin");
+  const [authName, setAuthName] = useState("");
+  const [pendingSelect, setPendingSelect] = useState(false);
 
   const [mode, setMode] = useState<GameModeId>("x01");
   const [startScore, setStartScore] = useState<301 | 501 | 701 | 901>(501);
@@ -72,7 +85,49 @@ export function GameSetup() {
     hydrateGame();
     playersStore.hydrate();
     settings.hydrate();
-  }, [hydrateGame, playersStore, settings]);
+    void hydrateSession();
+  }, [hydrateGame, playersStore, settings, hydrateSession]);
+
+  const openAuth = (mode: AuthMode, name = "", selectAfter = true) => {
+    setAuthMode(mode);
+    setAuthName(name);
+    setPendingSelect(selectAfter);
+    setAuthOpen(true);
+  };
+
+  const onAuthSuccess = (player: {
+    id: string;
+    name: string;
+    createdAt: number;
+    stats: {
+      matchesPlayed: number;
+      matchesWon: number;
+      legsWon: number;
+      dartsThrown: number;
+      totalScore: number;
+      oneEighties: number;
+      checkoutsHit: number;
+      checkoutAttempts: number;
+      highestCheckout: number;
+      bestThreeDartAvg: number;
+    };
+  }) => {
+    playersStore.rememberRegistered(player);
+    void playersStore.syncFromServer();
+    void hydrateSession();
+    if (pendingSelect) {
+      togglePlayer({ id: player.id, name: player.name, isGuest: false });
+    }
+  };
+
+  const pickSavedPlayer = (p: PlayerRef) => {
+    const sessionId = sessionPlayer?.id;
+    if (playersStore.isRegistered(p.id) && p.id !== sessionId) {
+      openAuth("unlock", p.name, true);
+      return;
+    }
+    togglePlayer(p);
+  };
 
   /** All players currently assigned to any team */
   const assignedIds = useMemo(() => {
@@ -286,6 +341,78 @@ export function GameSetup() {
 
   return (
     <div className="space-y-3">
+      <AuthModal
+        open={authOpen}
+        mode={authMode}
+        initialName={authName}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={onAuthSuccess}
+      />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-[#121212] px-3 py-2">
+        {sessionPlayer ? (
+          <>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-white">
+                Signed in · {sessionPlayer.name}
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                Stats sync across tablets
+                {sessionPlayer.stats.matchesPlayed > 0
+                  ? ` · ${sessionPlayer.stats.matchesPlayed} matches`
+                  : ""}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-ghost min-h-10 text-xs"
+              onClick={() => {
+                if (!selected.some((s) => s.id === sessionPlayer.id)) {
+                  togglePlayer({
+                    id: sessionPlayer.id,
+                    name: sessionPlayer.name,
+                    isGuest: false,
+                  });
+                }
+              }}
+            >
+              Add me
+            </button>
+            <button
+              type="button"
+              className="btn-ghost min-h-10 text-xs text-zinc-400"
+              onClick={() => void logoutSession()}
+            >
+              Sign out
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="min-w-0 flex-1 text-xs text-zinc-500">
+              {sessionDbConfigured && !sessionDbAvailable
+                ? "Accounts offline — guests still work"
+                : "Walk-up account · name + 4-digit PIN"}
+            </div>
+            <button
+              type="button"
+              className="btn-ghost min-h-10 text-xs"
+              onClick={() => openAuth("signin")}
+              disabled={sessionHydrated && sessionDbConfigured && !sessionDbAvailable}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              className="btn-primary min-h-10 text-xs"
+              onClick={() => openAuth("register")}
+              disabled={sessionHydrated && sessionDbConfigured && !sessionDbAvailable}
+            >
+              Create account
+            </button>
+          </>
+        )}
+      </div>
+
       {hasActive && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[rgb(225_6_0/0.4)] bg-[rgb(225_6_0/0.1)] p-3">
           <div className="min-w-0 flex-1">
@@ -615,7 +742,7 @@ export function GameSetup() {
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => togglePlayer({ id: p.id, name: p.name, isGuest: false })}
+                  onClick={() => pickSavedPlayer({ id: p.id, name: p.name, isGuest: false })}
                   className={cn(
                     "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
                     holding?.id === p.id
@@ -624,6 +751,9 @@ export function GameSetup() {
                   )}
                 >
                   {p.name}
+                  {playersStore.isRegistered(p.id) && (
+                    <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">PIN</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -634,16 +764,23 @@ export function GameSetup() {
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <input
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
               placeholder="Guest name"
-              className="input min-h-11 flex-1"
+              className="input min-h-11 min-w-[8rem] flex-1"
               onKeyDown={(e) => e.key === "Enter" && addGuest()}
             />
             <button type="button" onClick={addGuest} className="btn-ghost min-h-11 shrink-0">
               + Guest
+            </button>
+            <button
+              type="button"
+              className="btn-ghost min-h-11 shrink-0"
+              onClick={() => openAuth("register")}
+            >
+              Create account
             </button>
           </div>
         </section>
@@ -676,7 +813,13 @@ export function GameSetup() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => togglePlayer({ id: p.id, name: p.name, isGuest: false })}
+                    onClick={() => {
+                      if (on) {
+                        togglePlayer({ id: p.id, name: p.name, isGuest: false });
+                        return;
+                      }
+                      pickSavedPlayer({ id: p.id, name: p.name, isGuest: false });
+                    }}
                     className={cn(
                       "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
                       on
@@ -685,16 +828,21 @@ export function GameSetup() {
                     )}
                   >
                     {p.name}
+                    {playersStore.isRegistered(p.id) && (
+                      <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                        {sessionPlayer?.id === p.id ? "You" : "PIN"}
+                      </span>
+                    )}
                   </button>
                 );
               })}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <input
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
               placeholder="Guest name"
-              className="input min-h-11 flex-1"
+              className="input min-h-11 min-w-[8rem] flex-1"
               onKeyDown={(e) => e.key === "Enter" && addGuest()}
             />
             <button type="button" onClick={addGuest} className="btn-ghost min-h-11 shrink-0">
@@ -703,15 +851,16 @@ export function GameSetup() {
             <button
               type="button"
               className="btn-ghost min-h-11 shrink-0"
-              onClick={() => {
-                const name = prompt("Save player as");
-                if (name) {
-                  const p = playersStore.addPlayer(name, false);
-                  togglePlayer({ id: p.id, name: p.name, isGuest: false });
-                }
-              }}
+              onClick={() => openAuth("signin", "", true)}
             >
-              + Save
+              Sign in
+            </button>
+            <button
+              type="button"
+              className="btn-primary min-h-11 shrink-0"
+              onClick={() => openAuth("register", "", true)}
+            >
+              Create account
             </button>
           </div>
         </section>

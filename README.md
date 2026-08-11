@@ -35,10 +35,13 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 - Callout toasts (180, bust, game shot…)
 
 ### Players & stats
-- Guests + saved profiles
+- Guests (no account) + **walk-up accounts** (display name + 4-digit PIN)
+- Personal stats in **Postgres** when `DATABASE_URL` is set (shared across tablets)
 - Averages, 180s, checkouts, highest out
-- Local leaderboard
+- Local leaderboard (+ server history for registered players)
 - Match history with **JSON / CSV** export
+
+Details: [`docs/PLAYERS.md`](./docs/PLAYERS.md).
 
 ### Ops
 - PWA installable on tablets
@@ -103,8 +106,11 @@ Then start any No3 match on that room and throw. Details: [`tools/autodarts-comp
 | Variable | Purpose |
 |----------|---------|
 | `CAMERA_API_KEY` | Protect `/api/camera/*` and match APIs |
-| `DATABASE_URL` | Reserved for future Postgres persistence |
+| **`DATABASE_URL`** | **Required for player accounts.** Postgres URL on the **no3-darts** service (e.g. `${{Postgres.DATABASE_URL}}`). Shared PIN accounts + personal stats. |
+| `SESSION_SECRET` | HMAC secret for player session cookies (recommended; `openssl rand -hex 32`) |
 | `PORT` | Set automatically by Railway |
+
+**Railway Postgres:** In project **no3-darts**, add a Postgres plugin if missing, then set **`DATABASE_URL`** on the **no3-darts** web service (variable reference to Postgres). Redeploy and check `GET /api/health` → `database.available: true`. Full steps: [`docs/PLAYERS.md`](./docs/PLAYERS.md). Without `DATABASE_URL`, guests and local scoring still work.
 
 5. Health check: `GET /api/health`
 
@@ -174,6 +180,8 @@ Change bar name, room name, and toggles under **Admin**.
 | `npm run build` | Production build |
 | `npm start` | Start production server |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (PIN hash, name rules) |
+| `npm run db:push` | Optional Drizzle schema push (auto-migrate also runs at runtime) |
 
 ---
 
@@ -182,7 +190,8 @@ Change bar name, room name, and toggles under **Admin**.
 - [ ] Wire sound / TTS callouts (toggles already in Admin)
 - [ ] Heatmaps from `angle` / `radius` on darts
 - [ ] Multi-room dashboard
-- [ ] Postgres persistence via `DATABASE_URL`
+- [x] Postgres persistence via `DATABASE_URL` (player accounts + match history)
+- [ ] Weekly / TV idle leaderboard UI (schema supports `finished_at` + per-player queries)
 - [ ] Harden Autodarts bridge autostart on the bar mini-PC
 
 ---

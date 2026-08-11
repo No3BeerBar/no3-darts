@@ -20,6 +20,7 @@ import {
   type SegmentKind,
 } from "@/engine";
 import { buildStoredMatch } from "@/lib/match-export";
+import { persistMatchToServer } from "@/lib/persist-match";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
 import { syncMatchToServer } from "@/lib/sync-server";
 
@@ -114,6 +115,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const stored = buildStoredMatch(result.state);
       saveMatch(stored);
       mergeMatchStatsIntoPlayers(stored);
+      void persistMatchToServer(stored);
     }
   },
 
@@ -197,6 +199,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const stored = buildStoredMatch(finished);
     saveMatch(stored);
     mergeMatchStatsIntoPlayers(stored);
+    void persistMatchToServer(stored);
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
   },

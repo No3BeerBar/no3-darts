@@ -12,6 +12,7 @@ import {
   segmentLabel,
 } from "@/engine";
 import { useGameStore } from "@/store/game-store";
+import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
@@ -44,6 +45,8 @@ export function ScoringScreen() {
     setDisplayOnly,
   } = useGameStore();
   const settings = useSettingsStore();
+  const sessionPlayer = useSessionStore((s) => s.player);
+  const hydrateSession = useSessionStore((s) => s.hydrate);
   const [pad, setPad] = useState("");
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
@@ -53,7 +56,8 @@ export function ScoringScreen() {
     setDisplayOnly(false);
     hydrate();
     settings.hydrate();
-  }, [hydrate, settings, setDisplayOnly]);
+    void hydrateSession();
+  }, [hydrate, settings, setDisplayOnly, hydrateSession]);
 
   useEffect(() => {
     const fit = () => {
@@ -166,6 +170,7 @@ export function ScoringScreen() {
             <div className="truncate text-xs text-zinc-600">
               {statusLine} · Leg {state.legNumber}
               {lastCallout ? ` · ${lastCallout}` : ""}
+              {sessionPlayer ? ` · Signed in: ${sessionPlayer.name}` : ""}
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-1">
