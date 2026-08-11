@@ -132,12 +132,26 @@ During active scoring, each seat shows a live per-round rate (updates as darts l
 
 Also on the TV view when those modes apply.
 
+## How to play
+
+Patrons (guests and PIN players — no staff unlock) can open **How to play** for the
+**currently selected / active mode**:
+
+- **Setup `/`** — button next to the Mode picker (content follows the selected chip)
+- **Active `/play`** — button in the match header (peek rules mid-game without ending)
+
+It opens a **modal sheet** (not a new route), so kiosk Back / `from=play` idle chrome
+stays on the play flow. Copy is plain English (goal, scoring, how you win, examples,
+special rules) and tracks the engine — including John’s Baseball, 41, and Killer rules.
+Source: `src/lib/how-to-play.ts`.
+
 ## Patron (default)
 
 Clean bar / kiosk UI for players:
 
 - Big scores, thrower name, mode banner (Baseball / Killer / …)
 - Live **MPR** (Cricket) / **PPR** (X01) on seat cards
+- **How to play** for the active mode (modal — see above)
 - X01 outshot suggestions when finishing
 - Current visit with **tap-to-correct** (Autodarts misreads)
 - Recent visits (mode-correct Σ — Baseball does **not** sum raw bull values)
