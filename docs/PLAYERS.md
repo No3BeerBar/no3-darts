@@ -29,6 +29,7 @@ Query personal history or future weekly tops via `match_players.player_id` + `ma
 |----------|--------------------|---------|
 | **`DATABASE_URL`** | **no3-darts** (app) | Postgres connection string. Without it, auth APIs return 503 and guests/localStorage still work. |
 | `SESSION_SECRET` | **no3-darts** (app) | HMAC secret for session cookies. Recommended in production. Falls back to `CAMERA_API_KEY` or `DATABASE_URL` if unset. |
+| `STAFF_PIN` | optional | 4-digit PIN for staff Admin APIs (player PIN reset). Default `1234`. Keep matched with **Admin → Staff PIN** (local `/play` unlock). |
 | `CAMERA_API_KEY` | optional | Unrelated to players; protects camera APIs. |
 
 ### `DATABASE_URL` checklist
@@ -75,8 +76,13 @@ Schema tables are created automatically on first DB use (no separate migrate job
 | GET | `/api/auth/me` | current session player |
 | GET | `/api/players` | public names + stats (no hashes) |
 | GET | `/api/players/:id/stats` | aggregates + recent history |
+| POST | `/api/admin/players/reset-pin` | Staff only: `{ playerId, newPin, staffPin }` → overwrites `pin_hash`, clears lockout. Requires correct `staffPin` (`STAFF_PIN` / default `1234`). Never returns hashes or plaintext PINs. |
 | GET | `/api/leaderboard` | weekly + all-time boards (TV attract; registered only). Supports `mode=` game-mode filter + `byMode` / `highScore` — see [`TV.md`](./TV.md) |
 | POST | `/api/matches/persist` | finished match → server history + aggregates (`mode`, `mode_label`, `final_score`) |
+
+### Staff: reset a forgotten PIN
+
+Bar staff use **Admin → Reset player PIN** (see [`PLAY.md`](./PLAY.md)). Flow: pick registered player → set/generate temporary PIN → confirm with staff PIN → tell the patron the new digits. Guests have no PIN.
 
 ## Local dev with Postgres
 

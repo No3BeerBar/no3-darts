@@ -144,6 +144,45 @@ export async function getPublicPlayer(id: string): Promise<PublicPlayer | null> 
   return row ? toPublic(row) : null;
 }
 
+/**
+ * Staff reset of a registered player's PIN.
+ * Overwrites pin_hash and clears lockout. Callers must authorize as staff first.
+ * Never logs or returns the plaintext PIN.
+ */
+export async function resetPlayerPin(
+  playerId: string,
+  newPin: string
+): Promise<AuthResult> {
+  const db = await getDb();
+  if (!db) return { ok: false, error: "Player accounts need Postgres (DATABASE_URL)", status: 503 };
+
+  const pinCheck = validatePin(newPin);
+  if (!pinCheck.ok) return { ok: false, error: pinCheck.error, status: 400 };
+
+  const id = playerId.trim();
+  if (!id) return { ok: false, error: "Player required", status: 400 };
+
+  const player = await db.query.players.findFirst({
+    where: eq(schema.players.id, id),
+  });
+  if (!player) {
+    return { ok: false, error: "Player not found", status: 404 };
+  }
+
+  const pinHash = await hashPin(newPin);
+  const [row] = await db
+    .update(schema.players)
+    .set({
+      pinHash,
+      failedPinAttempts: 0,
+      lockedUntil: null,
+    })
+    .where(eq(schema.players.id, player.id))
+    .returning();
+
+  return { ok: true, player: toPublic(row) };
+}
+
 export async function getPlayerMatchHistory(playerId: string, limit = 50) {
   const db = await getDb();
   if (!db) return null;

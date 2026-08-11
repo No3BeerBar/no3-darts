@@ -62,8 +62,20 @@ Unlock on the same screen:
 | Admin link | Small “Admin” control top-right → PIN |
 | Lock | “Lock” button (or long-press logo again) when unlocked |
 
-Staff PIN is set under **Admin → Staff PIN** (default `1234`).
+Staff PIN is set under **Admin → Staff PIN** (default `1234`). The same default (or Railway `STAFF_PIN`) authorizes **Reset player PIN** on `/admin`.
 
 When unlocked, staff get Undo / Edit / End turn / Pause / Setup + Keys/Pad tabs. **End game** is always available (patrons and staff) — same clear path for a stuck match.
 
 Full bar settings remain on **`/admin`**.
+
+## Forgotten player PIN
+
+Only **registered** players have a PIN (guests do not).
+
+1. Open **`/admin`** → **Reset player PIN**.
+2. Search / select the player → **Reset PIN**.
+3. Enter (or **Generate**) a temporary 4-digit PIN.
+4. Enter the **staff PIN** and confirm.
+5. Tell the player the temporary PIN so they can sign in on `/play` / setup.
+
+The server stores only a bcrypt hash — never show or log other players’ current PINs. Players cannot change their own PIN yet; staff can reset again anytime. Keep **Admin → Staff PIN** matched with the Railway **`STAFF_PIN`** variable (default `1234` if unset).
