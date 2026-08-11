@@ -23,6 +23,7 @@ export const shanghaiHandler: GameModeHandler = {
   id: "shanghai",
   displayName: "Shanghai",
   description: "Score on the round number; Shanghai wins instantly",
+  leaderboard: { highScore: true, average: true },
 
   initLeg(state: GameState): GameState {
     const next = cloneState(state);

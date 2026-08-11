@@ -22,6 +22,7 @@ export const x01Handler: GameModeHandler = {
   id: "x01",
   displayName: "X01",
   description: "Classic countdown – 301, 501, 701, 901",
+  leaderboard: { average: true, checkoutStats: true },
 
   initLeg(state: GameState): GameState {
     const cfg = getModeConfig(state, "x01");

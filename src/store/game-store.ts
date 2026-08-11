@@ -19,10 +19,18 @@ import {
   type GameState,
   type SegmentKind,
 } from "@/engine";
-import { buildStoredMatch } from "@/lib/match-export";
+import { buildStoredMatch, hasRegisteredPlayers } from "@/lib/match-export";
 import { persistMatchToServer } from "@/lib/persist-match";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
 import { syncMatchToServer } from "@/lib/sync-server";
+
+/** Save history / stats / Postgres only when a PIN account played. Guests are ephemeral. */
+function recordFinishedMatch(stored: ReturnType<typeof buildStoredMatch>): void {
+  if (!hasRegisteredPlayers(stored)) return;
+  saveMatch(stored);
+  mergeMatchStatsIntoPlayers(stored);
+  void persistMatchToServer(stored);
+}
 
 interface GameStore {
   state: GameState | null;
@@ -112,10 +120,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     if (result.state.status === "match_won") {
-      const stored = buildStoredMatch(result.state);
-      saveMatch(stored);
-      mergeMatchStatsIntoPlayers(stored);
-      void persistMatchToServer(stored);
+      recordFinishedMatch(buildStoredMatch(result.state));
     }
   },
 
@@ -197,10 +202,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state) return;
     const prevId = state.id;
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
-    const stored = buildStoredMatch(finished);
-    saveMatch(stored);
-    mergeMatchStatsIntoPlayers(stored);
-    void persistMatchToServer(stored);
+    recordFinishedMatch(buildStoredMatch(finished));
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
     // Drop server copy so TV returns to attract mode

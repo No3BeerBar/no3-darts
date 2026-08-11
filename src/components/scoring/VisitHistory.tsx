@@ -112,7 +112,15 @@ export function VisitHistory({
                     lg ? "text-2xl" : "text-xl"
                   )}
                 >
-                  {turn.bust ? "BUST" : turn.checkout ? "OUT" : total}
+                  {turn.bust
+                    ? state.mode === "forty_one"
+                      ? "HALVED"
+                      : "BUST"
+                    : turn.checkout
+                      ? "OUT"
+                      : state.mode === "forty_one"
+                        ? `+${turn.endScore - turn.startScore}`
+                        : total}
                 </span>
                 {showScorePath && !turn.bust && (
                   <span className="font-display text-[11px] tabular-nums text-zinc-600">

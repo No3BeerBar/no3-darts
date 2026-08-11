@@ -39,6 +39,7 @@ export async function ensureSchema(sql: ReturnType<typeof postgres>): Promise<vo
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS matches_finished_at_idx ON matches (finished_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS matches_mode_idx ON matches (mode)`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS match_players (
@@ -53,10 +54,13 @@ export async function ensureSchema(sql: ReturnType<typeof postgres>): Promise<vo
       highest_checkout integer NOT NULL DEFAULT 0,
       darts_thrown integer NOT NULL DEFAULT 0,
       total_score integer NOT NULL DEFAULT 0,
+      final_score integer NOT NULL DEFAULT 0,
       legs_won integer NOT NULL DEFAULT 0,
       checkout_attempts integer NOT NULL DEFAULT 0
     )
   `;
+  // Idempotent upgrade for existing DBs created before final_score
+  await sql`ALTER TABLE match_players ADD COLUMN IF NOT EXISTS final_score integer NOT NULL DEFAULT 0`;
   await sql`CREATE INDEX IF NOT EXISTS match_players_player_id_idx ON match_players (player_id)`;
   await sql`CREATE INDEX IF NOT EXISTS match_players_match_id_idx ON match_players (match_id)`;
 }

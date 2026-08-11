@@ -19,6 +19,7 @@ export const TEAM_MODES: GameModeId[] = [
   "around_the_clock",
   "bermuda",
   "baseball",
+  "forty_one",
 ];
 
 export function modeSupportsTeams(mode: GameModeId): boolean {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { listModes } from "@/engine";
+import { listModes, type GameModeId } from "@/engine";
 import {
   formatLeaderboardValue,
   LEADERBOARD_METRICS,
@@ -13,11 +13,28 @@ import { cn } from "@/lib/utils";
 
 type Boards = Record<LeaderboardMetric, LeaderboardEntry[]>;
 
+type ModeCatalogEntry = {
+  mode: GameModeId;
+  label: string;
+  metrics: LeaderboardMetric[];
+};
+
 type LeaderboardPayload = {
   ok: boolean;
   dbAvailable: boolean;
-  weekly: { boards: Boards; since: number | null; until: number } | null;
-  allTime: { boards: Boards; since: number | null; until: number } | null;
+  modeCatalog?: ModeCatalogEntry[];
+  weekly: {
+    boards: Boards;
+    byMode?: Partial<Record<GameModeId, Boards>>;
+    since: number | null;
+    until: number;
+  } | null;
+  allTime: {
+    boards: Boards;
+    byMode?: Partial<Record<GameModeId, Boards>>;
+    since: number | null;
+    until: number;
+  } | null;
 };
 
 type PanelKind =
@@ -25,9 +42,9 @@ type PanelKind =
       type: "board";
       window: "week" | "all";
       metric: LeaderboardMetric;
-      /** Optional per-mode board label (e.g. Killer wins). */
-      gameMode?: string | null;
-      titleOverride?: string;
+      /** null = overall / mixed boards */
+      gameMode: GameModeId | null;
+      modeLabel?: string;
     }
   | { type: "games" }
   | { type: "cta" };
@@ -35,15 +52,28 @@ type PanelKind =
 const PANEL_MS = 12_000;
 const REFRESH_MS = 45_000;
 
+/** Overall attract metrics (X01-style + cross-mode wins). Per-mode high scores rotate separately. */
+const OVERALL_METRICS: LeaderboardMetric[] = [
+  "avg",
+  "wins",
+  "oneEighties",
+  "highestCheckout",
+];
+
 const EMPTY_BOARDS: Boards = {
   avg: [],
   wins: [],
   oneEighties: [],
   highestCheckout: [],
+  highScore: [],
 };
 
 function metricLabel(id: LeaderboardMetric): string {
   return LEADERBOARD_METRICS.find((m) => m.id === id)?.shortLabel ?? id.toUpperCase();
+}
+
+function boardsHaveRows(boards: Boards | undefined, metric: LeaderboardMetric): boolean {
+  return Boolean(boards?.[metric]?.length);
 }
 
 export function AttractMode({
@@ -57,7 +87,6 @@ export function AttractMode({
 }) {
   const modes = useMemo(() => listModes(), []);
   const [data, setData] = useState<LeaderboardPayload | null>(null);
-  const [killerData, setKillerData] = useState<LeaderboardPayload | null>(null);
   const [panelIndex, setPanelIndex] = useState(0);
   const [tick, setTick] = useState(0);
 
@@ -65,24 +94,12 @@ export function AttractMode({
     let stopped = false;
     const load = async () => {
       try {
-        const [r, rk] = await Promise.all([
-          fetch(`/api/leaderboard?limit=8&minMatches=1&_=${Date.now()}`, {
-            cache: "no-store",
-          }),
-          fetch(
-            `/api/leaderboard?gameMode=killer&limit=8&minMatches=1&_=${Date.now()}`,
-            { cache: "no-store" }
-          ),
-        ]);
+        const r = await fetch(`/api/leaderboard?limit=8&minMatches=1&_=${Date.now()}`, {
+          cache: "no-store",
+        });
         if (!r.ok) throw new Error(`status ${r.status}`);
         const json = (await r.json()) as LeaderboardPayload;
-        const killerJson = rk.ok
-          ? ((await rk.json()) as LeaderboardPayload)
-          : null;
-        if (!stopped) {
-          setData(json);
-          setKillerData(killerJson);
-        }
+        if (!stopped) setData(json);
       } catch {
         if (!stopped) {
           setData({
@@ -91,7 +108,6 @@ export function AttractMode({
             weekly: null,
             allTime: null,
           });
-          setKillerData(null);
         }
       }
     };
@@ -105,58 +121,68 @@ export function AttractMode({
 
   const weeklyBoards = data?.weekly?.boards ?? EMPTY_BOARDS;
   const allBoards = data?.allTime?.boards ?? EMPTY_BOARDS;
-  const killerWeek = killerData?.weekly?.boards ?? EMPTY_BOARDS;
-  const killerAll = killerData?.allTime?.boards ?? EMPTY_BOARDS;
+  const weeklyByMode = data?.weekly?.byMode ?? {};
+  const allByMode = data?.allTime?.byMode ?? {};
+  const modeCatalog = data?.modeCatalog ?? [];
   const dbOk = Boolean(data?.dbAvailable);
 
   const panels = useMemo<PanelKind[]>(() => {
     const list: PanelKind[] = [];
-    // Prefer panels that have rows; always include games + CTA
-    for (const m of LEADERBOARD_METRICS) {
-      if (weeklyBoards[m.id]?.length) {
-        list.push({ type: "board", window: "week", metric: m.id });
+
+    for (const m of OVERALL_METRICS) {
+      if (boardsHaveRows(weeklyBoards, m)) {
+        list.push({ type: "board", window: "week", metric: m, gameMode: null });
       }
     }
-    for (const m of LEADERBOARD_METRICS) {
-      if (allBoards[m.id]?.length) {
-        list.push({ type: "board", window: "all", metric: m.id });
+    for (const m of OVERALL_METRICS) {
+      if (boardsHaveRows(allBoards, m)) {
+        list.push({ type: "board", window: "all", metric: m, gameMode: null });
       }
     }
-    // Per-mode: Killer wins (registered PIN only)
-    if (killerWeek.wins?.length) {
-      list.push({
-        type: "board",
-        window: "week",
-        metric: "wins",
-        gameMode: "killer",
-        titleOverride: "Killer wins",
-      });
+
+    // Per-mode boards (41, Baseball, …) — wins + high score when present
+    const catalog =
+      modeCatalog.length > 0
+        ? modeCatalog
+        : modes.map((m) => ({
+            mode: m.id,
+            label: m.name,
+            metrics: ["wins", "highScore"] as LeaderboardMetric[],
+          }));
+
+    for (const spec of catalog) {
+      for (const metric of spec.metrics) {
+        // Skip overall-style metrics already covered unless mode-specific (highScore / wins for non-X01)
+        if (spec.mode === "x01" && metric !== "highScore") continue;
+        if (boardsHaveRows(weeklyByMode[spec.mode], metric)) {
+          list.push({
+            type: "board",
+            window: "week",
+            metric,
+            gameMode: spec.mode,
+            modeLabel: spec.label,
+          });
+        }
+        if (boardsHaveRows(allByMode[spec.mode], metric)) {
+          list.push({
+            type: "board",
+            window: "all",
+            metric,
+            gameMode: spec.mode,
+            modeLabel: spec.label,
+          });
+        }
+      }
     }
-    if (killerAll.wins?.length) {
-      list.push({
-        type: "board",
-        window: "all",
-        metric: "wins",
-        gameMode: "killer",
-        titleOverride: "Killer wins",
-      });
-    }
-    // If no leaderboard data, still rotate a friendly empty board once
+
     if (list.length === 0) {
-      list.push({ type: "board", window: "week", metric: "avg" });
-      list.push({ type: "board", window: "all", metric: "wins" });
-      list.push({
-        type: "board",
-        window: "week",
-        metric: "wins",
-        gameMode: "killer",
-        titleOverride: "Killer wins",
-      });
+      list.push({ type: "board", window: "week", metric: "avg", gameMode: null });
+      list.push({ type: "board", window: "all", metric: "wins", gameMode: null });
     }
     list.push({ type: "games" });
     list.push({ type: "cta" });
     return list;
-  }, [weeklyBoards, allBoards, killerWeek, killerAll]);
+  }, [weeklyBoards, allBoards, weeklyByMode, allByMode, modeCatalog, modes]);
 
   useEffect(() => {
     setPanelIndex(0);
@@ -173,13 +199,17 @@ export function AttractMode({
   const panel = panels[panelIndex % panels.length] ?? { type: "games" as const };
   const rows =
     panel.type === "board"
-      ? panel.gameMode === "killer"
-        ? panel.window === "week"
-          ? killerWeek[panel.metric]
-          : killerAll[panel.metric]
-        : panel.window === "week"
-          ? weeklyBoards[panel.metric]
-          : allBoards[panel.metric]
+      ? (() => {
+          const source =
+            panel.window === "week"
+              ? panel.gameMode
+                ? weeklyByMode[panel.gameMode]
+                : weeklyBoards
+              : panel.gameMode
+                ? allByMode[panel.gameMode]
+                : allBoards;
+          return source?.[panel.metric] ?? [];
+        })()
       : [];
 
   return (
@@ -223,15 +253,21 @@ export function AttractMode({
         >
           {panel.type === "board" && (
             <LeaderboardPanel
-              title={panel.window === "week" ? "This week" : "All-time"}
-              subtitle={panel.titleOverride ?? metricLabel(panel.metric)}
+              title={
+                panel.gameMode
+                  ? `${panel.modeLabel ?? panel.gameMode} · ${
+                      panel.window === "week" ? "This week" : "All-time"
+                    }`
+                  : panel.window === "week"
+                    ? "This week"
+                    : "All-time"
+              }
+              subtitle={metricLabel(panel.metric)}
               metric={panel.metric}
               rows={rows}
               emptyHint={
                 dbOk
-                  ? panel.gameMode === "killer"
-                    ? "Win Killer with a PIN account to climb this board. Guests play, no history."
-                    : "Play a match with a PIN account to climb the board."
+                  ? "Play a match with a PIN account to climb the board."
                   : "Stats offline — games still open on the tablet."
               }
             />

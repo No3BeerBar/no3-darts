@@ -6,6 +6,9 @@ import Link from "next/link";
 import {
   baseballDartPoints,
   baseballInning,
+  fortyOneBoardFocus,
+  fortyOneDartPoints,
+  fortyOneTarget,
   getHandler,
   getRemaining,
   getTeamForPlayer,
@@ -22,6 +25,7 @@ import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
+import { FortyOneBanner } from "./FortyOneBanner";
 import { CameraHealthToast } from "./CameraHealthToast";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
@@ -105,6 +109,12 @@ export function ScoringScreen() {
   const killerFocus = state.mode === "killer" ? killerBoardFocus(state) : null;
   const slotDart =
     correctSlot != null ? state.currentTurnDarts[correctSlot] : undefined;
+  const fortyOne = state.mode === "forty_one";
+  const fortyOneFocus = fortyOne ? fortyOneBoardFocus(fortyOneTarget(state)) : null;
+  const baseball = state.mode === "baseball";
+  const boardFocusNumber = baseball
+    ? baseballInning(state)
+    : (killerFocus?.primary ?? fortyOneFocus?.focusNumber ?? null);
 
   const submitPad = () => {
     const dart = parseDartLabel(pad);
@@ -148,11 +158,9 @@ export function ScoringScreen() {
           currentLabel={
             slotDart ? segmentLabel(slotDart.kind, slotDart.number) : undefined
           }
-          focusNumber={
-            state.mode === "baseball"
-              ? baseballInning(state)
-              : killerFocus?.primary ?? null
-          }
+          focusNumber={boardFocusNumber}
+          focusRing={fortyOneFocus?.focusRing ?? null}
+          focusBull={fortyOneFocus?.focusBull ?? false}
           onPick={(kind, number) => {
             correctDartAt(correctSlot, kind, number);
             setCorrectSlot(null);
@@ -228,6 +236,7 @@ export function ScoringScreen() {
 
         {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
         {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
+        {fortyOne && <FortyOneBanner state={state} size="sm" />}
 
         {/* Current visit */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
@@ -236,11 +245,13 @@ export function ScoringScreen() {
               darts={state.currentTurnDarts}
               interactive={state.status === "playing"}
               onSlotClick={(i) => setCorrectSlot(i)}
-              showDartPoints={state.mode === "baseball"}
+              showDartPoints={baseball || fortyOne}
               pointsForDart={
-                state.mode === "baseball"
+                baseball
                   ? (d) => baseballDartPoints(d, baseballInning(state))
-                  : undefined
+                  : fortyOne
+                    ? (d) => fortyOneDartPoints(d, fortyOneTarget(state))
+                    : undefined
               }
             />
             {state.status === "playing" && (
@@ -317,13 +328,11 @@ export function ScoringScreen() {
               {tab === "board" && (
                 <Dartboard
                   marks={state.currentTurnDarts}
-                  focusNumber={
-                    state.mode === "baseball"
-                      ? baseballInning(state)
-                      : killerFocus?.primary ?? null
-                  }
+                  focusNumber={boardFocusNumber}
                   focusNumbers={killerFocus?.secondary ?? null}
                   focusKind={killerFocus?.focusKind ?? "wedge"}
+                  focusRing={fortyOneFocus?.focusRing ?? null}
+                  focusBull={fortyOneFocus?.focusBull ?? false}
                   size={boardSize}
                   interactive
                   showLiveLabel

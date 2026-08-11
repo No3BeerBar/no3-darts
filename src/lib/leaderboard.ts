@@ -1,9 +1,14 @@
 /**
  * Pure helpers for bar TV / server leaderboards.
- * Weekly windows use match finished_at; all-time uses player aggregates.
+ * Weekly windows use match finished_at; all-time aggregates match rows (mode-aware).
  */
 
-export type LeaderboardMetric = "avg" | "wins" | "oneEighties" | "highestCheckout";
+export type LeaderboardMetric =
+  | "avg"
+  | "wins"
+  | "oneEighties"
+  | "highestCheckout"
+  | "highScore";
 
 export type LeaderboardEntry = {
   playerId: string;
@@ -12,6 +17,8 @@ export type LeaderboardEntry = {
   matchesWon: number;
   oneEighties: number;
   highestCheckout: number;
+  /** Best finishing score in the window (mode games like Baseball / 41) */
+  highScore: number;
   /** Three-dart average for the window (or career) */
   avg: number;
   dartsThrown: number;
@@ -22,33 +29,54 @@ export type MatchPlayerRow = {
   playerId: string;
   name: string;
   finishedAt: number;
+  /** Game mode id (e.g. killer, baseball, forty_one, x01). */
+  mode: string;
   avg: number;
   oneEighties: number;
   highestCheckout: number;
   dartsThrown: number;
   totalScore: number;
+  /** Finishing score for the match (playerStates.score); 0 if unknown */
+  finalScore: number;
   won: boolean;
-  /** Game mode id when available (e.g. killer, baseball, x01). */
-  mode?: string;
 };
 
 /** Modes that prefer wins boards over X01-centric avg/180s/high-out. */
-export const WINS_FIRST_MODES = new Set(["killer", "baseball", "cricket", "countup"]);
+export const WINS_FIRST_MODES = new Set([
+  "killer",
+  "baseball",
+  "forty_one",
+  "cricket",
+  "countup",
+  "shanghai",
+  "bermuda",
+  "around_the_clock",
+  "random_checkout",
+]);
+
+/** Modes that also rank finishing score (Baseball, 41, …). */
+export const HIGH_SCORE_MODES = new Set(["baseball", "forty_one", "countup", "shanghai"]);
 
 export function filterRowsByGameMode(
   rows: MatchPlayerRow[],
   gameMode: string | undefined | null
 ): MatchPlayerRow[] {
-  if (!gameMode) return rows;
-  return rows.filter((r) => r.mode === gameMode);
+  return filterRowsByMode(rows, gameMode || "all");
 }
 
-/** Metrics to rank for a mode. Unknown / empty → full X01-style set. */
+/** Metrics to rank for a mode. Unknown / empty → full metric set. */
 export function metricsForGameMode(
   gameMode?: string | null
 ): Array<{ id: LeaderboardMetric; label: string; shortLabel: string }> {
-  if (gameMode && WINS_FIRST_MODES.has(gameMode)) {
+  if (!gameMode || gameMode === "all") return LEADERBOARD_METRICS;
+  if (HIGH_SCORE_MODES.has(gameMode)) {
+    return LEADERBOARD_METRICS.filter((m) => m.id === "wins" || m.id === "highScore");
+  }
+  if (WINS_FIRST_MODES.has(gameMode)) {
     return LEADERBOARD_METRICS.filter((m) => m.id === "wins");
+  }
+  if (gameMode === "x01") {
+    return LEADERBOARD_METRICS.filter((m) => m.id !== "highScore");
   }
   return LEADERBOARD_METRICS;
 }
@@ -81,6 +109,14 @@ export function threeDartAvg(totalScore: number, dartsThrown: number): number {
   return (totalScore / dartsThrown) * 3;
 }
 
+export function filterRowsByMode(
+  rows: MatchPlayerRow[],
+  mode: string | null | undefined
+): MatchPlayerRow[] {
+  if (!mode || mode === "all") return rows;
+  return rows.filter((r) => r.mode === mode);
+}
+
 /** Aggregate per-player rows that already fall inside a finished_at window. */
 export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
   const byId = new Map<string, LeaderboardEntry>();
@@ -96,6 +132,7 @@ export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
         matchesWon: 0,
         oneEighties: 0,
         highestCheckout: 0,
+        highScore: 0,
         avg: 0,
         dartsThrown: 0,
         totalScore: 0,
@@ -107,6 +144,7 @@ export function aggregateMatchRows(rows: MatchPlayerRow[]): LeaderboardEntry[] {
     if (r.won) e.matchesWon += 1;
     e.oneEighties += r.oneEighties || 0;
     e.highestCheckout = Math.max(e.highestCheckout, r.highestCheckout || 0);
+    e.highScore = Math.max(e.highScore, r.finalScore || 0);
     e.dartsThrown += r.dartsThrown || 0;
     e.totalScore += r.totalScore || 0;
   }
@@ -154,6 +192,8 @@ export function metricValue(entry: LeaderboardEntry, metric: LeaderboardMetric):
       return entry.oneEighties;
     case "highestCheckout":
       return entry.highestCheckout;
+    case "highScore":
+      return entry.highScore;
     case "avg":
     default:
       return entry.avg;
@@ -179,6 +219,7 @@ export function rankLeaderboard(
       if (metric === "wins") return e.matchesWon > 0;
       if (metric === "oneEighties") return e.oneEighties > 0;
       if (metric === "highestCheckout") return e.highestCheckout > 0;
+      if (metric === "highScore") return e.highScore > 0;
       if (metric === "avg") return e.avg > 0 || e.dartsThrown > 0;
       return true;
     })
@@ -200,6 +241,7 @@ export const LEADERBOARD_METRICS: Array<{
   { id: "wins", label: "Match wins", shortLabel: "WINS" },
   { id: "oneEighties", label: "180s", shortLabel: "180s" },
   { id: "highestCheckout", label: "Highest checkout", shortLabel: "HIGH OUT" },
+  { id: "highScore", label: "Highest finishing score", shortLabel: "HIGH SCORE" },
 ];
 
 export function formatLeaderboardValue(

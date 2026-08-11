@@ -18,6 +18,7 @@ export const countUpHandler: GameModeHandler = {
   id: "countup",
   displayName: "Count-Up",
   description: "Highest score after fixed turns wins",
+  leaderboard: { highScore: true, average: true },
 
   initLeg(state: GameState): GameState {
     const next = cloneState(state);

@@ -209,6 +209,8 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
   ok: boolean;
   error?: string;
   updatedPlayerIds?: string[];
+  /** True when skipped because the match had no registered (PIN) players */
+  skippedGuestOnly?: boolean;
 }> {
   const db = await getDb();
   if (!db) return { ok: false, error: "database_unavailable" };
@@ -220,14 +222,24 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
     return { ok: true, updatedPlayerIds: [] };
   }
 
+  // Authoritative: only ids that exist in `players` (PIN accounts) are persisted.
+  // Guests may play, but never get match_players rows, aggregates, or leaderboard credit.
   const known = new Set<string>();
   for (const p of match.players) {
+    if (p.isGuest === true) continue;
     const row = await db.query.players.findFirst({
       where: eq(schema.players.id, p.id),
       columns: { id: true },
     });
     if (row) known.add(row.id);
   }
+
+  if (known.size === 0) {
+    return { ok: true, updatedPlayerIds: [], skippedGuestOnly: true };
+  }
+
+  const registeredStats = match.summary.playerStats.filter((ps) => known.has(ps.playerId));
+  const registeredPlayers = match.players.filter((p) => known.has(p.id));
 
   try {
     const updated = await db.transaction(async (tx) => {
@@ -237,37 +249,38 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
         mode: match.mode,
         modeLabel: match.modeLabel,
         winnerPlayerId: match.winnerId && known.has(match.winnerId) ? match.winnerId : null,
+        // Keep display name even if a guest won — no player_id / stats credit for guests
         winnerName: match.winnerName,
         legs: match.summary.legs,
         sets: match.summary.sets,
         summaryJson: {
-          playerStats: match.summary.playerStats,
-          players: match.players,
+          playerStats: registeredStats,
+          players: registeredPlayers,
         },
       });
 
       const updatedPlayerIds: string[] = [];
 
-      for (const ps of match.summary.playerStats) {
-        const isRegistered = known.has(ps.playerId);
+      for (const ps of registeredStats) {
         const st = match.state.playerStates.find((x) => x.playerId === ps.playerId);
+        const finalScore =
+          typeof ps.finalScore === "number" ? ps.finalScore : (st?.score ?? 0);
         await tx.insert(schema.matchPlayers).values({
           id: createId("mp"),
           matchId: match.id,
-          playerId: isRegistered ? ps.playerId : null,
+          playerId: ps.playerId,
           name: ps.name,
-          isGuest: !isRegistered,
+          isGuest: false,
           avg: ps.avg,
           oneEighties: ps.oneEighties,
           checkouts: ps.checkouts,
           highestCheckout: ps.highestCheckout,
           dartsThrown: st?.dartsThrown ?? 0,
           totalScore: st?.totalScore ?? 0,
+          finalScore,
           legsWon: st?.legsWon ?? 0,
           checkoutAttempts: st?.checkoutAttempts ?? 0,
         });
-
-        if (!isRegistered) continue;
 
         const player = await tx.query.players.findFirst({
           where: eq(schema.players.id, ps.playerId),

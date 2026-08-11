@@ -21,6 +21,7 @@ const MODES: Array<{ id: GameModeId; name: string }> = [
   { id: "cricket", name: "Cricket" },
   { id: "shanghai", name: "Shanghai" },
   { id: "baseball", name: "Baseball" },
+  { id: "forty_one", name: "41" },
   { id: "countup", name: "Count-Up" },
   { id: "around_the_clock", name: "Around Clock" },
   { id: "bermuda", name: "Bermuda" },
@@ -33,6 +34,8 @@ const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
     "9 innings · only hits on the current inning number count (e.g. inning 4: S4/D4/T4 = 4/8/12) · anything else = 0 · highest total wins",
   killer:
     "Each player gets a unique number 1–20 · hit your double to become Killer · then hit their doubles to take lives · last life standing wins · only doubles count",
+  forty_one:
+    "Start at 60 · rounds: 15, 16, any double, 17, 18, any triple, 19, 20, score exactly 41 with 3 darts, bull · hit the target to add · miss all → score halved (round up) · highest wins",
 };
 
 type PlayFormat = "singles" | "teams";
@@ -286,6 +289,8 @@ export function GameSetup() {
         };
       case "baseball":
         return { mode: "baseball", config: { innings: 9 } };
+      case "forty_one":
+        return { mode: "forty_one", config: {} };
     }
   };
 

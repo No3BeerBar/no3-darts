@@ -19,6 +19,8 @@ import {
 } from "@/lib/board-geometry";
 import { cn } from "@/lib/utils";
 
+export type BoardFocusRing = "double" | "triple";
+
 export interface DartboardProps {
   /** @deprecated use `marks` — kept for single-dart call sites */
   highlight?: DartThrow | null;
@@ -34,6 +36,10 @@ export interface DartboardProps {
   focusNumbers?: number[] | null;
   /** `wedge` (default) = S/D/T; `double` = double ring only. */
   focusKind?: "wedge" | "double";
+  /** Light the entire doubles or triples ring (e.g. 41 / Bermuda). */
+  focusRing?: BoardFocusRing | null;
+  /** Light outer + inner bull (e.g. 41 bull round). */
+  focusBull?: boolean;
   size?: number;
   className?: string;
   interactive?: boolean;
@@ -47,6 +53,8 @@ export function Dartboard({
   focusNumber = null,
   focusNumbers = null,
   focusKind = "wedge",
+  focusRing = null,
+  focusBull = false,
   size = 360,
   className,
   interactive = false,
@@ -127,6 +135,9 @@ export function Dartboard({
     num >= 1 &&
     num <= 20 &&
     !isPrimaryFocus(num);
+
+  const focusDoubleRing = focusRing === "double";
+  const focusTripleRing = focusRing === "triple";
 
   const pins = allMarks
     .map((d, i) => ({ pos: dartPin(d), index: i, dart: d }))
@@ -220,9 +231,13 @@ export function Dartboard({
             focusBase: string
           ) => {
             if (isLit(kind, num)) return lit;
-            if (!focus) return base;
-            if (doubleOnly && kind !== "double") return base;
-            return focusBase;
+            if (focus) {
+              if (doubleOnly && kind !== "double") return base;
+              return focusBase;
+            }
+            if (kind === "double" && focusDoubleRing) return focusMulti;
+            if (kind === "triple" && focusTripleRing) return focusMulti;
+            return base;
           };
 
           return (
@@ -292,17 +307,23 @@ export function Dartboard({
           cx={CX}
           cy={CY}
           r={BOARD_R * NR.outerBull}
-          fill={isLit("outer_bull", 25) ? "#f5c518" : "#1a8f45"}
-          stroke="#050505"
-          strokeWidth={0.8}
+          fill={
+            isLit("outer_bull", 25)
+              ? "#f5c518"
+              : focusBull
+                ? "#e8c547"
+                : "#1a8f45"
+          }
+          stroke={focusBull ? "#f5c518" : "#050505"}
+          strokeWidth={focusBull ? 1.6 : 0.8}
         />
         <circle
           cx={CX}
           cy={CY}
           r={BOARD_R * NR.bull}
-          fill={isLit("bull", 50) ? "#f5c518" : "#c41e1e"}
-          stroke="#050505"
-          strokeWidth={0.8}
+          fill={isLit("bull", 50) ? "#f5c518" : focusBull ? "#d4a017" : "#c41e1e"}
+          stroke={focusBull ? "#f5c518" : "#050505"}
+          strokeWidth={focusBull ? 1.4 : 0.8}
         />
 
         {[NR.doubleOuter, NR.doubleInner, NR.tripleOuter, NR.tripleInner, NR.outerBull, NR.bull].map(

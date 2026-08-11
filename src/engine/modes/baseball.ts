@@ -58,6 +58,7 @@ export const baseballHandler: GameModeHandler = {
   displayName: "Baseball",
   description:
     "9 innings · only the inning number scores · S/D/T = N×1/2/3 · highest total wins",
+  leaderboard: { highScore: true },
 
   initLeg(state: GameState): GameState {
     const next = cloneState(state);

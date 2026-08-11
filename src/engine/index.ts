@@ -21,3 +21,16 @@ export {
   baseballTarget,
   baseballVisitPoints,
 } from "./modes/baseball";
+export {
+  FORTY_ONE_SEQUENCE,
+  FORTY_ONE_START_SCORE,
+  fortyOneBoardFocus,
+  fortyOneDartPoints,
+  fortyOneHalve,
+  fortyOneRoundNumber,
+  fortyOneTarget,
+  fortyOneTargetLabel,
+  fortyOneVisitRawSum,
+  fortyOneVisitResult,
+  type FortyOneTarget,
+} from "./modes/forty-one";
