@@ -26,6 +26,8 @@ export {
   FORTY_ONE_START_SCORE,
   fortyOneBoardFocus,
   fortyOneDartPoints,
+  fortyOneExact41DartContributes,
+  fortyOneExact41VisitOk,
   fortyOneHalve,
   fortyOneRoundNumber,
   fortyOneTarget,

@@ -7,6 +7,7 @@ import {
   baseballInning,
   fortyOneBoardFocus,
   fortyOneDartPoints,
+  fortyOneExact41DartContributes,
   fortyOneTarget,
   getHandler,
   getKillerExtra,
@@ -88,6 +89,9 @@ export function TvDisplay() {
     }
     return a + d.value;
   }, 0);
+  const exact41Voided =
+    Boolean(f41Target?.type === "exact_41") &&
+    state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d));
   const checkout = suggestCheckout(state);
   const teamMode = isTeamGame(state) && state.mode !== "killer";
   const boardFocusNumber = baseball
@@ -356,7 +360,11 @@ export function TvDisplay() {
               })}
               <div className="ml-2">
                 <div className="font-display text-xs tracking-widest text-zinc-600">TURN</div>
-                <div className="font-logo text-4xl tabular-nums text-white lg:text-5xl">
+                <div
+                  className={`font-logo text-4xl tabular-nums lg:text-5xl ${
+                    exact41Voided ? "text-amber-400" : "text-white"
+                  }`}
+                >
                   {turnTotal}
                 </div>
               </div>

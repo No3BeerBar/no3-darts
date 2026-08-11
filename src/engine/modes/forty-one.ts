@@ -1,7 +1,9 @@
 /**
  * 41 (John’s rules).
  * Start at 60. Ten rounds; valid hits add; complete miss → score halved (ceil).
- * Round “41”: all 3 darts must sum exactly to 41 → add 41 only; else halve.
+ * Order: 20, 19, any double, 18, 17, any triple, 16, 15, exact 41, bulls.
+ * Round “41”: all 3 darts must contribute (no miss / zero) and sum exactly to 41
+ * → add 41 only; else halve.
  * Highest total wins. Ties: first among equal high scores (Shanghai / Baseball).
  */
 
@@ -26,14 +28,14 @@ export type FortyOneTarget =
 export const FORTY_ONE_START_SCORE = 60;
 
 export const FORTY_ONE_SEQUENCE: FortyOneTarget[] = [
-  { type: "number", n: 15 },
-  { type: "number", n: 16 },
-  { type: "any_double" },
-  { type: "number", n: 17 },
-  { type: "number", n: 18 },
-  { type: "any_triple" },
-  { type: "number", n: 19 },
   { type: "number", n: 20 },
+  { type: "number", n: 19 },
+  { type: "any_double" },
+  { type: "number", n: 18 },
+  { type: "number", n: 17 },
+  { type: "any_triple" },
+  { type: "number", n: 16 },
+  { type: "number", n: 15 },
   { type: "exact_41" },
   { type: "bull" },
 ];
@@ -88,8 +90,8 @@ export function fortyOneHalve(score: number): number {
 
 /**
  * Points one dart scores toward the current round target.
- * For exact_41, returns the dart’s face value (all segments count toward the sum);
- * visit success is decided separately.
+ * For exact_41, returns the dart’s face value (miss / zero → 0);
+ * visit success is decided separately (all 3 must contribute and sum to 41).
  */
 export function fortyOneDartPoints(dart: DartThrow, target: FortyOneTarget): number {
   switch (target.type) {
@@ -118,6 +120,20 @@ export function fortyOneDartPoints(dart: DartThrow, target: FortyOneTarget): num
   }
 }
 
+/** Exact-41: dart must land on the board with a positive face value (miss voids the visit). */
+export function fortyOneExact41DartContributes(dart: DartThrow): boolean {
+  return dart.kind !== "miss" && dart.value > 0;
+}
+
+/** Exact-41 success: 3 contributing darts whose face values sum to exactly 41. */
+export function fortyOneExact41VisitOk(darts: DartThrow[]): boolean {
+  if (darts.length !== 3) return false;
+  for (const d of darts) {
+    if (d.kind === "miss" || d.value <= 0) return false;
+  }
+  return darts.reduce((a, d) => a + d.value, 0) === 41;
+}
+
 export function fortyOneVisitRawSum(darts: DartThrow[], target: FortyOneTarget): number {
   return darts.reduce((sum, d) => sum + fortyOneDartPoints(d, target), 0);
 }
@@ -125,17 +141,23 @@ export function fortyOneVisitRawSum(darts: DartThrow[], target: FortyOneTarget):
 /**
  * Result of a completed visit against a target.
  * - Normal rounds: add sum of valid dart points; 0 valid → halved
- * - exact_41: need exactly 3 darts summing to 41 → add 41; else halved
+ * - exact_41: exactly 3 darts, each must contribute (not miss / value<=0),
+ *   sum must be 41 → +41; else halved.
+ *   T7(21)+S20(20)+MISS(0) = 41 arithmetically → HALVED (miss does not contribute).
  */
 export function fortyOneVisitResult(
   darts: DartThrow[],
   target: FortyOneTarget
 ): { kind: "scored"; points: number } | { kind: "halved" } {
   if (target.type === "exact_41") {
-    if (darts.length === 3) {
-      const sum = darts.reduce((a, d) => a + d.value, 0);
-      if (sum === 41) return { kind: "scored", points: 41 };
+    // Require exactly 3 darts
+    if (darts.length !== 3) return { kind: "halved" };
+    // Every dart must contribute — reject miss or non-positive value
+    for (const d of darts) {
+      if (d.kind === "miss" || d.value <= 0) return { kind: "halved" };
     }
+    const sum = darts[0].value + darts[1].value + darts[2].value;
+    if (sum === 41) return { kind: "scored", points: 41 };
     return { kind: "halved" };
   }
   const pts = fortyOneVisitRawSum(darts, target);
@@ -147,7 +169,7 @@ export const fortyOneHandler: GameModeHandler = {
   id: "forty_one",
   displayName: "41",
   description:
-    "Start 60 · hit the round target to add · miss all → score halved (ceil) · round 41 must total exactly 41 with 3 darts · highest wins",
+    "Start 60 · hit the round target to add · miss all → score halved (ceil) · exact-41: all 3 darts must score and total 41 · highest wins",
   leaderboard: { highScore: true },
 
   initLeg(state: GameState): GameState {
