@@ -250,9 +250,18 @@ def run_bridge(
                 force=True,
             )
 
-    def maybe_between_games_recal(status: str, throws: list[Any]) -> None:
-        nonlocal prev_status
-        if not tracker.should_recal_between_games(status, throws, prev_status):
+    def maybe_between_games_recal(
+        status: str,
+        throws: list[Any],
+        *,
+        visit_just_cleared: bool = False,
+    ) -> None:
+        if not tracker.should_recal_between_games(
+            status,
+            throws,
+            prev_status,
+            visit_just_cleared=visit_just_cleared,
+        ):
             return
         console.print("[cyan]between-games[/cyan] attempting Board Manager reset/recal…")
         result = client.try_recalibrate()
@@ -260,6 +269,23 @@ def run_bridge(
         if result.get("ok"):
             console.print(
                 f"[green]recal OK[/green] {result.get('method')} {result.get('path')}"
+            )
+            post_health(
+                {
+                    "ok": True,
+                    "level": "ok",
+                    "message": "Board reset between games",
+                    "reason": "between_games_recal",
+                    "fps": [],
+                    "min_fps": None,
+                    "cameras": [],
+                    "connected": True,
+                    "status": status,
+                    "unhealthy_for_s": 0,
+                    "restarting": False,
+                    "ts": int(time.time() * 1000),
+                },
+                force=True,
             )
         else:
             console.print(
@@ -297,7 +323,7 @@ def run_bridge(
                 if is_takeout_status(status) and not is_takeout_status(prev_status):
                     maybe_end_turn(f"status={status}")
                 maybe_between_games_recal(status, throws)
-                prev_status = status
+                # prev_status updated after visit-clear check so recal can see takeout
 
             # New visit after empty board — allow end-turn again
             if throws and not prev_throws:
@@ -305,6 +331,14 @@ def run_bridge(
 
             diff = diff_visit(prev_throws, throws)
             kind = diff["kind"]
+
+            if kind == VISIT_CLEARED:
+                maybe_between_games_recal(
+                    status or prev_status, throws, visit_just_cleared=True
+                )
+
+            if status and status != prev_status:
+                prev_status = status
 
             if kind == VISIT_APPEND:
                 for dart in diff["appended"]:
@@ -343,6 +377,7 @@ def run_bridge(
                 console.print("[dim]AD throws cleared[/dim]")
                 maybe_end_turn("throws cleared")
                 end_turn_sent = False
+                # between-games recal already attempted above when kind == CLEARED
 
             elif kind == VISIT_UNCHANGED:
                 pass

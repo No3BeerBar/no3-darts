@@ -32,10 +32,11 @@ On the mini-PC (repo checked out, e.g. `C:\No3Darts\no3-darts`):
 
 What it does:
 
-1. Starts / waits for Autodarts Board Manager (`exe_path` + `/api/state` ready check)
-2. Writes companion `config.yaml` and launches `python -m companion bridge`
-3. Optionally opens Edge/Chrome **kiosk** to the TV match URL
-4. Prints the **iPad play URL** (and ASCII QR when possible) — the script cannot start apps on the iPad
+1. Loads `config.yaml` via companion PyYAML (`load-config.py`) — editable, not hardcoded paths
+2. Starts / waits for Autodarts Board Manager (`exe_path` + `/api/state` ready check)
+3. Writes companion `config.yaml` and launches `python -m companion bridge` (new window)
+4. Optionally opens Edge/Chrome **kiosk** to the TV match URL on the mini-PC HDMI/TV
+5. Prints the **iPad play URL** (and ASCII QR when possible) — iPad is a separate device; URL only
 
 ### Config knobs (`tools/board-station/config.yaml`)
 

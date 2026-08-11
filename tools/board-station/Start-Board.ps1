@@ -23,6 +23,7 @@ $ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $ConfigPath) { $ConfigPath = Join-Path $Here "config.yaml" }
 $Example = Join-Path $Here "config.example.yaml"
+$LoadConfigPy = Join-Path $Here "load-config.py"
 
 function Write-Banner([string]$Text) {
   Write-Host ""
@@ -36,84 +37,19 @@ function Expand-UrlTemplate([string]$Template, [string]$No3Url) {
   return $Template.Replace("{no3.url}", $No3Url.TrimEnd("/"))
 }
 
-# Minimal YAML subset reader (enough for our config.example.yaml)
-function ConvertFrom-SimpleYaml([string]$Path) {
-  $root = @{}
-  $stack = New-Object System.Collections.ArrayList
-  [void]$stack.Add(@{ Indent = -1; Map = $root; Kind = "map" })
-  $pendingKey = $null
-  $pendingIndent = 0
-
-  foreach ($raw in Get-Content -LiteralPath $Path) {
-    if ($raw -match '^\s*#' -or $raw.Trim() -eq "") { continue }
-    if ($raw -notmatch '^(\s*)([^:]+):\s*(.*)$' -and $raw -notmatch '^(\s*)-\s+(.*)$') { continue }
-
-    if ($raw -match '^(\s*)-\s+(.*)$') {
-      $indent = $Matches[1].Length
-      $val = $Matches[2].Trim().Trim('"').Trim("'")
-      while ($stack.Count -gt 1 -and $stack[$stack.Count - 1].Indent -ge $indent) {
-        $stack.RemoveAt($stack.Count - 1)
-      }
-      $parent = $stack[$stack.Count - 1]
-      if ($parent.Kind -eq "list") {
-        [void]$parent.List.Add($val)
-      }
-      continue
-    }
-
-    $indent = $Matches[1].Length
-    $key = $Matches[2].Trim()
-    $rest = $Matches[3].Trim()
-
-    while ($stack.Count -gt 1 -and $stack[$stack.Count - 1].Indent -ge $indent) {
-      $stack.RemoveAt($stack.Count - 1)
-    }
-    $parent = $stack[$stack.Count - 1].Map
-
-    if ($rest -eq "" -or $rest -eq "|" -or $rest -eq ">") {
-      # nested map or upcoming list
-      $child = @{}
-      $parent[$key] = $child
-      [void]$stack.Add(@{ Indent = $indent; Map = $child; Kind = "map" })
-      $pendingKey = $key
-      $pendingIndent = $indent
-      continue
-    }
-
-    # Inline value
-    $val = $rest
-    if ($val -match '^"(.*)"$') { $val = $Matches[1] }
-    elseif ($val -match "^'(.*)'$") { $val = $Matches[1] }
-    elseif ($val -eq "true") { $val = $true }
-    elseif ($val -eq "false") { $val = $false }
-    elseif ($val -match '^-?\d+(\.\d+)?$') { $val = [double]$val }
-
-    # If next lines are list items under this key, convert to list later — handle empty then list:
-    $parent[$key] = $val
+function Find-Browser([string]$Name) {
+  $candidates = @()
+  if ($Name -eq "msedge") {
+    $candidates += "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
+    $candidates += "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+  } elseif ($Name -eq "chrome") {
+    $candidates += "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
+    $candidates += "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
   }
-
-  # Second pass: promote keys whose following lines were lists.
-  # Our parser already handles "- item" when parent Kind is list; fix by re-read for process_names.
-  return $root
-}
-
-function Read-BoardConfig([string]$Path) {
-  # Prefer PowerShell-Yaml if present; else simple parser + fix list keys via regex.
-  $text = Get-Content -LiteralPath $Path -Raw
-  $cfg = ConvertFrom-SimpleYaml $Path
-
-  # Fix process_names list (simple parser may miss depending on blank nesting)
-  if ($text -match '(?ms)process_names:\s*((?:\s*-\s*.+\s*)+)') {
-    $names = @()
-    foreach ($line in $Matches[1].Trim().Split("`n")) {
-      if ($line -match '-\s+(.+)$') {
-        $names += $Matches[1].Trim().Trim('"').Trim("'")
-      }
-    }
-    if (-not $cfg.autodarts) { $cfg.autodarts = @{} }
-    if ($names.Count -gt 0) { $cfg.autodarts.process_names = $names }
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path -LiteralPath $c)) { return $c }
   }
-  return $cfg
+  return $null
 }
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
@@ -125,7 +61,37 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
   }
 }
 
-$cfg = Read-BoardConfig $ConfigPath
+# Resolve companion dir early (default) so we can use its venv + PyYAML for config
+$CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
+$venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
+
+function Ensure-CompanionVenv([string]$Dir) {
+  $py = Join-Path $Dir ".venv\Scripts\python.exe"
+  if (Test-Path -LiteralPath $py) { return $py }
+  Write-Host "Creating companion venv in $Dir …"
+  Push-Location $Dir
+  try {
+    python -m venv .venv
+    $py = Join-Path $Dir ".venv\Scripts\python.exe"
+    & $py -m pip install -r requirements.txt
+  } finally {
+    Pop-Location
+  }
+  if (-not (Test-Path -LiteralPath $py)) {
+    throw "Failed to create companion venv at $py"
+  }
+  return $py
+}
+
+$venvPy = Ensure-CompanionVenv $CompanionDirGuess
+
+# Reliable YAML → JSON via PyYAML (shipped with companion requirements)
+$cfgJson = & $venvPy $LoadConfigPy $ConfigPath
+if ($LASTEXITCODE -ne 0 -or -not $cfgJson) {
+  throw "Failed to load config.yaml (need PyYAML in companion venv)"
+}
+$cfg = $cfgJson | ConvertFrom-Json
+
 $ad = $cfg.autodarts
 $no3 = $cfg.no3
 $bridge = $cfg.bridge
@@ -142,6 +108,9 @@ $ReadyTimeout = if ($ad.ready_timeout_s) { [int]$ad.ready_timeout_s } else { 45 
 
 $CompanionDir = Join-Path $Here $(if ($bridge.companion_dir) { [string]$bridge.companion_dir } else { "..\autodarts-companion" })
 $CompanionDir = [System.IO.Path]::GetFullPath($CompanionDir)
+if ($CompanionDir -ne $CompanionDirGuess) {
+  $venvPy = Ensure-CompanionVenv $CompanionDir
+}
 
 Write-Banner "No. 3 Board Station"
 Write-Host "  Config:     $ConfigPath"
@@ -149,6 +118,7 @@ Write-Host "  Autodarts:  http://${AdHost}:${AdPort}/api/state"
 Write-Host "  No3:        $No3Url"
 Write-Host "  Room:       $Room"
 Write-Host "  Companion:  $CompanionDir"
+Write-Host "  iPad:       open play URL below (separate device)"
 
 function Test-AutodartsReady {
   try {
@@ -157,15 +127,6 @@ function Test-AutodartsReady {
   } catch {
     return $false
   }
-}
-
-function Test-ProcessRunning([string[]]$Names) {
-  foreach ($n in $Names) {
-    if (-not $n) { continue }
-    $base = [System.IO.Path]::GetFileNameWithoutExtension($n)
-    if (Get-Process -Name $base -ErrorAction SilentlyContinue) { return $true }
-  }
-  return $false
 }
 
 # --- 1) Autodarts Board Manager ---
@@ -202,25 +163,19 @@ if ($ready) {
   Write-Host "start_if_missing=false and Board Manager not up — continuing anyway." -ForegroundColor Yellow
 }
 
-# Sync companion config from board-station (so bridge picks up same No3/health)
+# --- 2) Companion bridge ---
 Write-Banner "2/3 Companion bridge"
 if (-not (Test-Path -LiteralPath $CompanionDir)) {
   throw "Companion dir missing: $CompanionDir"
 }
 
 $companionCfg = Join-Path $CompanionDir "config.yaml"
-$companionExample = Join-Path $CompanionDir "config.example.yaml"
-if (-not (Test-Path -LiteralPath $companionCfg) -and (Test-Path -LiteralPath $companionExample)) {
-  Copy-Item $companionExample $companionCfg
-}
-
-# Write a small overlay config the bridge understands
 $apiKey = if ($no3.camera_api_key) { [string]$no3.camera_api_key } else { "" }
 $exeEsc = if ($ExePath) { $ExePath.Replace('\', '\\') } else { "" }
 $healthEnabled = if ($null -ne $health.enabled) { [bool]$health.enabled } else { $true }
-$fpsMin = if ($health.fps_min) { $health.fps_min } else { 5.0 }
-$unhealthyS = if ($health.unhealthy_seconds) { $health.unhealthy_seconds } else { 15.0 }
-$cooldown = if ($health.restart_cooldown_seconds) { $health.restart_cooldown_seconds } else { 60.0 }
+$fpsMin = if ($null -ne $health.fps_min) { $health.fps_min } else { 5.0 }
+$unhealthyS = if ($null -ne $health.unhealthy_seconds) { $health.unhealthy_seconds } else { 15.0 }
+$cooldown = if ($null -ne $health.restart_cooldown_seconds) { $health.restart_cooldown_seconds } else { 60.0 }
 $recal = if ($null -ne $health.between_games_recal) { [bool]$health.between_games_recal } else { $true }
 
 $yaml = @"
@@ -249,18 +204,6 @@ logs_dir: "./logs"
 Set-Content -LiteralPath $companionCfg -Value $yaml -Encoding UTF8
 Write-Host "Wrote $companionCfg"
 
-$venvPy = Join-Path $CompanionDir ".venv\Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $venvPy)) {
-  Write-Host "Creating companion venv…"
-  Push-Location $CompanionDir
-  try {
-    python -m venv .venv
-    & $venvPy -m pip install -r requirements.txt
-  } finally {
-    Pop-Location
-  }
-}
-
 $bridgeArgs = @("-m", "companion", "bridge")
 if ($DryRunBridge) { $bridgeArgs += "--dry-run" }
 
@@ -286,13 +229,12 @@ Write-Host ""
 Write-Host "TV match view URL:" -ForegroundColor Green
 Write-Host "  $tvUrl"
 
-# Optional ASCII QR via qrcode if python has it — best-effort skip
 try {
   $qrScript = @"
 try:
  import qrcode
  qr = qrcode.QRCode(border=1)
- qr.add_data('$playUrl')
+ qr.add_data(r'''$playUrl''')
  qr.make(fit=True)
  qr.print_ascii(invert=True)
 except Exception:
@@ -307,34 +249,19 @@ $openPlay = if ($null -ne $kiosk.open_play) { [bool]$kiosk.open_play } else { $f
 $browser = if ($kiosk.browser) { [string]$kiosk.browser } else { "msedge" }
 $extra = if ($kiosk.extra_args) { [string]$kiosk.extra_args } else { "" }
 
-function Find-Browser([string]$Name) {
-  $candidates = @()
-  if ($Name -eq "msedge") {
-    $candidates += "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-    $candidates += "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
-  } elseif ($Name -eq "chrome") {
-    $candidates += "$env:ProgramFiles\Google\Chrome\Application\chrome.exe"
-    $candidates += "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-  }
-  foreach ($c in $candidates) {
-    if ($c -and (Test-Path -LiteralPath $c)) { return $c }
-  }
-  return $null
-}
-
 if ($kioskOn -and $browser -ne "none") {
-  $exe = Find-Browser $browser
-  if (-not $exe -and $browser -eq "msedge") { $exe = Find-Browser "chrome" }
-  if ($exe) {
+  $browserExe = Find-Browser $browser
+  if (-not $browserExe -and $browser -eq "msedge") { $browserExe = Find-Browser "chrome" }
+  if ($browserExe) {
     if ($openTv) {
-      $args = @("--new-window", "--kiosk", $tvUrl)
-      if ($extra) { $args = $extra.Split(" ") + $args }
+      $browserArgs = @("--new-window", "--kiosk", $tvUrl)
+      if ($extra) { $browserArgs = @($extra -split '\s+') + $browserArgs }
       Write-Host "Opening TV kiosk: $tvUrl"
-      Start-Process -FilePath $exe -ArgumentList $args
+      Start-Process -FilePath $browserExe -ArgumentList $browserArgs
     }
     if ($openPlay) {
       Write-Host "Opening play URL on this PC: $playUrl"
-      Start-Process -FilePath $exe -ArgumentList @($playUrl)
+      Start-Process -FilePath $browserExe -ArgumentList @($playUrl)
     }
   } else {
     Write-Host "Browser '$browser' not found — open TV URL manually: $tvUrl" -ForegroundColor Yellow

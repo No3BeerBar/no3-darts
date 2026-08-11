@@ -30,3 +30,26 @@ def test_between_games_recal_on_takeout_finished() -> None:
     t.mark_recal()
     # Cooldown
     assert not t.should_recal_between_games("Takeout finished", [], "Takeout")
+
+
+def test_between_games_recal_on_visit_cleared_after_takeout() -> None:
+    t = HealthTracker(HealthConfig(between_games_recal=True))
+    assert t.should_recal_between_games(
+        "Takeout",
+        [],
+        "Takeout",
+        visit_just_cleared=True,
+    )
+    assert not t.should_recal_between_games(
+        "Throw",
+        [],
+        "Throw",
+        visit_just_cleared=True,
+    )
+
+
+def test_between_games_skips_when_darts_still_in() -> None:
+    t = HealthTracker(HealthConfig(between_games_recal=True))
+    assert not t.should_recal_between_games(
+        "Takeout finished", [{"x": 1}], "Takeout"
+    )

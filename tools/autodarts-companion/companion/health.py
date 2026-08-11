@@ -120,22 +120,34 @@ class HealthTracker:
         self.unhealthy_since = None
 
     def should_recal_between_games(
-        self, status: str, throws: list[Any], prev_status: str
+        self,
+        status: str,
+        throws: list[Any],
+        prev_status: str,
+        *,
+        visit_just_cleared: bool = False,
     ) -> bool:
-        """True once when leaving takeout / empty board after a visit."""
+        """
+        True once when the board is empty in a safe between-games window:
+        - status becomes Takeout finished (empty throws), or
+        - status returns to Throw after takeout (empty throws), or
+        - throws list just cleared while status is/was takeout.
+        """
         if not self.config.between_games_recal:
+            return False
+        if throws:
             return False
         now = time.time()
         if now - self.last_recal_at < 30.0:
             return False
         s = (status or "").strip().lower()
         prev = (prev_status or "").strip().lower()
-        # Prefer "Takeout finished" → Throw with empty board
         finished = "takeout finished" in s or s == "takeoutfinished"
         entered_throw = s in ("throw", "throw detected") and "takeout" in prev
-        if (finished or entered_throw) and not throws:
-            return True
-        return False
+        cleared_after_takeout = visit_just_cleared and (
+            "takeout" in s or "takeout" in prev
+        )
+        return bool(finished or entered_throw or cleared_after_takeout)
 
     def mark_recal(self) -> None:
         self.last_recal_at = time.time()
