@@ -79,6 +79,12 @@ export function AuthModal({ open, mode, initialName = "", onClose, onSuccess }: 
       }
       if (establishSession) {
         setSessionPlayer(data.player);
+      } else {
+        // Unlock another seat — keep cookie, still count as tablet-signed for quick re-add
+        useSessionStore.getState().rememberTabletPlayer({
+          id: data.player.id,
+          name: data.player.name,
+        });
       }
       onSuccess(data.player);
       onClose();

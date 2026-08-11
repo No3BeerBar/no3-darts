@@ -21,14 +21,16 @@ export function usePlaySessionIdleLogout() {
   const state = useGameStore((s) => s.state);
   const hydrated = useGameStore((s) => s.hydrated);
   const player = useSessionStore((s) => s.player);
+  const tabletPlayers = useSessionStore((s) => s.tabletPlayers);
   const logout = useSessionStore((s) => s.logout);
   const armed = hydrated && shouldArmPlaySessionIdle(pathname, state);
-  const hasSession = Boolean(player);
+  /** Anyone PIN-trusted on this tablet (session cookie and/or unlock roster). */
+  const hasSignedIn = Boolean(player) || tabletPlayers.length > 0;
   const logoutRef = useRef(logout);
   logoutRef.current = logout;
 
   useEffect(() => {
-    if (!armed || !hasSession) return;
+    if (!armed || !hasSignedIn) return;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -51,5 +53,5 @@ export function usePlaySessionIdleLogout() {
         window.removeEventListener(evt, arm);
       }
     };
-  }, [armed, hasSession]);
+  }, [armed, hasSignedIn]);
 }

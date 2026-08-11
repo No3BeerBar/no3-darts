@@ -6,7 +6,7 @@ Bar tablets use **display name + 4-digit PIN** instead of email/password. Guests
 
 1. **Create account** — player picks a display name (2–24 chars) and a 4-digit PIN on the tablet numpad.
 2. **Sign in** — same name + PIN. Session is an **httpOnly cookie** (`no3_player_session`) that stays on that tablet until **Sign out** (~30 days), or until **2 minutes idle** on idle play / setup (not mid-match). See [`PLAY.md`](./PLAY.md).
-3. **Saved players** — searchable directory (not a full-screen dump of 50+ names). Tap a name → PIN. With no tablet session, PIN **signs in** (sticky). With someone already signed in, unlocking another seat verifies without stealing the cookie. Guests stay one-tap (+ Guest).
+3. **Saved players** — on a **cold** tablet, open the searchable directory (not a dump of 50+ names) → tap name → PIN. With no session, PIN **signs in** (sticky). While signed in, setup shows those trusted names for quick re-seat; unlocking another seat adds them to that quick list without stealing the cookie. Idle logout / Sign out clears everyone → cold path again. Guests stay one-tap (+ Guest).
 4. **Resume** — in-progress games persist on the tablet, but registered seats must still be verified. After **Sign out** (or a cleared session), Resume prompts for PIN again before scoring; guests-only games do not. See [`PLAY.md`](./PLAY.md).
 5. **Match finish** — **guests stay ephemeral**: no local history, no Postgres rows, no leaderboard credit. Only matches with at least one **registered** (name+PIN) player are saved (`localStorage` + `POST /api/matches/persist`). Server writes `match_players` / aggregates **only** for ids that exist in `players`.
 6. **Lockout** — after 5 bad PINs, that account locks for 60 seconds.

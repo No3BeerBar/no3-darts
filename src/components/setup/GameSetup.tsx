@@ -13,6 +13,7 @@ import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
+import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
@@ -62,11 +63,13 @@ export function GameSetup() {
   const hydrateGame = useGameStore((s) => s.hydrate);
   const playersStore = usePlayersStore();
   const sessionPlayer = useSessionStore((s) => s.player);
+  const tabletPlayers = useSessionStore((s) => s.tabletPlayers);
   const sessionDbConfigured = useSessionStore((s) => s.dbConfigured);
   const sessionDbAvailable = useSessionStore((s) => s.dbAvailable);
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrate);
   const logoutSession = useSessionStore((s) => s.logout);
+  const rememberTabletPlayer = useSessionStore((s) => s.rememberTabletPlayer);
   const settings = useSettingsStore();
 
   const [authOpen, setAuthOpen] = useState(false);
@@ -130,6 +133,7 @@ export function GameSetup() {
     };
   }) => {
     playersStore.rememberRegistered(player);
+    rememberTabletPlayer({ id: player.id, name: player.name });
     void playersStore.syncFromServer();
     void hydrateSession();
     if (pendingSelect) {
@@ -139,14 +143,20 @@ export function GameSetup() {
 
   const pickSavedPlayer = (p: PlayerRef) => {
     const sessionId = sessionPlayer?.id;
-    if (playersStore.isRegistered(p.id) && p.id !== sessionId) {
-      // No tablet session yet → sign in (sticky). Already signed in as someone
-      // else → unlock without stealing the cookie.
+    // Already PIN-trusted this tablet session → seat without re-PIN / picker hop
+    if (
+      playersStore.isRegistered(p.id) &&
+      p.id !== sessionId &&
+      !isOnTabletSession(p.id, tabletPlayers)
+    ) {
+      // Cold / new name → sign in (sticky) or unlock without stealing cookie
       openAuth(sessionId ? "unlock" : "signin", p.name, true);
       return;
     }
     togglePlayer(p);
   };
+
+  const coldTablet = isTabletSessionCold(sessionPlayer?.id, tabletPlayers);
 
   /** All players currently assigned to any team */
   const assignedIds = useMemo(() => {
@@ -154,12 +164,6 @@ export function GameSetup() {
     for (const t of draftTeams) for (const p of t.players) s.add(p.id);
     return s;
   }, [draftTeams]);
-
-  const freePlayers = useMemo(() => {
-    const saved = playersStore.players.filter((p) => !p.isGuest);
-    // guests only exist in selected / draft; collect guest-like from draft removals via holding only
-    return saved.filter((p) => !assignedIds.has(p.id));
-  }, [playersStore.players, assignedIds]);
 
   const teamPlayerCount = draftTeams.reduce((n, t) => n + t.players.length, 0);
 
@@ -878,16 +882,46 @@ export function GameSetup() {
                 Cancel pick · {holding.name}
               </button>
             )}
+            {/* Warm session: quick-seat PIN-trusted names; cold: picker only */}
+            {!coldTablet && tabletPlayers.length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {tabletPlayers
+                  .filter((p) => !assignedIds.has(p.id))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() =>
+                        pickSavedPlayer({ id: p.id, name: p.name, isGuest: false })
+                      }
+                      className={cn(
+                        "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
+                        holding?.id === p.id
+                          ? "border-[var(--brand-red)] bg-[var(--brand-red)] text-white"
+                          : "border-[var(--panel-border)] bg-[var(--panel)]"
+                      )}
+                    >
+                      {p.name}
+                      <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                        {sessionPlayer?.id === p.id ? "You" : "Signed in"}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            )}
             <button
               type="button"
-              className="btn-primary min-h-12 w-full"
+              className={cn(
+                "min-h-12 w-full",
+                coldTablet ? "btn-primary" : "btn-ghost"
+              )}
               onClick={() => setPickerOpen(true)}
             >
               Saved players
             </button>
-            {freePlayers.length === 0 && !holding && assignedIds.size > 0 && (
+            {coldTablet && (
               <p className="text-center text-xs text-zinc-600">
-                All saved players are on teams — add a guest or remove someone.
+                Search the directory · enter PIN — or add a guest below.
               </p>
             )}
           </div>
@@ -932,15 +966,49 @@ export function GameSetup() {
               ))}
             </div>
           )}
+          {/* Warm: show signed-in names for one-tap seat. Cold: picker only (no 50+ dump). */}
+          {!coldTablet && tabletPlayers.length > 0 && (
+            <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {tabletPlayers.map((p) => {
+                const on = selected.some((s) => s.id === p.id);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      if (on) {
+                        togglePlayer({ id: p.id, name: p.name, isGuest: false });
+                        return;
+                      }
+                      pickSavedPlayer({ id: p.id, name: p.name, isGuest: false });
+                    }}
+                    className={cn(
+                      "min-h-12 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
+                      on
+                        ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.2)]"
+                        : "border-[var(--panel-border)] bg-[var(--panel)]"
+                    )}
+                  >
+                    {p.name}
+                    <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                      {sessionPlayer?.id === p.id ? "You" : "Signed in"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <button
             type="button"
-            className="btn-primary mb-2 min-h-12 w-full"
+            className={cn("mb-2 min-h-12 w-full", coldTablet ? "btn-primary" : "btn-ghost")}
             onClick={() => setPickerOpen(true)}
           >
             Saved players
           </button>
           <p className="mb-2 text-xs text-zinc-600">
-            Search the directory for PIN accounts — or add a guest below.
+            {coldTablet
+              ? "Search the directory · enter PIN — or add a guest below."
+              : "Tap a signed-in name to seat them · Saved players for everyone else."}
           </p>
           <div className="flex flex-wrap gap-2">
             <input

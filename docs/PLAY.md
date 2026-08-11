@@ -44,13 +44,12 @@ Ending a completed match clears the **match** and match seat-auth — it does **
 
 ## Saved players (50+ directory)
 
-Idle `/play` and setup do **not** dump every registered name on screen.
-
-- **Saved players** opens a searchable, scrollable picker (type-ahead by name, thumb-friendly on iPad).
-- Tap a name → enter PIN (existing pad). That player is signed in / available for seats.
+- **Cold start** (nobody signed in on this tablet): idle `/play` and setup do **not** dump the full roster. Use **Saved players** → searchable picker → name → PIN.
+- **Already signed in** (haven’t logged out): setup shows those PIN-trusted names as quick chips so you can re-seat them between games without opening the picker. **Saved players** remains available to add someone new from the directory.
 - **Guests** still use + Guest with no PIN.
 - Empty directory: picker says so and offers **Create account**.
 - Wired to `GET /api/players` (same register + PIN data as before).
+- After **2 minutes idle** (not mid-match) everyone is signed out → next visit is the cold picker path again.
 
 ## Resume & sign-in
 

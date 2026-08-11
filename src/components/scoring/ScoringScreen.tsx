@@ -82,6 +82,7 @@ function ScoringScreenInner() {
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrate);
   const logoutSession = useSessionStore((s) => s.logout);
+  const rememberTabletPlayer = useSessionStore((s) => s.rememberTabletPlayer);
   const rememberRegistered = usePlayersStore((s) => s.rememberRegistered);
   const syncPlayers = usePlayersStore((s) => s.syncFromServer);
   const hydratePlayers = usePlayersStore((s) => s.hydrate);
@@ -226,6 +227,7 @@ function ScoringScreenInner() {
           onClose={() => setIdleAuthOpen(false)}
           onSuccess={(player) => {
             rememberRegistered(player);
+            rememberTabletPlayer({ id: player.id, name: player.name });
             void syncPlayers();
             void hydrateSession();
           }}
