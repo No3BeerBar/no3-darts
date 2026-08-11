@@ -1,6 +1,7 @@
 /**
  * 41 (John’s rules).
  * Start at 60. Ten rounds; valid hits add; complete miss → score halved (ceil).
+ * Order: 20, 19, any double, 18, 17, any triple, 16, 15, exact 41, bulls.
  * Round “41”: all 3 darts must sum exactly to 41 → add 41 only; else halve.
  * Highest total wins. Ties: first among equal high scores (Shanghai / Baseball).
  */
@@ -26,14 +27,14 @@ export type FortyOneTarget =
 export const FORTY_ONE_START_SCORE = 60;
 
 export const FORTY_ONE_SEQUENCE: FortyOneTarget[] = [
-  { type: "number", n: 15 },
-  { type: "number", n: 16 },
-  { type: "any_double" },
-  { type: "number", n: 17 },
-  { type: "number", n: 18 },
-  { type: "any_triple" },
-  { type: "number", n: 19 },
   { type: "number", n: 20 },
+  { type: "number", n: 19 },
+  { type: "any_double" },
+  { type: "number", n: 18 },
+  { type: "number", n: 17 },
+  { type: "any_triple" },
+  { type: "number", n: 16 },
+  { type: "number", n: 15 },
   { type: "exact_41" },
   { type: "bull" },
 ];

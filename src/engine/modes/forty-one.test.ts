@@ -20,15 +20,32 @@ describe("fortyOneHalve — ceil(score/2)", () => {
   });
 });
 
+describe("FORTY_ONE_SEQUENCE — John’s order", () => {
+  it("is 20, 19, any double, 18, 17, any triple, 16, 15, exact 41, bull", () => {
+    expect(FORTY_ONE_SEQUENCE).toEqual([
+      { type: "number", n: 20 },
+      { type: "number", n: 19 },
+      { type: "any_double" },
+      { type: "number", n: 18 },
+      { type: "number", n: 17 },
+      { type: "any_triple" },
+      { type: "number", n: 16 },
+      { type: "number", n: 15 },
+      { type: "exact_41" },
+      { type: "bull" },
+    ]);
+  });
+});
+
 describe("fortyOneDartPoints — each round type", () => {
   it("number round: only S/D/T of that number", () => {
-    const t15 = { type: "number" as const, n: 15 };
-    expect(fortyOneDartPoints(createDart("single", 15), t15)).toBe(15);
-    expect(fortyOneDartPoints(createDart("double", 15), t15)).toBe(30);
-    expect(fortyOneDartPoints(createDart("triple", 15), t15)).toBe(45);
-    expect(fortyOneDartPoints(createDart("single", 16), t15)).toBe(0);
-    expect(fortyOneDartPoints(createDart("miss", 0), t15)).toBe(0);
-    expect(fortyOneDartPoints(createDart("bull", 50), t15)).toBe(0);
+    const t20 = { type: "number" as const, n: 20 };
+    expect(fortyOneDartPoints(createDart("single", 20), t20)).toBe(20);
+    expect(fortyOneDartPoints(createDart("double", 20), t20)).toBe(40);
+    expect(fortyOneDartPoints(createDart("triple", 20), t20)).toBe(60);
+    expect(fortyOneDartPoints(createDart("single", 19), t20)).toBe(0);
+    expect(fortyOneDartPoints(createDart("miss", 0), t20)).toBe(0);
+    expect(fortyOneDartPoints(createDart("bull", 50), t20)).toBe(0);
   });
 
   it("any double: D1–D20 and inner bull (50)", () => {
@@ -140,56 +157,52 @@ describe("forty_one engine play", () => {
     return s;
   }
 
-  it("starts at 60 on round 15", () => {
+  it("starts at 60 on round 20", () => {
     const state = start();
     expect(state.mode).toBe("forty_one");
     expect(state.playerStates[0].score).toBe(FORTY_ONE_START_SCORE);
     expect(state.playerStates[1].score).toBe(FORTY_ONE_START_SCORE);
     expect(fortyOneRoundNumber(state)).toBe(1);
-    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 15 });
+    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 20 });
   });
 
   it("adds valid hits; partial miss does not halve", () => {
     let state = start();
     state = throwThree(
       state,
-      ["single", 15],
+      ["single", 20],
       ["single", 1],
-      ["double", 15]
+      ["double", 20]
     );
-    // Alice: +15 +0 +30 = +45 → 105; Bob to throw
-    expect(state.playerStates[0].score).toBe(105);
+    // Alice: +20 +0 +40 = +60 → 120; Bob to throw
+    expect(state.playerStates[0].score).toBe(120);
     expect(state.playerStates[0].extra?.lastVisitHalved).toBe(false);
-    expect(state.playerStates[0].extra?.lastVisitPoints).toBe(45);
+    expect(state.playerStates[0].extra?.lastVisitPoints).toBe(60);
     expect(state.currentPlayerIndex).toBe(1);
   });
 
   it("complete miss halves with ceil", () => {
     let state = start();
-    // Nudge Alice to 61 via +15+15+15? that's +45 → 105. Use a known path:
     // First visit Alice misses → 30
     state = throwThree(state, ["miss", 0], ["miss", 0], ["single", 1]);
     expect(state.playerStates[0].score).toBe(30);
     expect(state.playerStates[0].extra?.lastVisitHalved).toBe(true);
 
-    // Bob scores T15 → +45 → 105
-    state = throwThree(state, ["triple", 15], ["miss", 0], ["miss", 0]);
-    expect(state.playerStates[1].score).toBe(105);
+    // Bob scores T20 → +60 → 120
+    state = throwThree(state, ["triple", 20], ["miss", 0], ["miss", 0]);
+    expect(state.playerStates[1].score).toBe(120);
 
-    // Round advances to 16 after Bob (both played round 15)
-    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 16 });
+    // Round advances to 19 after Bob (both played round 20)
+    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 19 });
 
-    // Get Alice to 61: from 30, need +31 somehow — skip; test 61→31 via helper already.
-    // Engine: Alice on 16s — give her score 61 by playing carefully is hard.
-    // Direct: miss from 105 for Bob path already covered ceil via unit test;
-    // here verify engine applies halve on miss from 30 → 15
+    // Engine: Alice on 19s — miss from 30 → 15
     state = throwThree(state, ["miss", 0], ["miss", 0], ["miss", 0]);
     expect(state.playerStates[0].score).toBe(15);
   });
 
   it("any-double round counts doubles and inner bull", () => {
     let state = start();
-    // Skip to any_double (round index 2): both players miss rounds 15 and 16
+    // Skip to any_double (round index 2): both players miss rounds 20 and 19
     for (let r = 0; r < 2; r++) {
       for (let p = 0; p < 2; p++) {
         state = throwThree(state, ["miss", 0], ["miss", 0], ["miss", 0]);
