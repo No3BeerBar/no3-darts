@@ -5,11 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { usePlayReturnIdle } from "@/hooks/usePlayReturnIdle";
+import { usePlaySessionIdleLogout } from "@/hooks/usePlaySessionIdleLogout";
 import {
   PLAY_IDLE_HREF,
   isFromPlaySearch,
   statsHrefFromPlay,
 } from "@/lib/play-kiosk";
+import { useGameStore } from "@/store/game-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { cn } from "@/lib/utils";
 
@@ -148,11 +150,17 @@ function ShellHeaderFallback({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const settings = useSettingsStore();
+  const hydrateGame = useGameStore((s) => s.hydrate);
   const bare = isBareRoute(pathname);
 
   useEffect(() => {
     settings.hydrate();
-  }, [settings]);
+    hydrateGame();
+  }, [settings, hydrateGame]);
+
+  // Setup `/` + idle `/play`: 2-min inactivity → tablet sign-out (not mid-match).
+  // Hook still runs for bare `/play` (chrome is skipped; idle logic is not).
+  usePlaySessionIdleLogout();
 
   if (bare) {
     return <>{children}</>;

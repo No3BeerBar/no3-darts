@@ -138,7 +138,9 @@ export function GameSetup() {
   const pickSavedPlayer = (p: PlayerRef) => {
     const sessionId = sessionPlayer?.id;
     if (playersStore.isRegistered(p.id) && p.id !== sessionId) {
-      openAuth("unlock", p.name, true);
+      // No tablet session yet → sign in (sticky). Already signed in as someone
+      // else → unlock without stealing the cookie.
+      openAuth(sessionId ? "unlock" : "signin", p.name, true);
       return;
     }
     togglePlayer(p);

@@ -32,7 +32,8 @@ export function AuthModal({ open, mode, initialName = "", onClose, onSuccess }: 
     setConfirmPin("");
     setError(null);
     setBusy(false);
-    if (mode === "unlock" && initialName) setStep("pin");
+    // Prefill → jump to PIN (unlock, or sign-in from a listed player)
+    if ((mode === "unlock" || mode === "signin") && initialName) setStep("pin");
     else setStep("name");
   }, [open, mode, initialName]);
 
@@ -46,12 +47,17 @@ export function AuthModal({ open, mode, initialName = "", onClose, onSuccess }: 
     setBusy(true);
     setError(null);
     try {
+      // Unlock with no tablet session → login so the player stays signed in
+      // across end-game → next-game (verify alone never sets the cookie).
+      const sessionEmpty = !useSessionStore.getState().player;
+      const establishSession =
+        mode === "signin" || mode === "register" || (mode === "unlock" && sessionEmpty);
       const path =
         mode === "register"
           ? "/api/auth/register"
-          : mode === "unlock"
-            ? "/api/auth/verify"
-            : "/api/auth/login";
+          : establishSession
+            ? "/api/auth/login"
+            : "/api/auth/verify";
       const res = await fetch(path, {
         method: "POST",
         credentials: "include",
@@ -71,7 +77,7 @@ export function AuthModal({ open, mode, initialName = "", onClose, onSuccess }: 
         setBusy(false);
         return;
       }
-      if (mode === "signin" || mode === "register") {
+      if (establishSession) {
         setSessionPlayer(data.player);
       }
       onSuccess(data.player);

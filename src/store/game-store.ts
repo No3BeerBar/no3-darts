@@ -221,13 +221,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     const { state } = get();
     if (!state) return;
-    if (!assertSeatsVerified(state)) return;
+    // Match already won / finished: persist without re-checking seats.
+    // Mid-match manual save still requires verified seats.
+    if (state.status !== "match_won" && state.status !== "finished") {
+      if (!assertSeatsVerified(state)) return;
+    }
     const prevId = state.id;
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
     recordFinishedMatch(buildStoredMatch(finished));
+    // Clear match + seat-auth only — do NOT logout the tablet PIN session
     clearSeatAuth();
     persist(null);
-    set({ state: null, lastCallout: null, lastHighlight: null });
+    set({ state: null, lastCallout: "Saved", lastHighlight: null });
     // Drop server copy so TV returns to attract mode
     if (prevId) {
       void fetch(`/api/matches/${prevId}`, { method: "DELETE" }).catch(() => {});
@@ -237,6 +242,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearGame: () => {
     if (get().displayOnly) return;
     const prev = get().state;
+    // Tear down match seat trust only — tablet session cookie stays until Sign out / idle
     clearSeatAuth();
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });

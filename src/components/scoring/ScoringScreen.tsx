@@ -4,7 +4,7 @@
  * `/play` scoring UI.
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
- * recent visits, dartboard, Stats + End game. End-of-match Next leg / Save stay available.
+ * recent visits, dartboard, Stats + End game. Match win auto-saves (no Save dialog).
  * No global AppShell nav — see docs/PLAY.md.
  *
  * Staff (admin unlocked): Undo / Edit / End turn / Pause / Home + Keys/Pad.
@@ -30,6 +30,7 @@ import {
   parseDartLabel,
   segmentLabel,
 } from "@/engine";
+import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "@/lib/match-autosave";
 import { canScoreMatch } from "@/lib/seat-auth";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
@@ -44,6 +45,7 @@ import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
 import { CameraHealthToast } from "./CameraHealthToast";
+import { CheckoutBanner } from "./CheckoutBanner";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
 import { CalloutToast } from "./CalloutToast";
@@ -68,7 +70,6 @@ function ScoringScreenInner() {
     pause,
     resume,
     nextLeg,
-    finishAndSave,
     clearGame,
     getCheckout,
     setDisplayOnly,
@@ -105,6 +106,19 @@ function ScoringScreenInner() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
+  // Match won → auto-save (PIN players get history; guests do not) → idle. No Save dialog.
+  useEffect(() => {
+    if (!shouldAutoSaveMatch(state)) return;
+    const id = state!.id;
+    const t = setTimeout(() => {
+      const cur = useGameStore.getState().state;
+      if (cur?.id === id && cur.status === "match_won") {
+        useGameStore.getState().finishAndSave();
+      }
+    }, MATCH_WON_AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [state]);
+
   const seatsOk = useMemo(() => {
     void seatAuthTick;
     if (!state) return true;
@@ -119,6 +133,9 @@ function ScoringScreenInner() {
   const { notice: cameraNotice } = useCameraHealth(state?.roomId, Boolean(state) && seatsOk);
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
+  const showCheckout =
+    Boolean(checkout) &&
+    (state?.mode === "x01" || state?.mode === "random_checkout");
 
   const clearLogoPress = () => {
     if (logoPressTimer.current) {
@@ -350,6 +367,11 @@ function ScoringScreenInner() {
         {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
         {fortyOne && <FortyOneBanner state={state} size="sm" />}
 
+        {/* X01 / practice outshots only — keep Baseball / 41 / Killer uncluttered */}
+        {showCheckout && state.status === "playing" && (
+          <CheckoutBanner suggestion={checkout} />
+        )}
+
         {/* Current visit — tap-to-correct kept for Autodarts misreads (patrons + staff) */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
           <div className="min-w-0">
@@ -377,14 +399,6 @@ function ScoringScreenInner() {
               </p>
             )}
           </div>
-          {checkout && (
-            <div className="text-right">
-              <div className="font-display text-[10px] tracking-wider text-zinc-500">Checkout</div>
-              <div className="font-display text-base font-bold text-[var(--brand-red-bright)]">
-                {checkout.description}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Previous rounds / visits */}
@@ -401,23 +415,22 @@ function ScoringScreenInner() {
                 return team && team.playerIds.length > 1 ? team.name : state.players.find((p) => p.id === wid)?.name;
               })()}
             </div>
-            <div className="mt-3 flex flex-wrap justify-center gap-2">
-              {state.status === "leg_won" && (
+            {state.status === "match_won" ? (
+              <p className="mt-2 text-sm text-zinc-400">Saving…</p>
+            ) : (
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
                 <button type="button" onClick={nextLeg} className="btn-primary min-h-11 px-6">
                   Next leg
                 </button>
-              )}
-              <button type="button" onClick={finishAndSave} className="btn-primary min-h-11 px-6">
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={endGame}
-                className="btn-ghost min-h-11 px-6 text-red-300"
-              >
-                End game
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={endGame}
+                  className="btn-ghost min-h-11 px-6 text-red-300"
+                >
+                  End game
+                </button>
+              </div>
+            )}
           </div>
         )}
 
