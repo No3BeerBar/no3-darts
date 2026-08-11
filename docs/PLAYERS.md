@@ -22,25 +22,46 @@ PINs are stored as **bcrypt hashes** (`pin_hash`). APIs never return hashes.
 
 Query personal history or future weekly tops via `match_players.player_id` + `matches.finished_at`.
 
-## Env vars
+## Env vars (required for accounts)
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `DATABASE_URL` | for accounts | Postgres connection string |
-| `SESSION_SECRET` | recommended | HMAC secret for session cookies. Falls back to `CAMERA_API_KEY` or `DATABASE_URL` if unset |
+| Variable | On Railway service | Purpose |
+|----------|--------------------|---------|
+| **`DATABASE_URL`** | **no3-darts** (app) | Postgres connection string. Without it, auth APIs return 503 and guests/localStorage still work. |
+| `SESSION_SECRET` | **no3-darts** (app) | HMAC secret for session cookies. Recommended in production. Falls back to `CAMERA_API_KEY` or `DATABASE_URL` if unset. |
+| `CAMERA_API_KEY` | optional | Unrelated to players; protects camera APIs. |
 
-Without `DATABASE_URL`, the app **does not crash**: auth APIs return 503, guests + localStorage keep working.
+### `DATABASE_URL` checklist
 
-## Railway: attach Postgres (John)
+The app reads **only** `process.env.DATABASE_URL` on the **no3-darts** web service (not on the Postgres plugin alone).
 
-1. Open the **no3-darts** service in [Railway](https://railway.app).
+1. Railway project **no3-darts** must have a **Postgres** plugin/service.
+2. On the **no3-darts** service → **Variables**, ensure:
+   - Name: `DATABASE_URL`
+   - Value: Railway variable reference to Postgres, e.g. `${{Postgres.DATABASE_URL}}`  
+     (or the resolved `postgresql://…` URL)
+3. Redeploy **no3-darts** after adding/changing it.
+4. Confirm: `GET /api/health` → `{ "database": { "configured": true, "available": true } }`.
+
+Admin → **Player accounts** also shows this status after deploy.
+
+If Postgres exists but `DATABASE_URL` is missing on **no3-darts**, accounts will stay offline until that variable is linked.
+
+## Railway: attach / verify Postgres
+
+**If Postgres is not in the project yet:**
+
+1. Open [Railway](https://railway.app) → project **no3-darts**.
 2. **New** → **Database** → **PostgreSQL** (same project).
-3. Open the Postgres service → **Variables** → copy `DATABASE_URL`.
-4. On the **no3-darts** service → **Variables** → **Add variable** → reference the Postgres `DATABASE_URL` (Railway variable reference), or paste it.
-5. Optional: set `SESSION_SECRET` to a long random string.
-6. Redeploy. Check `GET /api/health` → `database.available: true`.
+3. Select the **no3-darts** service → **Variables** → **Add variable** / **Add reference**:
+   - Variable name: `DATABASE_URL`
+   - Reference: `Postgres` → `DATABASE_URL` (Railway UI shows this as `${{Postgres.DATABASE_URL}}`)
+4. Optional but recommended: add `SESSION_SECRET` = a long random string (e.g. `openssl rand -hex 32`).
+5. **Redeploy** no3-darts.
+6. Hit `GET /api/health` and confirm `database.available: true`.
 
-Schema is created automatically on first DB use (no separate migrate job).
+**If Postgres is already added:** only step 3–6 matter — confirm `DATABASE_URL` is on the **no3-darts** service, not only on the Postgres service.
+
+Schema tables are created automatically on first DB use (no separate migrate job).
 
 ## API
 
@@ -58,9 +79,9 @@ Schema is created automatically on first DB use (no separate migrate job).
 ## Local dev with Postgres
 
 ```bash
-# example
-export DATABASE_URL=postgres://user:pass@localhost:5432/no3_darts
-export SESSION_SECRET=dev-secret
+# example — copy .env.example → .env.local
+DATABASE_URL=postgres://user:pass@localhost:5432/no3_darts
+SESSION_SECRET=dev-secret
 npm run dev
 ```
 

@@ -229,67 +229,81 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
     if (row) known.add(row.id);
   }
 
-  await db.insert(schema.matches).values({
-    id: match.id,
-    finishedAt: new Date(match.finishedAt),
-    mode: match.mode,
-    modeLabel: match.modeLabel,
-    winnerPlayerId: match.winnerId && known.has(match.winnerId) ? match.winnerId : null,
-    winnerName: match.winnerName,
-    legs: match.summary.legs,
-    sets: match.summary.sets,
-    summaryJson: {
-      playerStats: match.summary.playerStats,
-      players: match.players,
-    },
-  });
+  try {
+    const updated = await db.transaction(async (tx) => {
+      await tx.insert(schema.matches).values({
+        id: match.id,
+        finishedAt: new Date(match.finishedAt),
+        mode: match.mode,
+        modeLabel: match.modeLabel,
+        winnerPlayerId: match.winnerId && known.has(match.winnerId) ? match.winnerId : null,
+        winnerName: match.winnerName,
+        legs: match.summary.legs,
+        sets: match.summary.sets,
+        summaryJson: {
+          playerStats: match.summary.playerStats,
+          players: match.players,
+        },
+      });
 
-  const updated: string[] = [];
+      const updatedPlayerIds: string[] = [];
 
-  for (const ps of match.summary.playerStats) {
-    const isRegistered = known.has(ps.playerId);
-    const st = match.state.playerStates.find((x) => x.playerId === ps.playerId);
-    await db.insert(schema.matchPlayers).values({
-      id: createId("mp"),
-      matchId: match.id,
-      playerId: isRegistered ? ps.playerId : null,
-      name: ps.name,
-      isGuest: !isRegistered,
-      avg: ps.avg,
-      oneEighties: ps.oneEighties,
-      checkouts: ps.checkouts,
-      highestCheckout: ps.highestCheckout,
-      dartsThrown: st?.dartsThrown ?? 0,
-      totalScore: st?.totalScore ?? 0,
-      legsWon: st?.legsWon ?? 0,
-      checkoutAttempts: st?.checkoutAttempts ?? 0,
+      for (const ps of match.summary.playerStats) {
+        const isRegistered = known.has(ps.playerId);
+        const st = match.state.playerStates.find((x) => x.playerId === ps.playerId);
+        await tx.insert(schema.matchPlayers).values({
+          id: createId("mp"),
+          matchId: match.id,
+          playerId: isRegistered ? ps.playerId : null,
+          name: ps.name,
+          isGuest: !isRegistered,
+          avg: ps.avg,
+          oneEighties: ps.oneEighties,
+          checkouts: ps.checkouts,
+          highestCheckout: ps.highestCheckout,
+          dartsThrown: st?.dartsThrown ?? 0,
+          totalScore: st?.totalScore ?? 0,
+          legsWon: st?.legsWon ?? 0,
+          checkoutAttempts: st?.checkoutAttempts ?? 0,
+        });
+
+        if (!isRegistered) continue;
+
+        const player = await tx.query.players.findFirst({
+          where: eq(schema.players.id, ps.playerId),
+        });
+        if (!player) continue;
+
+        const won = match.winnerId === ps.playerId ? 1 : 0;
+        await tx
+          .update(schema.players)
+          .set({
+            matchesPlayed: player.matchesPlayed + 1,
+            matchesWon: player.matchesWon + won,
+            oneEighties: player.oneEighties + ps.oneEighties,
+            checkoutsHit: player.checkoutsHit + ps.checkouts,
+            highestCheckout: Math.max(player.highestCheckout, ps.highestCheckout),
+            bestThreeDartAvg: Math.max(player.bestThreeDartAvg, ps.avg),
+            dartsThrown: player.dartsThrown + (st?.dartsThrown ?? 0),
+            totalScore: player.totalScore + (st?.totalScore ?? 0),
+            legsWon: player.legsWon + (st?.legsWon ?? 0),
+            checkoutAttempts: player.checkoutAttempts + (st?.checkoutAttempts ?? 0),
+          })
+          .where(eq(schema.players.id, ps.playerId));
+        updatedPlayerIds.push(ps.playerId);
+      }
+
+      return updatedPlayerIds;
     });
 
-    if (!isRegistered) continue;
-
-    const player = await db.query.players.findFirst({
-      where: eq(schema.players.id, ps.playerId),
-    });
-    if (!player) continue;
-
-    const won = match.winnerId === ps.playerId ? 1 : 0;
-    await db
-      .update(schema.players)
-      .set({
-        matchesPlayed: player.matchesPlayed + 1,
-        matchesWon: player.matchesWon + won,
-        oneEighties: player.oneEighties + ps.oneEighties,
-        checkoutsHit: player.checkoutsHit + ps.checkouts,
-        highestCheckout: Math.max(player.highestCheckout, ps.highestCheckout),
-        bestThreeDartAvg: Math.max(player.bestThreeDartAvg, ps.avg),
-        dartsThrown: player.dartsThrown + (st?.dartsThrown ?? 0),
-        totalScore: player.totalScore + (st?.totalScore ?? 0),
-        legsWon: player.legsWon + (st?.legsWon ?? 0),
-        checkoutAttempts: player.checkoutAttempts + (st?.checkoutAttempts ?? 0),
-      })
-      .where(eq(schema.players.id, ps.playerId));
-    updated.push(ps.playerId);
+    return { ok: true, updatedPlayerIds: updated };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    // Concurrent persist of the same match id
+    if (msg.includes("duplicate") || msg.includes("unique")) {
+      return { ok: true, updatedPlayerIds: [] };
+    }
+    console.warn("[no3-darts] persistFinishedMatch failed:", msg || err);
+    return { ok: false, error: "persist_failed" };
   }
-
-  return { ok: true, updatedPlayerIds: updated };
 }

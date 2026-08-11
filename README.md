@@ -106,11 +106,11 @@ Then start any No3 match on that room and throw. Details: [`tools/autodarts-comp
 | Variable | Purpose |
 |----------|---------|
 | `CAMERA_API_KEY` | Protect `/api/camera/*` and match APIs |
-| `DATABASE_URL` | Postgres for walk-up player accounts + shared stats |
-| `SESSION_SECRET` | HMAC secret for player session cookies (recommended) |
+| **`DATABASE_URL`** | **Required for player accounts.** Postgres URL on the **no3-darts** service (e.g. `${{Postgres.DATABASE_URL}}`). Shared PIN accounts + personal stats. |
+| `SESSION_SECRET` | HMAC secret for player session cookies (recommended; `openssl rand -hex 32`) |
 | `PORT` | Set automatically by Railway |
 
-**Attach Postgres on Railway:** project → **New** → **Database** → **PostgreSQL**, then add/reference `DATABASE_URL` on the no3-darts service and redeploy. See [`docs/PLAYERS.md`](./docs/PLAYERS.md). Without Postgres, guests and local scoring still work.
+**Railway Postgres:** In project **no3-darts**, add a Postgres plugin if missing, then set **`DATABASE_URL`** on the **no3-darts** web service (variable reference to Postgres). Redeploy and check `GET /api/health` → `database.available: true`. Full steps: [`docs/PLAYERS.md`](./docs/PLAYERS.md). Without `DATABASE_URL`, guests and local scoring still work.
 
 5. Health check: `GET /api/health`
 

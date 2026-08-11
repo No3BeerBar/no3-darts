@@ -1,16 +1,39 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSettingsStore } from "@/store/settings-store";
 import { useGameStore } from "@/store/game-store";
 
 export default function AdminPage() {
   const settings = useSettingsStore();
   const clearGame = useGameStore((s) => s.clearGame);
+  const [dbStatus, setDbStatus] = useState<{
+    configured: boolean;
+    available: boolean;
+  } | null>(null);
 
   useEffect(() => {
     settings.hydrate();
   }, [settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/health")
+      .then((r) => r.json())
+      .then((data: { database?: { configured?: boolean; available?: boolean } }) => {
+        if (cancelled) return;
+        setDbStatus({
+          configured: Boolean(data.database?.configured),
+          available: Boolean(data.database?.available),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setDbStatus({ configured: false, available: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-10">
@@ -18,6 +41,31 @@ export default function AdminPage() {
         <h1 className="font-logo text-3xl text-white">Admin</h1>
         <p className="mt-1 text-zinc-500">Bar staff · TV + iPad · room branding</p>
       </div>
+
+      <section className="panel-card space-y-3 p-6">
+        <h2 className="section-title">Player accounts (Postgres)</h2>
+        <p className="text-sm text-zinc-400">
+          Walk-up name + PIN accounts need{" "}
+          <code className="text-[var(--brand-red-bright)]">DATABASE_URL</code> on the Railway{" "}
+          <strong className="text-white">no3-darts</strong> service (reference the Postgres plugin).
+          See <code className="text-zinc-300">docs/PLAYERS.md</code>.
+        </p>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm">
+          {dbStatus === null ? (
+            <span className="text-zinc-500">Checking database…</span>
+          ) : dbStatus.available ? (
+            <span className="text-emerald-400">Database available — PIN accounts enabled</span>
+          ) : dbStatus.configured ? (
+            <span className="text-amber-300">
+              DATABASE_URL is set but Postgres is unreachable — guests still work
+            </span>
+          ) : (
+            <span className="text-amber-300">
+              DATABASE_URL not configured — guests + localStorage only
+            </span>
+          )}
+        </div>
+      </section>
 
       <section className="panel-card space-y-3 p-6">
         <h2 className="section-title">Devices at the board</h2>
