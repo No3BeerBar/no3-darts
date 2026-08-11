@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+/**
+ * `/play` scoring UI.
+ *
+ * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
+ * recent visits, dartboard. End-of-match Next leg / Save stay available.
+ *
+ * Staff (admin unlocked): Undo / Edit / End / Pause / Cancel / Home + Keys/Pad.
+ * Unlock: `?admin=1`, long-press logo + PIN, or Admin link. See docs/PLAY.md.
+ */
+
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  baseballDartPoints,
   baseballInning,
+  dartPointsForMode,
   fortyOneBoardFocus,
   fortyOneDartPoints,
   fortyOneTarget,
@@ -23,6 +33,7 @@ import { useSettingsStore } from "@/store/settings-store";
 import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
+import { usePlayAdmin } from "@/hooks/usePlayAdmin";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -32,12 +43,13 @@ import { DartQuickKeys } from "./DartQuickKeys";
 import { CalloutToast } from "./CalloutToast";
 import { KillerBanner } from "./KillerBanner";
 import { NumberPad } from "./NumberPad";
+import { PlayAdminPinModal } from "./PlayAdminPinModal";
 import { PlayerPanel } from "./PlayerPanel";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
 import { cn } from "@/lib/utils";
 
-export function ScoringScreen() {
+function ScoringScreenInner() {
   const {
     state,
     lastCallout,
@@ -62,6 +74,9 @@ export function ScoringScreen() {
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState(340);
+  const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const admin = usePlayAdmin(settings.staffPin);
 
   useEffect(() => {
     setDisplayOnly(false);
@@ -89,6 +104,21 @@ export function ScoringScreen() {
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
 
+  const clearLogoPress = () => {
+    if (logoPressTimer.current) {
+      clearTimeout(logoPressTimer.current);
+      logoPressTimer.current = null;
+    }
+  };
+
+  const startLogoPress = () => {
+    clearLogoPress();
+    logoPressTimer.current = setTimeout(() => {
+      if (admin.isAdmin) admin.lock();
+      else admin.openPin();
+    }, 800);
+  };
+
   if (!state) {
     return (
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
@@ -115,6 +145,7 @@ export function ScoringScreen() {
   const boardFocusNumber = baseball
     ? baseballInning(state)
     : (killerFocus?.primary ?? fortyOneFocus?.focusNumber ?? null);
+  const isAdmin = admin.isAdmin;
 
   const submitPad = () => {
     const dart = parseDartLabel(pad);
@@ -147,10 +178,20 @@ export function ScoringScreen() {
     }
   };
 
+  const modeInning = state.mode === "baseball" ? baseballInning(state) : undefined;
+
   return (
     <div className="shell-black flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
+
+      {admin.pinOpen && (
+        <PlayAdminPinModal
+          tryPin={admin.tryPin}
+          onSuccess={() => admin.unlock()}
+          onClose={admin.closePin}
+        />
+      )}
 
       {correctSlot != null && (
         <CorrectDartModal
@@ -173,10 +214,21 @@ export function ScoringScreen() {
         />
       )}
 
-      {/* Top bar — thrower prominent */}
+      {/* Top bar — thrower prominent; staff tools only when admin unlocked */}
       <header className="shrink-0 border-b border-[var(--panel-border)] bg-black px-3 py-2">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
-          <Image src="/brand/logo.png" alt="" width={36} height={36} className="rounded-full" />
+          <button
+            type="button"
+            className="shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-red)]"
+            aria-label={isAdmin ? "Lock staff controls" : "Staff unlock (long press)"}
+            onPointerDown={startLogoPress}
+            onPointerUp={clearLogoPress}
+            onPointerLeave={clearLogoPress}
+            onPointerCancel={clearLogoPress}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <Image src="/brand/logo.png" alt="" width={36} height={36} className="rounded-full" />
+          </button>
           <div className="min-w-0 flex-1">
             {isTeamGame(state) && currentTeam && currentTeam.playerIds.length > 1 && (
               <div className="truncate font-display text-sm font-bold tracking-wide text-[var(--brand-red-bright)]">
@@ -194,40 +246,54 @@ export function ScoringScreen() {
               {statusLine} · Leg {state.legNumber}
               {lastCallout ? ` · ${lastCallout}` : ""}
               {sessionPlayer ? ` · Signed in: ${sessionPlayer.name}` : ""}
+              {isAdmin ? " · Staff" : ""}
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-1">
-            <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
-              Undo
-            </button>
-            <button type="button" onClick={editLastTurn} className="btn-ghost min-h-10 px-3 text-xs">
-              Edit
-            </button>
-            <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
-              End
-            </button>
-            {state.status === "playing" ? (
-              <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
-                ‖
+          {isAdmin ? (
+            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+              <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
+                Undo
               </button>
-            ) : state.status === "paused" ? (
-              <button type="button" onClick={resume} className="btn-primary min-h-10 px-3 text-xs">
-                ▶
+              <button type="button" onClick={editLastTurn} className="btn-ghost min-h-10 px-3 text-xs">
+                Edit
               </button>
-            ) : null}
+              <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
+                End
+              </button>
+              {state.status === "playing" ? (
+                <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
+                  ‖
+                </button>
+              ) : state.status === "paused" ? (
+                <button type="button" onClick={resume} className="btn-primary min-h-10 px-3 text-xs">
+                  ▶
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn-ghost min-h-10 px-3 text-xs text-red-300"
+                onClick={() => {
+                  if (confirm("Cancel match?")) clearGame();
+                }}
+              >
+                ✕
+              </button>
+              <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
+                Home
+              </Link>
+              <button type="button" onClick={admin.lock} className="btn-ghost min-h-10 px-3 text-xs">
+                Lock
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className="btn-ghost min-h-10 px-3 text-xs text-red-300"
-              onClick={() => {
-                if (confirm("Cancel match?")) clearGame();
-              }}
+              onClick={admin.openPin}
+              className="shrink-0 font-display text-[10px] tracking-wider text-zinc-700 hover:text-zinc-500"
             >
-              ✕
+              Admin
             </button>
-            <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
-              Home
-            </Link>
-          </div>
+          )}
         </div>
       </header>
 
@@ -238,7 +304,7 @@ export function ScoringScreen() {
         {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
         {fortyOne && <FortyOneBanner state={state} size="sm" />}
 
-        {/* Current visit */}
+        {/* Current visit — tap-to-correct kept for Autodarts misreads (patrons + staff) */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2">
           <div className="min-w-0">
             <TurnDarts
@@ -248,7 +314,7 @@ export function ScoringScreen() {
               showDartPoints={baseball || fortyOne}
               pointsForDart={
                 baseball
-                  ? (d) => baseballDartPoints(d, baseballInning(state))
+                  ? (d) => dartPointsForMode("baseball", d, { inning: modeInning })
                   : fortyOne
                     ? (d) => fortyOneDartPoints(d, fortyOneTarget(state))
                     : undefined
@@ -293,39 +359,43 @@ export function ScoringScreen() {
               <button type="button" onClick={finishAndSave} className="btn-primary min-h-11 px-6">
                 Save
               </button>
-              <button type="button" onClick={clearGame} className="btn-ghost min-h-11 px-6">
-                Discard
-              </button>
+              {isAdmin && (
+                <button type="button" onClick={clearGame} className="btn-ghost min-h-11 px-6">
+                  Discard
+                </button>
+              )}
             </div>
           </div>
         )}
 
         {state.status === "playing" && (
           <>
-            <div className="flex gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] p-0.5">
-              {(
-                [
-                  ["board", "Board"],
-                  ["keys", "Keys"],
-                  ["pad", "Pad"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setTab(id)}
-                  className={cn(
-                    "min-h-9 flex-1 rounded-md font-display text-xs tracking-wider",
-                    tab === id ? "bg-[var(--brand-red)] text-white" : "text-zinc-500"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {isAdmin && (
+              <div className="flex gap-1 rounded-lg border border-[var(--panel-border)] bg-[var(--panel)] p-0.5">
+                {(
+                  [
+                    ["board", "Board"],
+                    ["keys", "Keys"],
+                    ["pad", "Pad"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTab(id)}
+                    className={cn(
+                      "min-h-9 flex-1 rounded-md font-display text-xs tracking-wider",
+                      tab === id ? "bg-[var(--brand-red)] text-white" : "text-zinc-500"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="flex flex-1 flex-col items-center justify-center pb-2">
-              {tab === "board" && (
+              {(!isAdmin || tab === "board") && (
                 <Dartboard
                   marks={state.currentTurnDarts}
                   focusNumber={boardFocusNumber}
@@ -345,12 +415,12 @@ export function ScoringScreen() {
                   }}
                 />
               )}
-              {tab === "keys" && (
+              {isAdmin && tab === "keys" && (
                 <div className="w-full max-w-lg">
                   <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
                 </div>
               )}
-              {tab === "pad" && (
+              {isAdmin && tab === "pad" && (
                 <div className="w-full max-w-xs">
                   <NumberPad
                     value={pad}
@@ -365,5 +435,19 @@ export function ScoringScreen() {
         )}
       </main>
     </div>
+  );
+}
+
+export function ScoringScreen() {
+  return (
+    <Suspense
+      fallback={
+        <div className="shell-black flex items-center justify-center text-zinc-500">
+          Loading…
+        </div>
+      }
+    >
+      <ScoringScreenInner />
+    </Suspense>
   );
 }

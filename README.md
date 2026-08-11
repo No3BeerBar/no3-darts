@@ -29,11 +29,12 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 
 ### Scoring UI
 - Dark, high-contrast, bar/TV-ready layout
-- Quick keys (S/D/T 1–20, 25, Bull, Miss), number pad, clickable dartboard
-- Undo · end turn · pause/resume
+- **`/play` patron mode** by default (scores, thrower, board, tap-to-correct); staff Unlock/Edit/Undo behind PIN — see [`docs/PLAY.md`](./docs/PLAY.md)
+- Quick keys / number pad available when staff unlock
 - Live board highlight of last dart
 - Checkout suggestions (X01 / practice)
 - Callout toasts (180, bust, game shot…)
+- Visit history uses **mode points** (Baseball visit Σ ≠ raw dart.value)
 
 ### Players & stats
 - Guests (no account) + **walk-up accounts** (display name + 4-digit PIN)

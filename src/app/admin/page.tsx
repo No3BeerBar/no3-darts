@@ -78,19 +78,27 @@ export default function AdminPage() {
             full screen (F11). Read-only scoreboard.
           </li>
           <li>
-            <strong className="text-white">iPad</strong> — open this site, start a match, use{" "}
+            <strong className="text-white">iPad (patrons)</strong> —{" "}
             <a className="text-[var(--brand-red-bright)] underline" href="/play">
               /play
             </a>{" "}
-            to score &amp; correct darts.
+            is a clean scoring UI (scores, thrower, board, tap-to-correct). Staff tools are hidden.
+          </li>
+          <li>
+            <strong className="text-white">Staff on play</strong> — unlock Undo / Edit / End /
+            Pause / Cancel / Keys / Pad via long-press logo + PIN, Admin link, or{" "}
+            <a className="text-[var(--brand-red-bright)] underline" href="/play?admin=1">
+              /play?admin=1
+            </a>
+            . See <code className="text-zinc-300">docs/PLAY.md</code>.
           </li>
           <li>
             Set the same <strong className="text-white">Room / board name</strong> below on both
             devices (default Board 1).
           </li>
           <li>
-            <strong className="text-white">Fix a dart</strong> — tap the dart box on the iPad, pick
-            the real segment. Or Undo / Edit visit.
+            <strong className="text-white">Fix a dart</strong> — patrons tap the dart box and pick
+            the real segment. Staff can also Undo / Edit visit when unlocked.
           </li>
         </ol>
       </section>
@@ -138,6 +146,24 @@ export default function AdminPage() {
             onChange={(e) => settings.update({ kioskMode: e.target.checked })}
             className="h-5 w-5 accent-[var(--brand-red)]"
           />
+        </label>
+        <label className="block">
+          <span className="section-title">Staff PIN (unlock /play admin)</span>
+          <input
+            className="input mt-2 w-full font-mono tracking-widest"
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="1234"
+            value={settings.staffPin}
+            onChange={(e) =>
+              settings.update({
+                staffPin: e.target.value.replace(/\D/g, "").slice(0, 4),
+              })
+            }
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            4 digits · default 1234 · used when long-pressing the logo on /play
+          </p>
         </label>
       </section>
 

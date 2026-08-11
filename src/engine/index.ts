@@ -34,3 +34,8 @@ export {
   fortyOneVisitResult,
   type FortyOneTarget,
 } from "./modes/forty-one";
+export {
+  baseballVisitTotalFromDarts,
+  dartPointsForMode,
+  visitPointsFromTurn,
+} from "./visit-score";
