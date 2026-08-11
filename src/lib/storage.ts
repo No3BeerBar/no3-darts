@@ -67,6 +67,12 @@ export interface AppSettings {
   voiceEnabled: boolean;
   kioskMode: boolean;
   roomName: string;
+  /**
+   * 4-digit PIN to unlock staff chrome on `/play`
+   * (Undo / Edit / End / Pause / Cancel / Keys / Pad).
+   * Empty → default `1234` (see usePlayAdmin).
+   */
+  staffPin: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -76,6 +82,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   voiceEnabled: false,
   kioskMode: false,
   roomName: "Board 1",
+  staffPin: "1234",
 };
 
 function emptyStats(): PlayerAggregateStats {

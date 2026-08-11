@@ -3,15 +3,19 @@
 /**
  * Recent completed visits (previous rounds / turns).
  * Newest first — scroll horizontally on tablet.
+ *
+ * Visit Σ uses mode rules via `visitPointsFromTurn` (not raw dart.value) so
+ * Baseball / future non-X01 modes match the current-visit TurnDarts total.
  */
 
-import { getTeamForPlayer, segmentLabel, type GameState, type Turn } from "@/engine";
+import {
+  getTeamForPlayer,
+  segmentLabel,
+  visitPointsFromTurn,
+  type GameState,
+  type Turn,
+} from "@/engine";
 import { cn } from "@/lib/utils";
-
-function visitTotal(turn: Turn): number {
-  if (turn.bust) return 0;
-  return turn.darts.reduce((a, d) => a + d.value, 0);
-}
 
 function dartLine(turn: Turn): string {
   if (turn.darts.length === 0) return "—";
@@ -60,7 +64,7 @@ export function VisitHistory({
         {recent.map((turn, i) => {
           const player = state.players.find((p) => p.id === turn.playerId);
           const team = getTeamForPlayer(state, turn.playerId);
-          const total = visitTotal(turn);
+          const total = visitPointsFromTurn(state.mode, turn);
           const showScorePath =
             state.mode === "x01" || state.mode === "random_checkout";
 
