@@ -1,47 +1,86 @@
-# Autodarts companion / spy
+# Autodarts → No3 companion
 
-Run **beside Autodarts** (not instead of it) to learn how their board scores darts and to compare against No3.
+**Recommended bar path:** Autodarts Board Manager **detects** throws; No3 runs **game modes and scoring UI** (X01, Cricket, Killer, …). A small local bridge on the board PC polls Autodarts and POSTs darts into No3.
+
+```
+[Autodarts cams] → Board Manager :3180 → companion bridge → POST /api/camera/dart → No3 (tablet / TV)
+```
+
+Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no need to play the match inside Autodarts).
 
 ## What this is (and is not)
 
 | This does | This does **not** |
 |-----------|-------------------|
 | Talk to Autodarts **Board Manager** on your LAN (`localhost:3180`) | Reverse-engineer proprietary binary CV code |
-| Log full `/api/state` JSON (throws, segments, anything they publish) | Guarantee raw per-camera tip pixels (may not be exposed) |
-| Plot scores on a standard board diagram | Steal Autodarts detection models |
-| Diff Autodarts vs No3 when both see the same throw | Require internet (stays local) |
+| Poll `GET /api/state` and mirror throws into No3 | Require playing the game inside Autodarts |
+| Map segments (`T20`, `S5`, bull, miss…) → No3 `{kind,number}` | Guarantee raw per-camera tip pixels |
+| Call No3 `end-turn` on Autodarts takeout | Steal Autodarts detection models |
+| Spy / compare / viz helpers for debugging | Need internet (stays local except No3 POST) |
 
-Autodarts detects from **pixel change** with **3 cams ~120°** on a ring light; publicly documented integrations only need the **local Board Manager API**. Community tools (ioBroker, Tools for Autodarts) poll that same API.
+Community tools (ioBroker, Tools for Autodarts) use the same local Board Manager HTTP API.
 
 ## Prerequisites
 
-1. Autodarts Desktop / Board Manager running  
+1. Autodarts Desktop / Board Manager running on the board PC  
 2. Open in a browser: `http://127.0.0.1:3180`  
 3. Board started (status **Throw** / green)  
-4. Python 3.11+ on the **same PC** (or any PC that can reach the Board Manager)
+4. Python 3.11+ on that PC  
+5. A No3 match open on the **same room** (any game mode)
 
-## Quick start (Windows mini PC)
+## Bar mini-PC one-liner (bridge)
 
 ```powershell
-cd C:\No3Darts\no3-darts
-git pull
-cd tools\autodarts-companion
-
+cd C:\No3Darts\no3-darts\tools\autodarts-companion
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
 copy config.example.yaml config.yaml
-# edit host if Board Manager is not on this machine
-
-python -m companion spy
+# edit config.yaml → no3.url, room_id, camera_api_key
+python -m companion bridge
 ```
 
-Or: `scripts\run-spy.bat`
+Or double-click / run: `scripts\run-bridge.bat`
+
+Dry-run (no No3 POSTs):
+
+```powershell
+python -m companion bridge --dry-run
+scripts\run-bridge.bat --dry-run
+```
+
+Full CLI:
+
+```powershell
+python -m companion bridge --help
+python -m companion bridge `
+  --host 127.0.0.1 --port 3180 --poll-ms 300 `
+  --no3-url https://no3-darts-production.up.railway.app `
+  --room "Board 1" `
+  --api-key "%CAMERA_API_KEY%"
+```
+
+Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
+
+### Match flow
+
+1. On the tablet: start any No3 game (X01 / Cricket / Killer / …) on room **Board 1**.  
+2. On the board PC: Autodarts Board Manager **Start** (detecting).  
+3. Run `bridge` — each new Autodarts dart is POSTed to No3.  
+4. When Autodarts signals **Takeout** (or clears throws), bridge calls `POST /api/camera/end-turn` so early 1–2 dart visits advance correctly. After a full 3-dart visit No3 usually auto-ends the turn already; the extra call is harmless.
 
 ## Commands
 
+### `bridge` — Autodarts detects → No3 scores (recommended)
+
+```powershell
+python -m companion bridge
+python -m companion bridge --dry-run
+python -m companion bridge --no-end-turn
+```
+
 ### `spy` — watch Autodarts live
+
 ```powershell
 python -m companion spy
 python -m companion spy --host 127.0.0.1 --port 3180 --dump
@@ -50,61 +89,50 @@ python -m companion spy --host 127.0.0.1 --port 3180 --dump
 - Polls `GET /api/state` every ~0.3s  
 - Prints new darts (`T20`, `S5`, bull, miss…)  
 - With `--dump`, appends every unique state to `logs/session-*.jsonl`  
-- Probes extra paths (`/api/config`, `/api/host`, …) once at start  
 
 ### `probe` — discover API endpoints
+
 ```powershell
 python -m companion probe
 ```
 
-Hits common Board Manager paths and prints status + JSON shape. Use this first if `spy` fails.
-
 ### `compare` — Autodarts vs No3 side-by-side
+
 ```powershell
-python -m companion compare --no3-url https://no3-darts-production.up.railway.app --room "Board 1"
+python -m companion compare --no3-url https://… --room "Board 1"
 ```
 
-Listens to Autodarts throws and, when No3 posts a dart near the same time, prints both scores.
-
 ### `viz` — live board diagram from Autodarts throws
+
 ```powershell
 python -m companion viz
 ```
 
-Draws an OpenCV board with Autodarts hits marked (needs a window).
+## Segment mapping → No3
 
-### `bridge` — use Autodarts as the detector for No3
-When DIY CV is not ready for the bar, Autodarts can own detection and
-**mirror scores into No3** (iPad / TV still work):
+| Autodarts | No3 `kind` | `number` |
+|-----------|------------|----------|
+| S1–S20 / singles `1`–`20` | `single` | 1–20 |
+| D1–D20 | `double` | 1–20 |
+| T1–T20 | `triple` | 1–20 |
+| `25` / outer bull | `outer_bull` | 25 |
+| Bull / D25 / 50 | `bull` | 50 |
+| Miss / `0` / M… | `miss` | 0 |
 
-```powershell
-python -m companion bridge --no3-url https://no3-darts-production.up.railway.app --room "Board 1"
+Parsing prefers `segment.number` + `segment.multiplier` (stable across Board Manager versions) and falls back to `segment.name`.
+
+## Takeout / end-turn
+
+Autodarts board states include **Throw**, **Throw detected**, **Takeout**, **Takeout started**, **Takeout finished**.
+
+On takeout (or when the `throws` list clears), the bridge calls:
+
+```http
+POST /api/camera/end-turn
+{ "roomId": "Board 1" }
 ```
 
-Or: `scripts\run-bridge.bat`
-
-Start a No3 match on that room, leave Autodarts detecting, throw.
-
-## What we hope to learn
-
-From logged JSON (when present in your Board Manager version):
-
-- Segment name / number / multiplier  
-- Any **coords** (`x`, `y`, `r`, `angle`, camera ids)  
-- Board **status** machine: Throw → Throw detected → Takeout → …  
-- Camera config (resolution / fps)
-
-If only segment scores appear (no coordinates), that still tells us **when** they lock a dart and how takeout works—still useful for aligning No3.
-
-## Typical Autodarts geometry (public knowledge)
-
-- 3 USB cams around the board (~120°)  
-- Even **ring light** (critical)  
-- Motion / pixel-diff → dart present  
-- Multi-view fusion → score  
-- Calibrate in Board Manager (magic wand / auto-cal)  
-
-Their **internal** triangulation stays closed-source; this tool studies the **outputs** and timing so we can reshape No3 to match.
+Disable with `--no-end-turn` if you only want dart posts.
 
 ## Config
 
@@ -119,10 +147,26 @@ autodarts:
 no3:
   url: "https://no3-darts-production.up.railway.app"
   room_id: "Board 1"
+  camera_api_key: ""
 
 logs_dir: "./logs"
 ```
 
+## Tests
+
+```powershell
+pip install -r requirements.txt
+python -m pytest -q
+```
+
+## Typical Autodarts geometry (public knowledge)
+
+- 3 USB cams around the board (~120°)  
+- Even **ring light** (critical)  
+- Calibrate in Board Manager  
+
+We only use the **local HTTP API** outputs — not Autodarts CV internals.
+
 ## Privacy
 
-Everything stays on your LAN. Do not commit API keys or `logs/*.jsonl` with personal data.
+Everything stays on your LAN except POSTs to your No3 URL. Do not commit API keys or `logs/*.jsonl` with personal data.

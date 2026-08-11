@@ -1,14 +1,16 @@
-# Copy to config.yaml
+# Copy to config.yaml and edit for your bar mini-PC.
+# Autodarts detects throws; No3 runs game modes / scoring UI.
 
 autodarts:
   host: "127.0.0.1"   # PC running Autodarts Board Manager
   port: 3180          # default Board Manager port
-  poll_ms: 300        # how often to poll /api/state
+  poll_ms: 300        # how often to poll /api/state (~300ms is typical)
 
 no3:
-  # Optional — only for `compare` mode
+  # Required for `bridge` (and optional for `compare`)
   url: "https://no3-darts-production.up.railway.app"
   room_id: "Board 1"
+  # Same value as CAMERA_API_KEY on Railway (leave blank if unset)
   camera_api_key: ""
 
 logs_dir: "./logs"

@@ -10,6 +10,8 @@ from urllib.request import Request, urlopen
 from rich.console import Console
 from rich.table import Table
 
+from .mapping import format_segment_label
+
 console = Console()
 
 # Paths community tools and docs mention / we probe
@@ -26,6 +28,18 @@ PROBE_PATHS = (
     "/api/events",
     "/api/info",
     "/",
+)
+
+_THROW_KEYS = ("throws", "Throws", "darts", "Darts", "countedDarts", "CountedDarts")
+_NEST_KEYS = ("board", "data", "state", "Board", "Data", "State", "game", "Game")
+_STATUS_KEYS = (
+    "status",
+    "Status",
+    "boardStatus",
+    "BoardStatus",
+    "board_status",
+    "event",
+    "Event",
 )
 
 
@@ -91,44 +105,85 @@ class AutodartsClient:
         )
 
 
+def _normalize_throw(item: Any) -> Optional[dict[str, Any]]:
+    """Coerce a throw entry into a dict with a segment when possible."""
+    if item is None:
+        return None
+    if isinstance(item, str):
+        return {"segment": {"name": item}}
+    if not isinstance(item, dict):
+        return None
+    # Already has segment nesting
+    if any(k in item for k in ("segment", "Segment", "seg", "Seg")):
+        return item
+    # Flat {name, number, multiplier}
+    if "name" in item or ("number" in item and "multiplier" in item):
+        return {"segment": item, **item}
+    return item
+
+
 def extract_throws(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Best-effort: Board Manager versions vary slightly."""
-    for key in ("throws", "Throws", "darts", "Darts"):
-        t = state.get(key)
-        if isinstance(t, list):
-            return t
+    if not isinstance(state, dict):
+        return []
+
+    def from_list(raw: Any) -> list[dict[str, Any]]:
+        if not isinstance(raw, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for item in raw:
+            norm = _normalize_throw(item)
+            if norm is not None:
+                out.append(norm)
+        return out
+
+    for key in _THROW_KEYS:
+        found = from_list(state.get(key))
+        if found or (isinstance(state.get(key), list) and len(state.get(key)) == 0):
+            # Prefer explicit empty throws[] over digging into nested game state
+            if key in state and isinstance(state.get(key), list):
+                return found
+
     # nested
-    for nest in ("board", "data", "state"):
+    for nest in _NEST_KEYS:
         sub = state.get(nest)
         if isinstance(sub, dict):
-            for key in ("throws", "Throws", "darts"):
-                t = sub.get(key)
-                if isinstance(t, list):
-                    return t
+            for key in _THROW_KEYS:
+                if key in sub and isinstance(sub.get(key), list):
+                    return from_list(sub.get(key))
+
+    # numThrows without throws — nothing to score
     return []
 
 
+def extract_status(state: dict[str, Any]) -> str:
+    """Board status string (Throw / Takeout / …)."""
+    if not isinstance(state, dict):
+        return ""
+    for key in _STATUS_KEYS:
+        val = state.get(key)
+        if isinstance(val, str) and val.strip():
+            # Prefer dedicated status over event when both exist — caller can
+            # pass the full state; we check status/Status first in the tuple.
+            if key.lower() in ("status", "boardstatus", "board_status"):
+                return val.strip()
+    for key in _STATUS_KEYS:
+        val = state.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    for nest in _NEST_KEYS:
+        sub = state.get(nest)
+        if isinstance(sub, dict):
+            for key in ("status", "Status", "boardStatus"):
+                val = sub.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+    return ""
+
+
 def format_dart(dart: dict[str, Any]) -> str:
-    seg = dart.get("segment") or dart.get("Segment") or {}
-    if isinstance(seg, dict):
-        name = seg.get("name") or seg.get("Name") or ""
-        num = seg.get("number") if "number" in seg else seg.get("Number")
-        mult = seg.get("multiplier") if "multiplier" in seg else seg.get("Multiplier")
-        if name:
-            return str(name)
-        if num is not None and mult is not None:
-            if int(mult) == 3:
-                return f"T{int(num)}"
-            if int(mult) == 2:
-                return f"D{int(num)}" if int(num) != 25 else "BULL/50?"
-            if int(num) in (25, 50) or str(name).upper().find("BULL") >= 0:
-                return str(name or f"BULL{num}")
-            return f"S{int(num)}" if int(mult) == 1 else f"{mult}x{num}"
-    # flat fields
-    for k in ("name", "label", "scoreName", "text"):
-        if dart.get(k):
-            return str(dart[k])
-    return json.dumps(dart, ensure_ascii=False)[:80]
+    """Back-compat wrapper used by spy/compare/viz."""
+    return format_segment_label(dart)
 
 
 def dart_coords(dart: dict[str, Any]) -> Optional[dict[str, float]]:
@@ -164,8 +219,50 @@ def dart_coords(dart: dict[str, Any]) -> Optional[dict[str, float]]:
     return out or None
 
 
+def throw_identity(dart: dict[str, Any]) -> str:
+    """Stable identity for one dart (label + optional coords)."""
+    return format_dart(dart) + "|" + json.dumps(dart_coords(dart) or {}, sort_keys=True)
+
+
 def throws_signature(throws: list[dict[str, Any]]) -> str:
-    parts = []
-    for d in throws:
-        parts.append(format_dart(d) + "|" + json.dumps(dart_coords(d) or {}, sort_keys=True))
+    parts = [throw_identity(d) for d in throws]
     return f"{len(throws)}:" + ";".join(parts)
+
+
+def new_throws_since(
+    previous: list[dict[str, Any]],
+    current: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Return only newly appended throws since `previous`.
+
+    Idempotent for polling: same state → empty list.
+    If the visit list shrinks or diverges (takeout / reset), returns [].
+    Caller should treat shrink as a visit boundary separately.
+    """
+    if not current:
+        return []
+    if not previous:
+        return list(current)
+
+    prev_ids = [throw_identity(d) for d in previous]
+    curr_ids = [throw_identity(d) for d in current]
+
+    # Prefix match → append-only growth
+    if len(curr_ids) >= len(prev_ids) and curr_ids[: len(prev_ids)] == prev_ids:
+        return list(current[len(previous) :])
+
+    # Same length, identical → nothing new
+    if curr_ids == prev_ids:
+        return []
+
+    # Diverged (correction) or shorter: not "new appends"
+    return []
+
+
+def visit_cleared(
+    previous: list[dict[str, Any]],
+    current: list[dict[str, Any]],
+) -> bool:
+    """True when a non-empty visit became empty (typical takeout clear)."""
+    return bool(previous) and not current

@@ -94,20 +94,23 @@ export default function AdminPage() {
       </section>
 
       <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
-        <h2 className="section-title">DIY camera detection (not Autodarts)</h2>
+        <h2 className="section-title">Throw detection (Autodarts → No3)</h2>
         <p className="text-sm text-zinc-400">
-          Run our OpenCV detector from the <code className="text-[var(--brand-red)]">detection/</code> folder
-          on a PC next to the board. It posts hits here. Auth via{" "}
+          Recommended: Autodarts Board Manager detects throws; the companion bridge on the board PC
+          posts them here. Game modes stay in No3. Auth via{" "}
           <code className="text-[var(--brand-red)]">CAMERA_API_KEY</code> when set.
         </p>
         <ul className="space-y-2 font-mono text-sm text-zinc-300">
           <li className="rounded-lg bg-zinc-950 px-3 py-2">POST /api/camera/dart</li>
+          <li className="rounded-lg bg-zinc-950 px-3 py-2">POST /api/camera/end-turn</li>
           <li className="rounded-lg bg-zinc-950 px-3 py-2">GET /api/camera/stream (SSE)</li>
           <li className="rounded-lg bg-zinc-950 px-3 py-2">GET /api/matches/active</li>
-          <li className="rounded-lg bg-zinc-950 px-3 py-2">POST /api/matches/:id/dart</li>
         </ul>
         <p className="text-xs text-zinc-500">
-          Setup: <code>cd detection && pip install -r requirements.txt && python -m no3_detect run</code>
+          Setup:{" "}
+          <code>
+            cd tools/autodarts-companion && python -m companion bridge
+          </code>
         </p>
       </section>
 

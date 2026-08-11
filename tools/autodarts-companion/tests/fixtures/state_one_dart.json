@@ -1,0 +1,14 @@
+{
+  "status": "Throw detected",
+  "event": "Dart",
+  "numThrows": 1,
+  "throws": [
+    {
+      "segment": {
+        "name": "T20",
+        "number": 20,
+        "multiplier": 3
+      }
+    }
+  ]
+}
