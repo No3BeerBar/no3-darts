@@ -291,7 +291,7 @@ describe("41 bot aim — mode-aware (not X01 T20 spam)", () => {
   });
 
   it("live Luke visit on round 19 does not exclusively throw segment 20", () => {
-    let state = startFortyOne("luke_littler");
+    const state = startFortyOne("luke_littler");
     state.roundIndex = 1; // 19
     expect(FORTY_ONE_SEQUENCE[state.roundIndex]).toEqual({ type: "number", n: 19 });
 
@@ -317,7 +317,7 @@ describe("41 bot aim — mode-aware (not X01 T20 spam)", () => {
   });
 
   it("exact_41 live darts are not exclusively T20", () => {
-    let state = startFortyOne("luke_littler");
+    const state = startFortyOne("luke_littler");
     state.roundIndex = FORTY_ONE_SEQUENCE.findIndex((t) => t.type === "exact_41");
     expect(state.roundIndex).toBeGreaterThanOrEqual(0);
 
