@@ -35,10 +35,13 @@ Adding a mode: implement a handler in `src/engine/modes/`, register it in `src/e
 - Callout toasts (180, bust, game shot…)
 
 ### Players & stats
-- Guests + saved profiles
+- Guests (no account) + **walk-up accounts** (display name + 4-digit PIN)
+- Personal stats in **Postgres** when `DATABASE_URL` is set (shared across tablets)
 - Averages, 180s, checkouts, highest out
-- Local leaderboard
+- Local leaderboard (+ server history for registered players)
 - Match history with **JSON / CSV** export
+
+Details: [`docs/PLAYERS.md`](./docs/PLAYERS.md).
 
 ### Ops
 - PWA installable on tablets
@@ -103,8 +106,11 @@ Then start any No3 match on that room and throw. Details: [`tools/autodarts-comp
 | Variable | Purpose |
 |----------|---------|
 | `CAMERA_API_KEY` | Protect `/api/camera/*` and match APIs |
-| `DATABASE_URL` | Reserved for future Postgres persistence |
+| `DATABASE_URL` | Postgres for walk-up player accounts + shared stats |
+| `SESSION_SECRET` | HMAC secret for player session cookies (recommended) |
 | `PORT` | Set automatically by Railway |
+
+**Attach Postgres on Railway:** project → **New** → **Database** → **PostgreSQL**, then add/reference `DATABASE_URL` on the no3-darts service and redeploy. See [`docs/PLAYERS.md`](./docs/PLAYERS.md). Without Postgres, guests and local scoring still work.
 
 5. Health check: `GET /api/health`
 
@@ -174,6 +180,8 @@ Change bar name, room name, and toggles under **Admin**.
 | `npm run build` | Production build |
 | `npm start` | Start production server |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (PIN hash, name rules) |
+| `npm run db:push` | Optional Drizzle schema push (auto-migrate also runs at runtime) |
 
 ---
 
@@ -182,7 +190,8 @@ Change bar name, room name, and toggles under **Admin**.
 - [ ] Wire sound / TTS callouts (toggles already in Admin)
 - [ ] Heatmaps from `angle` / `radius` on darts
 - [ ] Multi-room dashboard
-- [ ] Postgres persistence via `DATABASE_URL`
+- [x] Postgres persistence via `DATABASE_URL` (player accounts + match history)
+- [ ] Weekly / TV idle leaderboard UI (schema supports `finished_at` + per-player queries)
 - [ ] Harden Autodarts bridge autostart on the bar mini-PC
 
 ---
