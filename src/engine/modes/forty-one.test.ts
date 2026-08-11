@@ -4,6 +4,8 @@ import {
   FORTY_ONE_SEQUENCE,
   FORTY_ONE_START_SCORE,
   fortyOneDartPoints,
+  fortyOneExact41DartContributes,
+  fortyOneExact41VisitOk,
   fortyOneHalve,
   fortyOneRoundNumber,
   fortyOneTarget,
@@ -112,6 +114,20 @@ describe("fortyOneVisitResult", () => {
       t
     );
     expect(r).toEqual({ kind: "scored", points: 41 });
+  });
+
+  it("exact_41 T7 + S20 + MISS sums to 41 arithmetically but must HALVE", () => {
+    const t = { type: "exact_41" as const };
+    // 21 + 20 + 0 = 41 — miss does not contribute → void
+    const darts = [
+      createDart("triple", 7),
+      createDart("single", 20),
+      createDart("miss", 0),
+    ];
+    expect(darts.reduce((a, d) => a + d.value, 0)).toBe(41);
+    expect(fortyOneExact41DartContributes(darts[2])).toBe(false);
+    expect(fortyOneExact41VisitOk(darts)).toBe(false);
+    expect(fortyOneVisitResult(darts, t)).toEqual({ kind: "halved" });
   });
 
   it("exact_41 wrong sum → halved", () => {
@@ -254,6 +270,23 @@ describe("forty_one engine play", () => {
     );
     expect(state.playerStates[1].score).toBe(fortyOneHalve(bobBefore));
     expect(state.playerStates[1].extra?.lastVisitHalved).toBe(true);
+  });
+
+  it("exact-41 engine: T7 + S20 + MISS halves (not +41)", () => {
+    let state = start();
+    for (let r = 0; r < 8; r++) {
+      for (let p = 0; p < 2; p++) {
+        if (state.status !== "playing") break;
+        state = throwThree(state, ["miss", 0], ["miss", 0], ["miss", 0]);
+      }
+    }
+    expect(fortyOneTarget(state).type).toBe("exact_41");
+    const before = state.playerStates[0].score;
+
+    state = throwThree(state, ["triple", 7], ["single", 20], ["miss", 0]);
+    expect(state.playerStates[0].score).toBe(fortyOneHalve(before));
+    expect(state.playerStates[0].extra?.lastVisitHalved).toBe(true);
+    expect(state.turns[state.turns.length - 1]?.bust).toBe(true);
   });
 
   it("plays all rounds; highest score wins", () => {

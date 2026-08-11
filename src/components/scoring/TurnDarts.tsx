@@ -12,6 +12,8 @@ export function TurnDarts({
   /** Override per-dart points (e.g. Baseball: wrong number = 0) */
   pointsForDart,
   showDartPoints = false,
+  /** When true, Σ is not a valid visit total (e.g. exact-41 with a miss). */
+  totalVoided = false,
 }: {
   darts: DartThrow[];
   className?: string;
@@ -20,6 +22,7 @@ export function TurnDarts({
   compact?: boolean;
   pointsForDart?: (dart: DartThrow) => number;
   showDartPoints?: boolean;
+  totalVoided?: boolean;
 }) {
   const slots = [0, 1, 2];
   const dartPts = (d: DartThrow) => (pointsForDart ? pointsForDart(d) : d.value);
@@ -62,7 +65,14 @@ export function TurnDarts({
       })}
       <div className="ml-1 min-w-[2.5rem] text-center">
         <div className="font-display text-[9px] tracking-wider text-zinc-600">Σ</div>
-        <div className="text-xl font-black tabular-nums text-white">{total}</div>
+        <div
+          className={cn(
+            "text-xl font-black tabular-nums",
+            totalVoided ? "text-amber-400" : "text-white"
+          )}
+        >
+          {total}
+        </div>
       </div>
     </div>
   );

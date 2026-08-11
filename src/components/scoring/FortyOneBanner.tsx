@@ -2,6 +2,7 @@
 
 import {
   fortyOneDartPoints,
+  fortyOneExact41DartContributes,
   fortyOneRoundNumber,
   fortyOneTarget,
   fortyOneTargetLabel,
@@ -25,6 +26,9 @@ export function FortyOneBanner({
   const label = fortyOneTargetLabel(target);
   const last = state.currentTurnDarts[state.currentTurnDarts.length - 1];
   const lastPts = last ? fortyOneDartPoints(last, target) : null;
+  const exact41Voided =
+    target.type === "exact_41" &&
+    state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d));
   const visitSum =
     target.type === "exact_41"
       ? state.currentTurnDarts.reduce((a, d) => a + d.value, 0)
@@ -86,11 +90,14 @@ export function FortyOneBanner({
           {target.type === "exact_41" && (
             <div
               className={cn(
-                "font-display tracking-wider text-amber-400/90",
-                lg ? "text-sm" : "text-[10px]"
+                "font-display tracking-wider",
+                lg ? "text-sm" : "text-[10px]",
+                exact41Voided ? "text-amber-400" : "text-amber-400/90"
               )}
             >
-              Score exactly 41 with all 3 darts
+              {exact41Voided
+                ? "Miss voids visit · will HALVE"
+                : "All 3 darts must score · total exactly 41"}
             </div>
           )}
         </div>
@@ -108,8 +115,9 @@ export function FortyOneBanner({
             </div>
             <div
               className={cn(
-                "font-black tabular-nums text-white",
-                lg ? "text-4xl" : "text-2xl"
+                "font-black tabular-nums",
+                lg ? "text-4xl" : "text-2xl",
+                exact41Voided ? "text-amber-400" : "text-white"
               )}
             >
               {visitSum}

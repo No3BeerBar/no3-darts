@@ -18,6 +18,7 @@ import {
   dartPointsForMode,
   fortyOneBoardFocus,
   fortyOneDartPoints,
+  fortyOneExact41DartContributes,
   fortyOneTarget,
   getHandler,
   getRemaining,
@@ -318,6 +319,11 @@ function ScoringScreenInner() {
                   : fortyOne
                     ? (d) => fortyOneDartPoints(d, fortyOneTarget(state))
                     : undefined
+              }
+              totalVoided={
+                fortyOne &&
+                fortyOneTarget(state).type === "exact_41" &&
+                state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d))
               }
             />
             {state.status === "playing" && (

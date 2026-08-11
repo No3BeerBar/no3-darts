@@ -35,7 +35,7 @@ const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
   killer:
     "Each player gets a unique number 1–20 · hit your double to become Killer · then hit their doubles to take lives · last life standing wins · only doubles count",
   forty_one:
-    "Start at 60 · rounds: 20, 19, any double, 18, 17, any triple, 16, 15, score exactly 41 with 3 darts, bull · hit the target to add · miss all → score halved (round up) · highest wins",
+    "Start at 60 · rounds: 20, 19, any double, 18, 17, any triple, 16, 15, exact 41 (all 3 darts must score and total 41), bull · hit the target to add · miss all → score halved (round up) · highest wins",
 };
 
 type PlayFormat = "singles" | "teams";
