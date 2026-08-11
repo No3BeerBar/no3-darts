@@ -11,7 +11,7 @@ Single-elimination brackets for **No. 3 Craft Beer Bar**, with **flexible match 
 - Mutating APIs (`POST/PATCH` create/update/start/assign) require `staffPin` (body or `X-Staff-Pin` header) verified server-side via `verifyStaffPin`.
 - Guests may **play** in a tournament; they must not run the night (no setup without staff PIN).
 
-Lane tablets and patron **Play** may still show **Tournament match ready** and start/score the assigned match — that is operational play, not setup.
+**Start tournament match is staff-gated on patron Play.** Cold `/play` and `/` do **not** show the **Tournament match ready** card. Staff unlock on that tablet (long-press logo + PIN, Admin link, or `?admin=1`) reveals the lane card so a lane station can start the assigned match. Scoring an already-started tournament match stays on normal `/play` (no extra unlock).
 
 ## Bar flow (ops)
 
@@ -27,7 +27,7 @@ Lane tablets and patron **Play** may still show **Tournament match ready** and s
      - **preset_sequence** — list modes per leg index (leg 1, leg 2, …).
 4. **Start tournament** — builds a power-of-2 bracket with **byes** as needed.
 5. **Assign matches** on the bracket view to **Board 1 / 2 / 3** (one active assignment per lane).
-6. **Lane tablets** — set room name in Admin (or open `/?room=Board%201` / `/play?room=Board%201`). Idle **Play** shows **Tournament match ready** → start → score as usual → match win auto-saves and advances the bracket.
+6. **Lane tablets** — set room name in Admin (or open `/?room=Board%201` / `/play?room=Board%201`). **Staff-unlock** that tablet, then idle **Play** shows **Tournament match ready** → start → score as usual → match win auto-saves and advances the bracket. Unlocked lane stations only — not the public cold kiosk.
 7. Lane frees; winner moves on; other boards poll for updates (~5s).
 
 Casual non-tournament play is unchanged: start a normal match from Play without touching tournaments.

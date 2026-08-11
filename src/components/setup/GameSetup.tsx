@@ -15,8 +15,10 @@ import {
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
+import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import { HowToPlayModal } from "@/components/play/HowToPlayModal";
 import { TournamentMatchBanner } from "@/components/tournament/TournamentMatchBanner";
+import { abandonMatchAction } from "@/lib/clear-active-match";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
 import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
@@ -64,7 +66,6 @@ function emptyTeam(n: number): DraftTeam {
 export function GameSetup() {
   const router = useRouter();
   const startGame = useGameStore((s) => s.startGame);
-  const clearGame = useGameStore((s) => s.clearGame);
   const active = useGameStore((s) => s.state);
   const hydrateGame = useGameStore((s) => s.hydrate);
   const playersStore = usePlayersStore();
@@ -84,6 +85,7 @@ export function GameSetup() {
   const [pendingSelect, setPendingSelect] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const [mode, setMode] = useState<GameModeId>("x01");
   const [startScore, setStartScore] = useState<301 | 501 | 701 | 901>(501);
@@ -377,10 +379,21 @@ export function GameSetup() {
   };
 
   const onCancelMatch = () => {
-    if (!active) return;
-    if (confirm("Cancel this match? Scores will not be saved.")) {
-      clearGame();
+    const live = useGameStore.getState().state;
+    if (!live) return;
+    // In-app confirm — window.confirm is a no-op on some iPad kiosk WebViews
+    if (abandonMatchAction(live) === "confirm") {
+      setCancelConfirmOpen(true);
+      return;
     }
+    useGameStore.getState().setDisplayOnly(false);
+    useGameStore.getState().clearGame();
+  };
+
+  const confirmCancelMatch = () => {
+    setCancelConfirmOpen(false);
+    useGameStore.getState().setDisplayOnly(false);
+    useGameStore.getState().clearGame();
   };
 
   const hasActive =
@@ -401,6 +414,15 @@ export function GameSetup() {
 
   return (
     <div className="space-y-3">
+      <ConfirmDialog
+        open={cancelConfirmOpen}
+        title="Cancel this match?"
+        message="Scores will not be saved. Resume will disappear from this tablet."
+        confirmLabel="Cancel match"
+        cancelLabel="Keep match"
+        onConfirm={confirmCancelMatch}
+        onCancel={() => setCancelConfirmOpen(false)}
+      />
       <AuthModal
         open={authOpen}
         mode={authMode}

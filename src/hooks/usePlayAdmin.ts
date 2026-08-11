@@ -17,7 +17,18 @@ import { DEFAULT_STAFF_PIN } from "@/lib/auth/staff-constants";
 
 export { DEFAULT_STAFF_PIN };
 
-const STORAGE_KEY = "no3_play_admin";
+/** sessionStorage flag — staff chrome unlocked for this browser tab */
+export const PLAY_ADMIN_STORAGE_KEY = "no3_play_admin";
+
+/** Read staff unlock without the hook (tournament banner, setup gate). */
+export function isPlayAdminUnlocked(): boolean {
+  if (typeof sessionStorage === "undefined") return false;
+  try {
+    return sessionStorage.getItem(PLAY_ADMIN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function usePlayAdmin(staffPin: string) {
   const searchParams = useSearchParams();
@@ -29,7 +40,7 @@ export function usePlayAdmin(staffPin: string) {
     setUnlocked(true);
     setPinOpen(false);
     try {
-      sessionStorage.setItem(STORAGE_KEY, "1");
+      sessionStorage.setItem(PLAY_ADMIN_STORAGE_KEY, "1");
     } catch {
       /* ignore */
     }
@@ -39,7 +50,7 @@ export function usePlayAdmin(staffPin: string) {
     setUnlocked(false);
     setPinOpen(false);
     try {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(PLAY_ADMIN_STORAGE_KEY);
     } catch {
       /* ignore */
     }
@@ -47,7 +58,7 @@ export function usePlayAdmin(staffPin: string) {
 
   useEffect(() => {
     try {
-      if (sessionStorage.getItem(STORAGE_KEY) === "1") {
+      if (sessionStorage.getItem(PLAY_ADMIN_STORAGE_KEY) === "1") {
         setUnlocked(true);
       }
     } catch {
