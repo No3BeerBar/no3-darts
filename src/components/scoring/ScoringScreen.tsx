@@ -30,6 +30,8 @@ import {
   parseDartLabel,
   segmentLabel,
 } from "@/engine";
+import { canScoreMatch } from "@/lib/seat-auth";
+import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
@@ -49,9 +51,9 @@ import { KillerBanner } from "./KillerBanner";
 import { NumberPad } from "./NumberPad";
 import { PlayAdminPinModal } from "./PlayAdminPinModal";
 import { PlayerPanel } from "./PlayerPanel";
+import { ResumeAuthGate } from "./ResumeAuthGate";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
-import { cn } from "@/lib/utils";
 
 function ScoringScreenInner() {
   const {
@@ -73,11 +75,13 @@ function ScoringScreenInner() {
   } = useGameStore();
   const settings = useSettingsStore();
   const sessionPlayer = useSessionStore((s) => s.player);
+  const sessionHydrated = useSessionStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrate);
   const [pad, setPad] = useState("");
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
   const [boardSize, setBoardSize] = useState(340);
+  const [seatAuthTick, setSeatAuthTick] = useState(0);
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const admin = usePlayAdmin(settings.staffPin);
@@ -101,10 +105,18 @@ function ScoringScreenInner() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
-  useCameraSync(true);
-  // Re-publish match to server so TV recovers after deploys / refreshes
+  const seatsOk = useMemo(() => {
+    void seatAuthTick;
+    if (!state) return true;
+    if (!sessionHydrated) return false;
+    return canScoreMatch(state.id, state.players, sessionPlayer?.id ?? null);
+  }, [state, sessionPlayer?.id, sessionHydrated, seatAuthTick]);
+
+  // Camera must not advance scores while PIN seats need re-auth
+  useCameraSync(seatsOk);
+  // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  const { notice: cameraNotice } = useCameraHealth(state?.roomId, Boolean(state));
+  const { notice: cameraNotice } = useCameraHealth(state?.roomId, Boolean(state) && seatsOk);
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
 
@@ -204,6 +216,14 @@ function ScoringScreenInner() {
     <div className="shell-black flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
+
+      {!seatsOk && (
+        <ResumeAuthGate
+          matchId={state.id}
+          players={state.players}
+          onVerifiedChange={() => setSeatAuthTick((t) => t + 1)}
+        />
+      )}
 
       {admin.pinOpen && (
         <PlayAdminPinModal

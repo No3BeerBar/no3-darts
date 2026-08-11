@@ -10,12 +10,13 @@ import {
   validateKillerNumbers,
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
+import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
+import { seatsNeedingReauth } from "@/lib/seat-auth";
+import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
 import { usePlayersStore } from "@/store/players-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
-import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
-import { cn } from "@/lib/utils";
 
 const MODES: Array<{ id: GameModeId; name: string }> = [
   { id: "x01", name: "X01" },
@@ -356,6 +357,10 @@ export function GameSetup() {
       active.status === "leg_won" ||
       active.status === "match_won");
 
+  const resumeNeedsPin =
+    hasActive &&
+    seatsNeedingReauth(active!.id, active!.players, sessionPlayer?.id ?? null).length > 0;
+
   const canStart = isTeams
     ? draftTeams.filter((t) => t.players.length > 0).length >= 2 &&
       draftTeams.every((t) => t.players.length === 0 || t.players.length >= 1)
@@ -441,7 +446,10 @@ export function GameSetup() {
             <div className="truncate font-display text-sm text-white">
               {active!.players.map((p) => p.name).join(" · ")}
             </div>
-            <div className="text-xs text-zinc-500">{active!.mode}</div>
+            <div className="text-xs text-zinc-500">
+              {active!.mode}
+              {resumeNeedsPin ? " · PIN required to resume" : ""}
+            </div>
           </div>
           <button type="button" onClick={() => router.push("/play")} className="btn-primary min-h-11">
             Resume

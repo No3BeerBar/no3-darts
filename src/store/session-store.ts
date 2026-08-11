@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { invalidateSeat } from "@/lib/seat-auth";
 import type { PlayerAggregateStats } from "@/lib/storage";
 
 export type SessionPlayer = {
@@ -43,8 +44,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         dbConfigured?: boolean;
         dbAvailable?: boolean;
       };
+      const prevId = get().player?.id ?? null;
+      const nextPlayer = me.player ?? null;
+      // Session cookie gone / different account — drop that seat's resume trust
+      if (prevId && prevId !== nextPlayer?.id) {
+        invalidateSeat(prevId);
+      }
       set({
-        player: me.player ?? null,
+        player: nextPlayer,
         dbConfigured: Boolean(me.dbConfigured ?? list.dbConfigured),
         dbAvailable: Boolean(list.dbAvailable),
         hydrated: true,
@@ -58,11 +65,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   setPlayer: (player) => set({ player }),
 
   logout: async () => {
+    const id = get().player?.id;
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     } catch {
       /* ignore */
     }
+    if (id) invalidateSeat(id);
     set({ player: null });
   },
 }));
