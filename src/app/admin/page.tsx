@@ -142,8 +142,8 @@ export default function AdminPage() {
           <div className="min-w-0">
             <span className="font-semibold">Kiosk mode</span>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Hide site-wide nav everywhere (setup/play/TV already hide it). Staff:
-              open /admin directly or long-press logo on /play.
+              Hide site-wide nav everywhere (setup/play/TV already hide it; Stats uses
+              Back + idle return). Staff: /admin or long-press logo on /play.
             </p>
           </div>
           <input

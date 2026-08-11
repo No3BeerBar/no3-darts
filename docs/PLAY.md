@@ -2,7 +2,22 @@
 
 The tablet scoring UI is **`/play`**. Match setup is **`/`**.
 
-Site-wide AppShell nav (Play · TV · Players · …) is **hidden** on `/`, `/play`, and `/tv`. Optional **Admin → Kiosk mode** hides that nav on every route. Staff still reach **`/admin`** via direct URL, or unlock tools on `/play` (below).
+## Patron chrome (kiosk)
+
+On setup and scoring:
+
+- Site-wide AppShell nav (Play · TV · Players · …) is **hidden**
+- A single **Stats** link opens the leaderboard (`/leaderboard?from=play&back=…`)
+- Staff still reach admin via long-press logo + PIN, tiny Admin control, `?admin=1`, or direct **`/admin`**
+
+On secondary screens opened from play (e.g. Stats):
+
+- Full site nav stays hidden
+- **Back to play** returns to setup (`/`) or scoring (`/play`)
+- **~50s idle** with no touch/key/scroll activity auto-returns to that play screen
+- Idle never runs on setup/scoring itself — only after navigating away
+
+Optional **Admin → Kiosk mode** hides site-wide nav on every route.
 
 ## Patron (default)
 

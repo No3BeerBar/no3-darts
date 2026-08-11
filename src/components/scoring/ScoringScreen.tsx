@@ -4,10 +4,11 @@
  * `/play` scoring UI.
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
- * recent visits, dartboard. End-of-match Next leg / Save stay available.
+ * recent visits, dartboard, Stats link. End-of-match Next leg / Save stay available.
+ * No global AppShell nav — see docs/PLAY.md.
  *
  * Staff (admin unlocked): Undo / Edit / End / Pause / Cancel / Home + Keys/Pad.
- * Unlock: `?admin=1`, long-press logo + PIN, or Admin link. See docs/PLAY.md.
+ * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
  */
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -34,6 +35,7 @@ import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
+import { statsHrefFromPlay } from "@/lib/play-kiosk";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -124,9 +126,14 @@ function ScoringScreenInner() {
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
-        <Link href="/" className="btn-primary min-h-12 px-8">
-          Set up a game
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link href="/" className="btn-primary min-h-12 px-8">
+            Set up a game
+          </Link>
+          <Link href={statsHrefFromPlay("/")} className="btn-ghost min-h-12 px-6">
+            Stats
+          </Link>
+        </div>
       </div>
     );
   }
@@ -249,51 +256,59 @@ function ScoringScreenInner() {
               {isAdmin ? " · Staff" : ""}
             </div>
           </div>
-          {isAdmin ? (
-            <div className="flex shrink-0 flex-wrap justify-end gap-1">
-              <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
-                Undo
-              </button>
-              <button type="button" onClick={editLastTurn} className="btn-ghost min-h-10 px-3 text-xs">
-                Edit
-              </button>
-              <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
-                End
-              </button>
-              {state.status === "playing" ? (
-                <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
-                  ‖
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+            <Link
+              href={statsHrefFromPlay("/play")}
+              className="btn-ghost min-h-10 px-3 font-display text-xs tracking-wider text-zinc-300"
+            >
+              Stats
+            </Link>
+            {isAdmin ? (
+              <>
+                <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
+                  Undo
                 </button>
-              ) : state.status === "paused" ? (
-                <button type="button" onClick={resume} className="btn-primary min-h-10 px-3 text-xs">
-                  ▶
+                <button type="button" onClick={editLastTurn} className="btn-ghost min-h-10 px-3 text-xs">
+                  Edit
                 </button>
-              ) : null}
+                <button type="button" onClick={endTurn} className="btn-ghost min-h-10 px-3 text-xs">
+                  End
+                </button>
+                {state.status === "playing" ? (
+                  <button type="button" onClick={pause} className="btn-ghost min-h-10 px-3 text-xs">
+                    ‖
+                  </button>
+                ) : state.status === "paused" ? (
+                  <button type="button" onClick={resume} className="btn-primary min-h-10 px-3 text-xs">
+                    ▶
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn-ghost min-h-10 px-3 text-xs text-red-300"
+                  onClick={() => {
+                    if (confirm("Cancel match?")) clearGame();
+                  }}
+                >
+                  ✕
+                </button>
+                <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
+                  Home
+                </Link>
+                <button type="button" onClick={admin.lock} className="btn-ghost min-h-10 px-3 text-xs">
+                  Lock
+                </button>
+              </>
+            ) : (
               <button
                 type="button"
-                className="btn-ghost min-h-10 px-3 text-xs text-red-300"
-                onClick={() => {
-                  if (confirm("Cancel match?")) clearGame();
-                }}
+                onClick={admin.openPin}
+                className="shrink-0 font-display text-[10px] tracking-wider text-zinc-700 hover:text-zinc-500"
               >
-                ✕
+                Admin
               </button>
-              <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
-                Home
-              </Link>
-              <button type="button" onClick={admin.lock} className="btn-ghost min-h-10 px-3 text-xs">
-                Lock
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={admin.openPin}
-              className="shrink-0 font-display text-[10px] tracking-wider text-zinc-700 hover:text-zinc-500"
-            >
-              Admin
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
