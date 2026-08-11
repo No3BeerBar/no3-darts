@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import {
+  baseballDartPoints,
+  baseballInning,
   getHandler,
   getRemaining,
   getTeamForPlayer,
@@ -13,6 +15,7 @@ import {
   threeDartAverage,
 } from "@/engine";
 import { Dartboard } from "@/components/board/Dartboard";
+import { BaseballBanner } from "@/components/scoring/BaseballBanner";
 import { CricketScoreboard } from "@/components/scoring/CricketMarks";
 import { VisitHistory } from "@/components/scoring/VisitHistory";
 import { formatAvg } from "@/lib/utils";
@@ -64,7 +67,12 @@ export function TvDisplay() {
   const statusLine = handler.getStatusLine?.(state) ?? state.mode;
   const current = state.players[state.currentPlayerIndex];
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
-  const turnTotal = state.currentTurnDarts.reduce((a, d) => a + d.value, 0);
+  const baseball = state.mode === "baseball";
+  const inn = baseball ? baseballInning(state) : 0;
+  const turnTotal = state.currentTurnDarts.reduce(
+    (a, d) => a + (baseball ? baseballDartPoints(d, inn) : d.value),
+    0
+  );
   const checkout = suggestCheckout(state);
   const teamMode = isTeamGame(state) && state.mode !== "killer";
 
@@ -138,6 +146,11 @@ export function TvDisplay() {
       <div className="relative z-10 flex min-h-[calc(100dvh-5.5rem)]">
         {/* LEFT — score column */}
         <aside className="relative z-20 flex w-[min(48vw,640px)] shrink-0 flex-col justify-between px-6 pb-8 pt-2 lg:w-[min(46vw,680px)] lg:px-10">
+          {baseball && (
+            <div className="mb-3">
+              <BaseballBanner state={state} size="lg" />
+            </div>
+          )}
           <div className="flex flex-1 flex-col justify-center gap-3 lg:gap-4">
             {state.mode === "cricket" ? (
               <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-4 backdrop-blur-sm lg:px-5 lg:py-6">
@@ -277,16 +290,22 @@ export function TvDisplay() {
             <div className="mt-3 flex items-center gap-3">
               {[0, 1, 2].map((i) => {
                 const d = state.currentTurnDarts[i];
+                const pts = d && baseball ? baseballDartPoints(d, inn) : d?.value;
                 return (
                   <div
                     key={i}
-                    className={`flex h-16 w-20 items-center justify-center rounded-xl border font-logo text-xl lg:h-20 lg:w-24 lg:text-2xl ${
+                    className={`flex h-16 w-20 flex-col items-center justify-center rounded-xl border font-logo text-xl lg:h-20 lg:w-24 lg:text-2xl ${
                       d
                         ? "border-[var(--brand-red)]/60 bg-[rgb(225_6_0/0.12)] text-[var(--brand-red-bright)] shadow-[0_0_20px_rgb(225_6_0/0.15)]"
                         : "border-dashed border-white/10 text-zinc-700"
                     }`}
                   >
-                    {d ? segmentLabel(d.kind, d.number) : "—"}
+                    <span>{d ? segmentLabel(d.kind, d.number) : "—"}</span>
+                    {d && baseball && (
+                      <span className="font-display text-sm tabular-nums text-zinc-400">
+                        {pts && pts > 0 ? `+${pts}` : "0"}
+                      </span>
+                    )}
                   </div>
                 );
               })}

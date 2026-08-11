@@ -9,21 +9,28 @@ export function TurnDarts({
   interactive = false,
   onSlotClick,
   compact = false,
+  /** Override per-dart points (e.g. Baseball: wrong number = 0) */
+  pointsForDart,
+  showDartPoints = false,
 }: {
   darts: DartThrow[];
   className?: string;
   interactive?: boolean;
   onSlotClick?: (index: number) => void;
   compact?: boolean;
+  pointsForDart?: (dart: DartThrow) => number;
+  showDartPoints?: boolean;
 }) {
   const slots = [0, 1, 2];
-  const total = darts.reduce((a, d) => a + d.value, 0);
+  const dartPts = (d: DartThrow) => (pointsForDart ? pointsForDart(d) : d.value);
+  const total = darts.reduce((a, d) => a + dartPts(d), 0);
 
   return (
     <div className={cn("flex items-center gap-1.5", className)}>
       {slots.map((i) => {
         const d = darts[i];
         const clickable = interactive && (Boolean(d) || i === darts.length);
+        const pts = d ? dartPts(d) : null;
         return (
           <button
             key={i}
@@ -40,6 +47,16 @@ export function TurnDarts({
             )}
           >
             <span>{d ? segmentLabel(d.kind, d.number) : "·"}</span>
+            {showDartPoints && d && (
+              <span
+                className={cn(
+                  "font-display text-[10px] tabular-nums",
+                  pts && pts > 0 ? "text-zinc-300" : "text-zinc-600"
+                )}
+              >
+                {pts && pts > 0 ? `+${pts}` : "0"}
+              </span>
+            )}
           </button>
         );
       })}

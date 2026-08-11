@@ -25,6 +25,7 @@ import { aroundTheClockHandler, finalizeAroundTurn } from "./modes/around-the-cl
 import { bermudaHandler, finalizeBermudaTurn } from "./modes/bermuda";
 import { randomCheckoutHandler, finalizeRandomCheckoutTurn } from "./modes/random-checkout";
 import { killerHandler, finalizeKillerTurn } from "./modes/killer";
+import { baseballHandler, finalizeBaseballTurn } from "./modes/baseball";
 import {
   advanceThrower,
   buildThrowOrder,
@@ -42,6 +43,7 @@ const HANDLERS: Record<GameModeId, GameModeHandler> = {
   bermuda: bermudaHandler,
   random_checkout: randomCheckoutHandler,
   killer: killerHandler,
+  baseball: baseballHandler,
 };
 
 const FINALIZERS: Record<GameModeId, (s: GameState) => ApplyDartResult> = {
@@ -53,6 +55,7 @@ const FINALIZERS: Record<GameModeId, (s: GameState) => ApplyDartResult> = {
   bermuda: finalizeBermudaTurn,
   random_checkout: finalizeRandomCheckoutTurn,
   killer: finalizeKillerTurn,
+  baseball: finalizeBaseballTurn,
 };
 
 export function getHandler(mode: GameModeId): GameModeHandler {

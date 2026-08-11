@@ -18,6 +18,7 @@ A local bridge polls Autodarts and POSTs throws into No3.
 | **X01** | 301 / 501 / 701 / 901 · double-in / double-out |
 | **Cricket** | Standard & cut-throat |
 | **Shanghai** | Rounds 1–20 · Shanghai = instant win |
+| **Baseball** | 9 innings · inning N hit N · S/D/T = N×1/2/3 · highest total wins |
 | **Count-Up** | Highest score after N turns |
 | **Around the Clock** | 1→20 (+ optional bull) |
 | **Bermuda** | Classic island target sequence |

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  baseballDartPoints,
+  baseballInning,
   getHandler,
   getRemaining,
   getTeamForPlayer,
@@ -18,6 +20,7 @@ import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { Dartboard } from "@/components/board/Dartboard";
+import { BaseballBanner } from "./BaseballBanner";
 import { CameraHealthToast } from "./CameraHealthToast";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
@@ -215,6 +218,8 @@ export function ScoringScreen() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-2.5 px-2 py-2">
         <PlayerPanel state={state} compact />
 
+        {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
+
         {/* Current visit */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800/80 bg-[#121212]/70 px-3 py-2">
           <div className="min-w-0">
@@ -222,6 +227,12 @@ export function ScoringScreen() {
               darts={state.currentTurnDarts}
               interactive={state.status === "playing"}
               onSlotClick={(i) => setCorrectSlot(i)}
+              showDartPoints={state.mode === "baseball"}
+              pointsForDart={
+                state.mode === "baseball"
+                  ? (d) => baseballDartPoints(d, baseballInning(state))
+                  : undefined
+              }
             />
             {state.status === "playing" && (
               <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
