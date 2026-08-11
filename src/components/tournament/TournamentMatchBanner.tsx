@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GameModeId, ModeConfig, PlayerRef } from "@/engine";
+import { canShowTournamentLaneStart } from "@/lib/clear-active-match";
 import type { TournamentFormat, TournamentMatch, TournamentPlayer } from "@/lib/tournament";
 import { defaultModeConfig, resolveModeForLeg } from "@/lib/tournament";
+import { isPlayAdminUnlocked } from "@/hooks/usePlayAdmin";
 import { useGameStore } from "@/store/game-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { cn } from "@/lib/utils";
@@ -31,7 +33,18 @@ const MODE_LABELS: Record<GameModeId, string> = {
   forty_one: "41",
 };
 
-export function TournamentMatchBanner() {
+/**
+ * Lane “Tournament match ready” card.
+ * Staff-only on patron `/` and `/play` — cold kiosk must not offer
+ * Start tournament match (see docs/TOURNAMENT.md). Unlock via long-press
+ * logo + PIN, Admin link, or `?admin=1`.
+ */
+export function TournamentMatchBanner({
+  staffUnlocked,
+}: {
+  /** When omitted, reads play-admin sessionStorage (+ polls for unlock). */
+  staffUnlocked?: boolean;
+} = {}) {
   const router = useRouter();
   const startGame = useGameStore((s) => s.startGame);
   const active = useGameStore((s) => s.state);
@@ -40,8 +53,12 @@ export function TournamentMatchBanner() {
   const [pickMode, setPickMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [localStaff, setLocalStaff] = useState(false);
 
   const room = settings.roomName || "Board 1";
+  const unlocked =
+    staffUnlocked !== undefined ? staffUnlocked : localStaff;
+  const showLaneStart = canShowTournamentLaneStart(unlocked);
 
   const refresh = useCallback(() => {
     const q = encodeURIComponent(room);
@@ -57,14 +74,35 @@ export function TournamentMatchBanner() {
     settings.hydrate();
   }, [settings]);
 
+  // Pick up staff unlock from ScoringScreen / Admin without remounting
   useEffect(() => {
-    if (active) return;
+    if (staffUnlocked !== undefined) return;
+    const read = () => {
+      let ok = isPlayAdminUnlocked();
+      if (!ok && typeof window !== "undefined") {
+        try {
+          ok = new URLSearchParams(window.location.search).get("admin") === "1";
+        } catch {
+          /* ignore */
+        }
+      }
+      setLocalStaff(ok);
+    };
+    read();
+    const t = setInterval(read, 1000);
+    return () => clearInterval(t);
+  }, [staffUnlocked]);
+
+  useEffect(() => {
+    if (active || !showLaneStart) return;
     refresh();
     const t = setInterval(refresh, 4000);
     return () => clearInterval(t);
-  }, [active, refresh]);
+  }, [active, refresh, showLaneStart]);
 
-  if (active || !assigned?.playerA || !assigned?.playerB) return null;
+  if (!showLaneStart || active || !assigned?.playerA || !assigned?.playerB) {
+    return null;
+  }
 
   const startWithConfig = async (modeConfig: ModeConfig) => {
     setStarting(true);

@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import type { PlayerRef } from "@/engine/types";
 import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
 import { markSeatVerified, seatsNeedingReauth } from "@/lib/seat-auth";
@@ -23,12 +24,12 @@ interface ResumeAuthGateProps {
 
 export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAuthGateProps) {
   const router = useRouter();
-  const clearGame = useGameStore((s) => s.clearGame);
   const sessionPlayer = useSessionStore((s) => s.player);
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const [authOpen, setAuthOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [abortConfirmOpen, setAbortConfirmOpen] = useState(false);
 
   const needing = useMemo(() => {
     void tick;
@@ -48,13 +49,27 @@ export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAut
   const next = needing[0];
 
   const abort = () => {
-    if (!confirm("Abort this match? Scores will not be saved.")) return;
-    clearGame();
+    setAbortConfirmOpen(true);
+  };
+
+  const confirmAbort = () => {
+    setAbortConfirmOpen(false);
+    useGameStore.getState().setDisplayOnly(false);
+    useGameStore.getState().clearGame();
     router.replace(PLAY_IDLE_HREF);
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/85 p-4 sm:items-center">
+      <ConfirmDialog
+        open={abortConfirmOpen}
+        title="Abort this match?"
+        message="Scores will not be saved."
+        confirmLabel="Abort match"
+        cancelLabel="Keep match"
+        onConfirm={confirmAbort}
+        onCancel={() => setAbortConfirmOpen(false)}
+      />
       <div
         role="dialog"
         aria-modal="true"

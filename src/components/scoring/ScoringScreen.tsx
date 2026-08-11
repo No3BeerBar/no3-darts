@@ -33,11 +33,13 @@ import {
 } from "@/engine";
 import { AuthModal, type AuthMode } from "@/components/auth/AuthModal";
 import { SavedPlayersPicker } from "@/components/auth/SavedPlayersPicker";
+import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import { HowToPlayModal } from "@/components/play/HowToPlayModal";
 import {
   LegModePicker,
   TournamentMatchBanner,
 } from "@/components/tournament/TournamentMatchBanner";
+import { abandonMatchAction } from "@/lib/clear-active-match";
 import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "@/lib/match-autosave";
 import { canScoreMatch } from "@/lib/seat-auth";
 import { resolveModeForLeg } from "@/lib/tournament";
@@ -51,7 +53,7 @@ import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
-import { matchScoringStarted, statsHrefFromPlay } from "@/lib/play-kiosk";
+import { statsHrefFromPlay } from "@/lib/play-kiosk";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -81,7 +83,6 @@ function ScoringScreenInner() {
     pause,
     resume,
     nextLeg,
-    clearGame,
     getCheckout,
     setDisplayOnly,
   } = useGameStore();
@@ -105,6 +106,7 @@ function ScoringScreenInner() {
   const [idleAuthName, setIdleAuthName] = useState("");
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const [pickLegMode, setPickLegMode] = useState(false);
+  const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const logoPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boardStageRef = useRef<HTMLDivElement>(null);
   const tournamentReportRef = useRef<string | null>(null);
@@ -257,7 +259,7 @@ function ScoringScreenInner() {
           </p>
         )}
         <div className="w-full max-w-md text-left">
-          <TournamentMatchBanner />
+          <TournamentMatchBanner staffUnlocked={admin.isAdmin} />
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href="/" className="btn-primary min-h-12 px-8">
@@ -335,14 +337,21 @@ function ScoringScreenInner() {
   const playing = state.status === "playing";
 
   const endGame = () => {
-    if (!state) return;
-    if (
-      matchScoringStarted(state) &&
-      !confirm("End this game? Scores will not be saved.")
-    ) {
+    // Read live store — avoid stale closure; never use window.confirm (iPad kiosk)
+    const live = useGameStore.getState().state;
+    if (!live) return;
+    if (abandonMatchAction(live) === "confirm") {
+      setEndConfirmOpen(true);
       return;
     }
-    clearGame();
+    useGameStore.getState().setDisplayOnly(false);
+    useGameStore.getState().clearGame();
+  };
+
+  const confirmEndGame = () => {
+    setEndConfirmOpen(false);
+    useGameStore.getState().setDisplayOnly(false);
+    useGameStore.getState().clearGame();
   };
 
   const submitPad = () => {
@@ -445,6 +454,16 @@ function ScoringScreenInner() {
         open={howToPlayOpen}
         mode={state.mode}
         onClose={() => setHowToPlayOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={endConfirmOpen}
+        title="End this game?"
+        message="Scores will not be saved. The tablet returns to idle play."
+        confirmLabel="End game"
+        cancelLabel="Keep playing"
+        onConfirm={confirmEndGame}
+        onCancel={() => setEndConfirmOpen(false)}
       />
 
       {/* Top bar — thrower + score; staff tools only when unlocked */}

@@ -15,7 +15,8 @@ On setup and scoring:
 | Screen | Control | Result |
 |--------|---------|--------|
 | Setup `/` | **Cancel** (header + next to Start) | Returns to idle `/play` without starting a match |
-| Active `/play` | **End game** (header + bottom) | Tears down the match → idle `/play`. Confirms if any scoring has started (discard — not a save prompt) |
+| Setup `/` resume card | **Cancel** | Abandons the stranded match — clears `no3_active_game` + seat-auth (in-app confirm if scoring started) |
+| Active `/play` | **End game** (header + bottom) | Tears down the match → idle `/play`. In-app confirm if any scoring has started (discard — not a save prompt). Does **not** use the browser `confirm()` dialog (unreliable on iPad kiosk). |
 
 On secondary screens opened from play (e.g. Stats):
 
@@ -25,6 +26,8 @@ On secondary screens opened from play (e.g. Stats):
 - Idle never runs on setup/scoring itself — only after navigating away
 
 Optional **Admin → Kiosk mode** hides site-wide nav on every route.
+
+**Tournament match ready** does **not** appear on cold patron `/play` or `/`. Staff must unlock the tablet first (same PIN as Undo/Edit). See [TOURNAMENT.md](./TOURNAMENT.md).
 
 ## X01 outshots
 
