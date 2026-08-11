@@ -30,7 +30,7 @@ const MODES: Array<{ id: GameModeId; name: string }> = [
 
 const MODE_BLURBS: Partial<Record<GameModeId, string>> = {
   baseball:
-    "9 innings · inning N hit segment N · single/double/triple = N×1/2/3 · miss/wrong/bull = 0 · highest total wins",
+    "9 innings · only hits on the current inning number count (e.g. inning 4: S4/D4/T4 = 4/8/12) · anything else = 0 · highest total wins",
 };
 
 type PlayFormat = "singles" | "teams";

@@ -1,7 +1,9 @@
 /**
  * Baseball (John’s rules) – 9 innings.
- * Inning N targets segment N. Per dart: S/D/T of N → N×1 / N×2 / N×3.
- * Wrong number, miss, bull → 0. Highest total after 9 innings wins.
+ * Only hits on the **current inning number** count.
+ * Inning N: S/D/T of N → N×1 / N×2 / N×3 (e.g. inning 4 → 4 / 8 / 12).
+ * Any other segment, miss, or bull → 0 for that dart.
+ * Highest total after 9 innings wins.
  * Ties: same as Shanghai/Count-Up — first among tied high scores wins the leg.
  */
 
@@ -31,10 +33,12 @@ export function baseballTarget(state: GameState): number {
 
 /**
  * Points for one dart in a given inning (1–9).
- * Single N → N, Double N → 2N, Triple N → 3N; else 0.
+ * Only S/D/T of that inning number score; everything else is 0.
+ * Single N → N×1, Double N → N×2, Triple N → N×3.
  */
 export function baseballDartPoints(dart: DartThrow, inning: number): number {
   if (inning < 1 || inning > BASEBALL_INNINGS) return 0;
+  // Strict: must be the current inning number (not any other segment / bull / miss)
   if (
     (dart.kind === "single" || dart.kind === "double" || dart.kind === "triple") &&
     dart.number === inning
@@ -53,7 +57,7 @@ export const baseballHandler: GameModeHandler = {
   id: "baseball",
   displayName: "Baseball",
   description:
-    "9 innings · hit the inning number · S/D/T = N×1/2/3 · highest total wins",
+    "9 innings · only the inning number scores · S/D/T = N×1/2/3 · highest total wins",
 
   initLeg(state: GameState): GameState {
     const next = cloneState(state);

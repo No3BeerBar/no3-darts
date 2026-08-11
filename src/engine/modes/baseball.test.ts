@@ -34,6 +34,18 @@ describe("baseballDartPoints — scoring table innings 1–9", () => {
     expect(baseballDartPoints(createDart("double", 9), 9)).toBe(18);
     expect(baseballDartPoints(createDart("triple", 9), 9)).toBe(27);
   });
+
+  it("John confirmed: inning 4 only S4/D4/T4 score (4/8/12)", () => {
+    expect(baseballDartPoints(createDart("single", 4), 4)).toBe(4);
+    expect(baseballDartPoints(createDart("double", 4), 4)).toBe(8);
+    expect(baseballDartPoints(createDart("triple", 4), 4)).toBe(12);
+    // Other segments / bull / miss do not count in inning 4
+    expect(baseballDartPoints(createDart("triple", 20), 4)).toBe(0);
+    expect(baseballDartPoints(createDart("single", 5), 4)).toBe(0);
+    expect(baseballDartPoints(createDart("double", 3), 4)).toBe(0);
+    expect(baseballDartPoints(createDart("miss", 0), 4)).toBe(0);
+    expect(baseballDartPoints(createDart("bull", 50), 4)).toBe(0);
+  });
 });
 
 describe("baseball engine play", () => {
@@ -65,6 +77,31 @@ describe("baseball engine play", () => {
     // auto-ended turn after 3 darts → Bob to throw, Alice score stays
     expect(state.playerStates[0].score).toBe(4);
     expect(state.currentPlayerIndex).toBe(1);
+  });
+
+  it("engine: inning 4 ignores non-4 segments (John confirmed)", () => {
+    let state = start();
+    // Skip to inning 4: both players empty 3 visits
+    for (let inn = 1; inn <= 3; inn++) {
+      for (let p = 0; p < 2; p++) {
+        state = applyDart(state, createDart("miss", 0)).state;
+        if (state.currentTurnDarts.length > 0) {
+          state = applyDart(state, createDart("miss", 0)).state;
+        }
+        if (state.currentTurnDarts.length > 0) {
+          state = applyDart(state, createDart("miss", 0)).state;
+        }
+      }
+    }
+    expect(baseballInning(state)).toBe(4);
+    expect(state.playerStates[0].score).toBe(0);
+
+    state = applyDart(state, createDart("triple", 20)).state; // 0
+    expect(state.playerStates[0].score).toBe(0);
+    state = applyDart(state, createDart("double", 4)).state; // +8
+    expect(state.playerStates[0].score).toBe(8);
+    state = applyDart(state, createDart("single", 4)).state; // +4 → turn ends
+    expect(state.playerStates[0].score).toBe(12);
   });
 
   it("visit points ignore wrong segments in the Σ", () => {
