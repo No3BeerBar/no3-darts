@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ResetPlayerPinPanel } from "@/components/admin/ResetPlayerPinPanel";
 import { useSettingsStore } from "@/store/settings-store";
@@ -42,6 +43,22 @@ export default function AdminPage() {
         <h1 className="font-logo text-3xl text-white">Admin</h1>
         <p className="mt-1 text-zinc-500">Bar staff · TV + iPad · room branding</p>
       </div>
+
+      <section className="panel-card space-y-3 p-6">
+        <h2 className="section-title">Tournament (staff)</h2>
+        <p className="text-sm text-zinc-400">
+          Single-elim nights that take over Board 1–3. Create / start / assign lanes here — not
+          from the patron Play kiosk. Lane tablets still show “Tournament match ready” when you
+          assign a match.
+        </p>
+        <Link href="/tournament" className="btn-primary inline-flex min-h-11 items-center px-5">
+          Open tournament setup
+        </Link>
+        <p className="text-xs text-zinc-500">
+          Requires staff PIN unlock (same as /play admin). See{" "}
+          <code className="text-zinc-400">docs/TOURNAMENT.md</code>.
+        </p>
+      </section>
 
       <section className="panel-card space-y-3 p-6">
         <h2 className="section-title">Player accounts (Postgres)</h2>
@@ -122,6 +139,25 @@ export default function AdminPage() {
             value={settings.roomName}
             onChange={(e) => settings.update({ roomName: e.target.value })}
           />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(["Board 1", "Board 2", "Board 3"] as const).map((lane) => (
+              <button
+                key={lane}
+                type="button"
+                className="btn-ghost min-h-9 px-3 text-xs"
+                onClick={() => settings.update({ roomName: lane })}
+              >
+                {lane}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-zinc-500">
+            Tournament mode uses these three lanes. Setup is staff-only via{" "}
+            <Link href="/tournament" className="text-[var(--brand-red-bright)] underline">
+              Tournament setup
+            </Link>
+            .
+          </p>
         </label>
         <label className="flex items-center justify-between gap-4 rounded-xl border border-zinc-800 px-4 py-3">
           <span className="font-semibold">Sound effects</span>

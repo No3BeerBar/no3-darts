@@ -88,5 +88,72 @@ export const matchPlayers = pgTable(
   ]
 );
 
+/** Single-elim tournament header + flexible match format JSON. */
+export const tournaments = pgTable(
+  "tournaments",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /** TournamentFormat JSON */
+    formatJson: jsonb("format_json").notNull().default({}),
+  },
+  (t) => [index("tournaments_status_idx").on(t.status), index("tournaments_created_at_idx").on(t.createdAt)]
+);
+
+/** Event roster — registered PIN players and/or guest names (guests = event-only). */
+export const tournamentPlayers = pgTable(
+  "tournament_players",
+  {
+    id: text("id").primaryKey(),
+    tournamentId: text("tournament_id")
+      .notNull()
+      .references(() => tournaments.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    isGuest: boolean("is_guest").notNull().default(true),
+    registeredPlayerId: text("registered_player_id").references(() => players.id, {
+      onDelete: "set null",
+    }),
+    seed: integer("seed").notNull().default(0),
+  },
+  (t) => [
+    index("tournament_players_tournament_id_idx").on(t.tournamentId),
+    index("tournament_players_registered_player_id_idx").on(t.registeredPlayerId),
+  ]
+);
+
+export const tournamentMatches = pgTable(
+  "tournament_matches",
+  {
+    id: text("id").primaryKey(),
+    tournamentId: text("tournament_id")
+      .notNull()
+      .references(() => tournaments.id, { onDelete: "cascade" }),
+    roundIndex: integer("round_index").notNull(),
+    roundName: text("round_name").notNull(),
+    bracketSlot: integer("bracket_slot").notNull(),
+    playerAId: text("player_a_id"),
+    playerBId: text("player_b_id"),
+    status: text("status").notNull().default("pending"),
+    winnerId: text("winner_id"),
+    lane: text("lane"),
+    liveGameId: text("live_game_id"),
+    nextMatchId: text("next_match_id"),
+    nextMatchSlot: text("next_match_slot"),
+    legsWonA: integer("legs_won_a").notNull().default(0),
+    legsWonB: integer("legs_won_b").notNull().default(0),
+  },
+  (t) => [
+    index("tournament_matches_tournament_id_idx").on(t.tournamentId),
+    index("tournament_matches_status_idx").on(t.status),
+    index("tournament_matches_lane_idx").on(t.lane),
+  ]
+);
+
 export type DbPlayer = typeof players.$inferSelect;
 export type NewDbPlayer = typeof players.$inferInsert;
+export type DbTournament = typeof tournaments.$inferSelect;
+export type DbTournamentPlayer = typeof tournamentPlayers.$inferSelect;
+export type DbTournamentMatch = typeof tournamentMatches.$inferSelect;

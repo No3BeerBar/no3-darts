@@ -243,6 +243,21 @@ export interface GameState {
    * Used for Autodarts-style mid-turn corrections (rebuild turn from baseline).
    */
   turnBaseline?: PlayerGameState[] | null;
+  /**
+   * When set, this live match belongs to a tournament bracket slot.
+   * Optional / additive — casual play leaves this undefined.
+   */
+  tournamentMeta?: {
+    tournamentId: string;
+    matchId: string;
+    legModePolicy: "fixed" | "choose_each_leg" | "preset_sequence";
+    allowedModes: GameModeId[];
+    fixedModeConfig?: ModeConfig | null;
+    presetSequence?: ModeConfig[] | null;
+    /** tournament_players.id for bracket slots A / B */
+    bracketPlayerAId: string;
+    bracketPlayerBId: string;
+  };
 }
 
 export interface EngineEvent {

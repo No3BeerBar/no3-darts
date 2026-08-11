@@ -88,6 +88,8 @@ export interface CreateGameOptions {
    * Doubles: 2 teams of 2. Not used for killer / random checkout.
    */
   teams?: TeamRef[];
+  /** Optional tournament bracket linkage (additive — casual play omits). */
+  tournamentMeta?: GameState["tournamentMeta"];
 }
 
 export function createGame(opts: CreateGameOptions): GameState {
@@ -144,6 +146,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     roomId: opts.roomId,
     pausedAt: null,
     turnBaseline: null,
+    tournamentMeta: opts.tournamentMeta,
   };
 
   const handler = getHandler(base.mode);
@@ -467,7 +470,10 @@ export function resumeGame(state: GameState): GameState {
 }
 
 /** Start next leg after leg_won */
-export function startNextLeg(state: GameState): GameState {
+export function startNextLeg(
+  state: GameState,
+  opts?: { modeConfig?: ModeConfig }
+): GameState {
   if (state.status !== "leg_won" && state.status !== "playing") {
     // allow from leg_won primarily
   }
@@ -475,6 +481,11 @@ export function startNextLeg(state: GameState): GameState {
 
   const next = cloneState(state);
   next.legNumber += 1;
+  // Tournament choose_each_leg / preset_sequence may change mode between legs
+  if (opts?.modeConfig) {
+    next.modeConfig = opts.modeConfig;
+    next.mode = opts.modeConfig.mode;
+  }
   // Loser team starts next leg (first thrower of non-winning team in order)
   next.currentPlayerIndex = nextLegStartingIndex(next, next.legWinnerId);
   const handler = getHandler(next.mode);
