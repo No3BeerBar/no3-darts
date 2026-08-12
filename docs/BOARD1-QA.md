@@ -33,3 +33,12 @@ If either P0 fails: stop bar play, redeploy kit/bridge from main, re-run:
 npm test
 cd tools/autodarts-companion && python3 -m pytest -q
 ```
+
+## Automated (no hardware)
+
+```bash
+npm run test:board1
+```
+
+Runs Board 1 seat-jump / takeout / seat-lock / undo / ASCII kit checks plus the
+companion poll-replay + 240-case poll fuzzer.
