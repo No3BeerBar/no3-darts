@@ -88,6 +88,23 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(bridge).toMatch(/keeping banner cleared until unlock/);
   });
 
+  it("adversarial poll-replay sandbox covers John's five races", () => {
+    const adv = readSrc(
+      "tools/autodarts-companion/tests/test_visit_poll_adversarial.py"
+    );
+    expect(adv).toMatch(/takeout_blip/);
+    expect(adv).toMatch(/late_dart3/);
+    expect(adv).toMatch(/empty_flicker/);
+    expect(adv).toMatch(/takeout_finished_at_2/);
+    expect(adv).toMatch(/double_clear/);
+    const fuzz = readSrc(
+      "tools/autodarts-companion/tests/test_visit_poll_fuzzer.py"
+    );
+    expect(fuzz).toMatch(/takeout_finished_at_2/);
+    expect(fuzz).toMatch(/double_clear/);
+    expect(fuzz).toMatch(/test_adversarial_sandbox_patterns_always_pass/);
+  });
+
   it("ResumeAuthGate pulls /api/matches/active before re-enabling scoring", () => {
     const gate = readSrc("src/components/scoring/ResumeAuthGate.tsx");
     expect(gate).toMatch(/\/api\/matches\/active/);

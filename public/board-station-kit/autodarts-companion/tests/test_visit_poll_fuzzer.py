@@ -100,6 +100,12 @@ def _build_sequence(
             "patron_ready_early_pull",
             "removing_darts_late3",
             "residual_reshow_after_full",
+            # Named adversarial sandbox races (John)
+            "takeout_blip",
+            "late_dart3",
+            "empty_flicker",
+            "takeout_finished_at_2",
+            "double_clear",
         ]
     )
     visit = _prefix(3, rng)
@@ -216,6 +222,53 @@ def _build_sequence(
             )
         polls.append(state("Throw", t3))
 
+    elif pattern == "takeout_blip":
+        polls = [
+            state("Throw", t1),
+            state("Throw", t2),
+            state("Takeout", t2, event="Takeout"),
+            state("Throw", t2),
+            state("Throw", t3),
+        ]
+
+    elif pattern == "late_dart3":
+        polls = [
+            state("Throw", t1),
+            state("Throw", t2),
+            state("Takeout", t2, event="Takeout"),
+            state("Takeout", [], event="Takeout"),
+            *[state("Throw", []) for _ in range(rng.randint(3, 12))],
+            state("Throw", t3),
+        ]
+
+    elif pattern == "empty_flicker":
+        polls = [
+            state("Throw", t1),
+            state("Throw", t2),
+            *[state("Throw", []) for _ in range(rng.randint(1, 4))],
+            state("Throw", t3),
+        ]
+
+    elif pattern == "takeout_finished_at_2":
+        polls = [
+            state("Throw", t1),
+            state("Throw", t2),
+            state("Takeout", t2, event="Takeout"),
+            state("Takeout finished", [], event="Takeout finished"),
+            *[state("Throw", []) for _ in range(rng.randint(0, 6))],
+            state("Throw", t3),
+        ]
+
+    elif pattern == "double_clear":
+        polls = [
+            state("Throw", t1),
+            state("Throw", t2),
+            state("Throw", []),
+            state("Throw", t2),
+            state("Throw", []),
+            state("Throw", t3),
+        ]
+
     else:  # residual_reshow_after_full
         polls = [
             state("Throw", t1),
@@ -297,4 +350,19 @@ def test_fuzz_corpus_covers_named_patterns() -> None:
         "patron_ready_early_pull",
         "removing_darts_late3",
         "residual_reshow_after_full",
+        "takeout_blip",
+        "late_dart3",
+        "empty_flicker",
+        "takeout_finished_at_2",
+        "double_clear",
     }
+
+
+def test_adversarial_sandbox_patterns_always_pass() -> None:
+    """Deterministic run of John's five adversarial races (plus variants)."""
+    from test_visit_poll_adversarial import ADVERSARIAL
+
+    for name, builder in ADVERSARIAL.items():
+        polls = builder()
+        events = replay(polls)
+        _assert_invariants(name, polls, events, patron_ready_at=None)
