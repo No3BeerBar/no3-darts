@@ -207,9 +207,10 @@ ___NO3_BOARD1_FIXME_PS1___
 # No.3 Board 1 Fix Me for the Windows mini-PC (embedded in Board1-FixMe.bat).
 # ASCII-only so Windows PowerShell 5.1 never hits UTF-8 / smart-quote parse errors.
 # Kills leftover No3/companion/start-board processes and stuck HDMI TV kiosk
-# browsers (/tv), refreshes kit if stale (preserves board-station\config.yaml),
-# starts Autodarts if needed, clears stuck takeout/bridge state, launches
-# start-board.bat (companion + TV via config open_tv).
+# browsers (/tv), ALWAYS refreshes kit from production zip (preserves
+# board-station\config.yaml + companion .venv), starts Autodarts if needed,
+# clears stuck takeout/bridge state, launches start-board.bat (companion + TV).
+# Always-refresh avoids restarting a stale companion that omits expectedPlayerIndex.
 
 $ErrorActionPreference = "Stop"
 
@@ -622,13 +623,23 @@ if (-not (Test-Python)) {
   Write-Fail "Python 3 was not found on PATH.`n Fix: install from https://www.python.org/downloads/ (check Add to PATH), then re-run Board1-FixMe.bat" 1
 }
 
-Write-Host "[3/6] Ensuring kit at $KitRoot ..."
+Write-Host "[3/6] Refreshing kit from production (always)..."
 New-Item -ItemType Directory -Force -Path $KitRoot | Out-Null
-if (Test-KitOk) {
-  Write-Host "  Kit looks OK (start-board + companion present)." -ForegroundColor Green
-} else {
-  Write-Host "  Kit missing or obviously stale - refreshing from production zip..." -ForegroundColor Yellow
-  Refresh-Kit
+Refresh-Kit
+if (-not (Test-KitOk)) {
+  Write-Fail ("Kit still incomplete after refresh.`n  Expected start-board.bat + companion bridge.py under $KitRoot`n  Re-download: $ZipUrl") 1
+}
+$bridgePy = Join-Path $KitRoot "autodarts-companion\companion\bridge.py"
+try {
+  $bridgeText = [IO.File]::ReadAllText($bridgePy)
+  if ($bridgeText -match 'expectedPlayerIndex') {
+    Write-Host "  Companion bridge includes expectedPlayerIndex (seat lock OK)." -ForegroundColor Green
+  } else {
+    Write-Host "  WARNING: bridge.py missing expectedPlayerIndex - production zip may be stale." -ForegroundColor Yellow
+    Write-Host "  PHOTO THIS WINDOW if camera posts keep getting HTTP 409." -ForegroundColor Yellow
+  }
+} catch {
+  Write-Host ("  WARNING: could not read bridge.py for seat-lock check: " + $_.Exception.Message) -ForegroundColor Yellow
 }
 
 if (-not (Test-Path -LiteralPath $CfgPath)) {

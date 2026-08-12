@@ -499,6 +499,9 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
     expect(bat).toMatch(/Leave the bridge window open/i);
     expect(bat).toMatch(/TV kiosk/i);
     expect(bat).toMatch(/No3-Board1-\(Setup\|FixMe\)/);
+    // Always refresh kit so stale companion (no expectedPlayerIndex) is replaced
+    expect(bat).toContain("Refreshing kit from production (always)");
+    expect(bat).toContain("expectedPlayerIndex");
     for (let i = 0; i < bat.length; i++) {
       expect(bat.charCodeAt(i)).toBeLessThanOrEqual(127);
     }
@@ -507,6 +510,7 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
     expect(page).toContain("/Board1-FixMe.bat");
     expect(page).toMatch(/Something wrong\?/i);
     expect(page).toMatch(/Fix Me/i);
+    expect(page).toMatch(/always refreshes the kit/i);
   });
 });
 
