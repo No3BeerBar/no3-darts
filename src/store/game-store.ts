@@ -25,6 +25,7 @@ import { persistMatchToServer } from "@/lib/persist-match";
 import {
   canScoreMatch,
   clearSeatAuth,
+  invalidateSeatAuthOnPageRestore,
   seedSeatAuthForMatch,
 } from "@/lib/seat-auth";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
@@ -90,6 +91,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   hydrate: () => {
     if (get().hydrated) return;
     const active = getActiveGame();
+    // App kill / fresh browser load restores the match blob, but must not
+    // silently restore scoring trust — registered seats re-PIN via ResumeAuthGate.
+    // Sticky stay-signed-in between matches (cookie + tablet roster) is untouched.
+    if (active) {
+      invalidateSeatAuthOnPageRestore(active.id);
+    }
     set({ state: active, hydrated: true });
     // Re-publish to server after reload / deploy so TV can reconnect
     if (

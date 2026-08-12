@@ -97,6 +97,42 @@ describe("abandon match / clear paths", () => {
     expect(canShowTournamentLaneStart(true)).toBe(true);
   });
 
+  it("hydrate of an active match clears seat scoring trust (fresh load / app kill)", async () => {
+    installMemoryStorage();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 204 }))
+    );
+
+    const state = freshMatch();
+    setActiveGame(state);
+    seedSeatAuthForMatch(state.id, state.players, "alice");
+    expect(getSeatAuth()?.verifiedPlayerIds).toContain("alice");
+
+    const { useGameStore } = await import("@/store/game-store");
+    useGameStore.setState({
+      state: null,
+      hydrated: false,
+      displayOnly: false,
+      lastCallout: null,
+      lastHighlight: null,
+    });
+
+    useGameStore.getState().hydrate();
+
+    expect(useGameStore.getState().hydrated).toBe(true);
+    expect(useGameStore.getState().state?.id).toBe(state.id);
+    expect(getSeatAuth()).toMatchObject({
+      matchId: state.id,
+      verifiedPlayerIds: [],
+      boundSessionPlayerId: null,
+    });
+    // Second hydrate is a no-op (continuous session mid-match)
+    seedSeatAuthForMatch(state.id, state.players, "alice");
+    useGameStore.getState().hydrate();
+    expect(getSeatAuth()?.verifiedPlayerIds).toContain("alice");
+  });
+
   it("clearGame removes no3_active_game and seat-auth (End game / Cancel path)", async () => {
     installMemoryStorage();
     vi.stubGlobal(
