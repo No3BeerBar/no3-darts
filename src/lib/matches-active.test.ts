@@ -93,6 +93,29 @@ describe("GET /api/matches/active after finish / abandon", () => {
     ).toBeUndefined();
   });
 
+  it("does not extend match_won linger when heartbeats refresh updatedAt", async () => {
+    const wonAt = 2_000_000;
+    const state = {
+      ...boardMatch("Board 1", "match_won"),
+      updatedAt: wonAt,
+    };
+    upsertServerMatch(state);
+    upsertServerMatch({ ...state, updatedAt: wonAt + 30_000 });
+    expect(
+      getActiveByRoom("Board 1", wonAt + MATCH_WON_ACTIVE_MS + 1)
+    ).toBeUndefined();
+    // Late match_won POST after prune/tombstone must not resurrect
+    upsertServerMatch({ ...state, updatedAt: wonAt + 60_000 });
+    expect(getActiveByRoom("Board 1", wonAt + 60_000)).toBeUndefined();
+  });
+
+  it("does not pin a match_won orphan onto another room via sole-live fallback", async () => {
+    const won = boardMatch("Board 2", "match_won");
+    upsertServerMatch(won);
+    expect(getActiveByRoom("Board 1")).toBeUndefined();
+    expect((await activeFor("Board 1")).match).toBeNull();
+  });
+
   it("resolves Board%201 to the Board 1 match", async () => {
     const state = boardMatch("Board 1");
     upsertServerMatch(state);

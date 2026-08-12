@@ -163,9 +163,13 @@ describe("abandon match / clear paths", () => {
     expect(getSeatAuth()).toBeNull();
     expect(memory.has("no3_active_game")).toBe(false);
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/matches"))).toBe(
-      true
-    );
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    const methods = fetchMock.mock.calls.map((c) => {
+      const init = c[1] as { method?: string } | undefined;
+      return init?.method ?? "GET";
+    });
+    expect(urls.some((u) => u.includes(`/api/matches/${state.id}`))).toBe(true);
+    expect(methods).toContain("DELETE");
   });
 
   it("clearGame is a no-op in displayOnly (TV) so play tablets must unset it", async () => {

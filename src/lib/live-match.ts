@@ -20,6 +20,11 @@ export function isHeartbeatMatchStatus(status: GameStatus | undefined): boolean 
   return status === "playing" || status === "paused" || status === "leg_won";
 }
 
+/** In-progress scoring only — not the winner screen (used for sole-room fallback). */
+export function isScoringLiveStatus(status: GameStatus | undefined): boolean {
+  return isHeartbeatMatchStatus(status);
+}
+
 export function isLiveMatch(match: GameState | null | undefined): match is GameState {
   return Boolean(match && isLiveMatchStatus(match.status));
 }

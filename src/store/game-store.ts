@@ -99,7 +99,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       invalidateSeatAuthOnPageRestore(active.id);
     }
     set({ state: active, hydrated: true });
-    // Re-publish to server after reload / deploy so TV can reconnect
     // Re-publish to server after reload / deploy so TV can reconnect.
     // match_won is a one-shot (no heartbeat) so End game can still clear the room.
     if (

@@ -8,6 +8,7 @@ import {
   nextIdleDeadline,
   remainingIdleGraceMs,
   shouldApplyLiveMatch,
+  shouldRefreshLiveSighting,
   shouldStartMatchWonAttractTimer,
 } from "./tv-match-feed";
 import { isHeartbeatMatchStatus, isLiveMatchStatus } from "./live-match";
@@ -98,6 +99,20 @@ describe("TV live vs attract", () => {
         timerMatchId: won.id,
       })
     ).toBe(false);
+    expect(
+      shouldRefreshLiveSighting({
+        status: "match_won",
+        matchId: won.id,
+        lingerMatchId: won.id,
+      })
+    ).toBe(false);
+    expect(
+      shouldRefreshLiveSighting({
+        status: "playing",
+        matchId: won.id,
+        lingerMatchId: null,
+      })
+    ).toBe(true);
     expect(shouldApplyLiveMatch(won, null)).toBe(true);
     expect(shouldApplyLiveMatch(won, won.id)).toBe(false);
     expect(shouldApplyLiveMatch(match("playing"), won.id)).toBe(true);

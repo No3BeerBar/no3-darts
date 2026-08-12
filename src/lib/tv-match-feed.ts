@@ -67,6 +67,21 @@ export function shouldStartMatchWonAttractTimer(opts: {
   return opts.matchStatus === "match_won" && opts.timerMatchId !== opts.matchId;
 }
 
+/**
+ * Repeated identical `match_won` polls must not extend idle grace or restart
+ * the attract timer (that is what stuck HDMI on the winner screen forever).
+ */
+export function shouldRefreshLiveSighting(opts: {
+  status: GameState["status"];
+  matchId: string;
+  lingerMatchId: string | null;
+}): boolean {
+  if (opts.status === "match_won" && opts.lingerMatchId === opts.matchId) {
+    return false;
+  }
+  return true;
+}
+
 /** Prefer the sooner idle deadline; never postpone an already-scheduled one. */
 export function nextIdleDeadline(
   existingDeadline: number | null,

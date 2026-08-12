@@ -19,7 +19,7 @@ import {
   isStaleCameraHealth,
   type CameraHealth,
 } from "@/lib/camera-health";
-import { isLiveMatchStatus } from "@/lib/live-match";
+import { isLiveMatchStatus, isScoringLiveStatus } from "@/lib/live-match";
 
 export type { CameraHealth } from "@/lib/camera-health";
 export {
@@ -36,6 +36,8 @@ const byRoom = new Map<string, string>(); // roomId -> matchId
 const listeners = new Set<Listener>();
 /** Match ids dropped by End game / finish — ignore late tablet heartbeats. */
 const removedMatchIds = new Map<string, number>();
+/** First time we saw `match_won` for an id — linger clock must not reset on heartbeats. */
+const matchWonAt = new Map<string, number>();
 
 /** Ignore resurrecting a cleared match for this long (in-flight POST). */
 export const CLEARED_MATCH_TOMBSTONE_MS = 120_000;
@@ -70,11 +72,11 @@ function pruneInactiveMatches(now = Date.now()): void {
       removeServerMatch(m.id);
       continue;
     }
-    if (
-      m.status === "match_won" &&
-      now - (m.updatedAt ?? 0) >= MATCH_WON_ACTIVE_MS
-    ) {
-      removeServerMatch(m.id);
+    if (m.status === "match_won") {
+      const wonAt = matchWonAt.get(m.id) ?? m.updatedAt ?? 0;
+      if (now - wonAt >= MATCH_WON_ACTIVE_MS) {
+        removeServerMatch(m.id);
+      }
     }
   }
 }
@@ -128,6 +130,14 @@ export function upsertServerMatch(state: GameState): void {
   }
   const prev = existing;
   matches.set(state.id, state);
+  if (state.status === "match_won") {
+    // First won sighting only — later heartbeats must not extend the linger.
+    if (!matchWonAt.has(state.id)) {
+      matchWonAt.set(state.id, state.updatedAt ?? Date.now());
+    }
+  } else {
+    matchWonAt.delete(state.id);
+  }
   if (state.roomId) indexRoom(state.roomId, state.id);
   realignCameraGateFromMatch(prev, state);
   emit({ type: "match_update", data: state });
@@ -152,11 +162,9 @@ export function getActiveByRoom(
 
   const pickLive = (m: GameState | undefined): GameState | undefined => {
     if (!m || !isLiveMatchStatus(m.status)) return undefined;
-    if (
-      m.status === "match_won" &&
-      now - (m.updatedAt ?? 0) >= MATCH_WON_ACTIVE_MS
-    ) {
-      return undefined;
+    if (m.status === "match_won") {
+      const wonAt = matchWonAt.get(m.id) ?? m.updatedAt ?? 0;
+      if (now - wonAt >= MATCH_WON_ACTIVE_MS) return undefined;
     }
     return m;
   };
@@ -177,8 +185,9 @@ export function getActiveByRoom(
       if (hit) return hit;
     }
   }
-  // If only one live match exists, return it (helps after room rename mismatch)
-  const live = listServerMatches(now).filter((m) => pickLive(m));
+  // Sole in-progress match (not match_won) — helps after room rename, without
+  // pinning an orphaned winner screen onto the wrong TV.
+  const live = listServerMatches(now).filter((m) => isScoringLiveStatus(m.status));
   if (live.length === 1) return live[0];
   return undefined;
 }
@@ -192,6 +201,7 @@ export function removeServerMatch(id: string): void {
   const m = matches.get(id);
   const existed = matches.has(id);
   matches.delete(id);
+  matchWonAt.delete(id);
   unindexRoom(m?.roomId, id);
   if (m?.roomId) clearTakeoutHold(m.roomId);
   removedMatchIds.set(id, Date.now());
@@ -203,6 +213,7 @@ export function resetServerGameStore(): void {
   matches.clear();
   byRoom.clear();
   removedMatchIds.clear();
+  matchWonAt.clear();
 }
 
 function resolveMatch(opts: {

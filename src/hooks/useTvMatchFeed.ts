@@ -18,6 +18,7 @@ import {
   isLiveTvStatus,
   nextIdleDeadline,
   shouldApplyLiveMatch,
+  shouldRefreshLiveSighting,
   shouldStartMatchWonAttractTimer,
 } from "@/lib/tv-match-feed";
 
@@ -122,13 +123,20 @@ export function useTvMatchFeed(room: string) {
         }
       }
 
-      if (idleTimer.current) {
-        window.clearTimeout(idleTimer.current);
-        idleTimer.current = null;
+      if (
+        shouldRefreshLiveSighting({
+          status: match.status,
+          matchId: match.id,
+          lingerMatchId: matchWonForId.current,
+        })
+      ) {
+        if (idleTimer.current) {
+          window.clearTimeout(idleTimer.current);
+          idleTimer.current = null;
+        }
+        idleDeadline.current = null;
+        lastSeenLiveAt.current = Date.now();
       }
-      idleDeadline.current = null;
-
-      lastSeenLiveAt.current = Date.now();
       setIdle(false);
 
       setState((prev) => {
