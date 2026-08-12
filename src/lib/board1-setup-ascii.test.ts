@@ -145,25 +145,32 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
       join(ROOT, "tools/board-station/Start-Board.ps1"),
       "utf8"
     );
-    expect(src).toContain("function Test-IsDeadVenvInvokeError");
-    expect(src).toContain("CommandNotFoundException");
     expect(src).toContain("function Invoke-VenvPythonCapture");
     expect(src).toContain("function Receive-PythonPath");
     expect(src).toContain("Start-Process");
     expect(src).toContain("RedirectStandardOutput");
     expect(src).toContain("RedirectStandardError");
     expect(src).toContain("Out-Host");
-    expect(src).toContain("Failed to load config.yaml");
+    expect(src).toContain("Failed to load config");
+    expect(src).toContain("load-config.py / PyYAML / config.yaml");
     expect(src).toContain("Missing load-config.py");
     expect(src).toContain("python.exe Test-Path=");
     expect(src).toMatch(/Test-VenvPythonRuns \$py "print\('ok'\)"/);
     expect(src).toMatch(/Assert-VenvPythonRunnable \$venvPy/);
-    // Call-operator + broad "not recognized" remap hid the real error
+    expect(src).toMatch(/Test-Path -LiteralPath \$LoadConfigPy/);
+    // Dead-venv remap is a live probe, never English exception text
+    expect(src).toMatch(
+      /if \(-not \(Test-VenvPythonRuns \$venvPy "import sys"\)\)/
+    );
+    expect(src).toMatch(
+      /if \(-not \(Test-VenvPythonRuns \$Py "import sys"\)\)/
+    );
+    expect(src).not.toContain("function Test-IsDeadVenvInvokeError");
     expect(src).not.toMatch(
       /\$cfgJson = & \$venvPy \$LoadConfigPy \$ConfigPath \| Out-String/
     );
     expect(src).not.toMatch(
-      /if \(\$_\.Exception\.Message -match "not recognized"\) \{\s*\r?\n\s*throw \(Get-DeadVenvHint \$venvPy\)/
+      /\$_\.Exception\.Message -match ["']not recognized/
     );
   });
 
