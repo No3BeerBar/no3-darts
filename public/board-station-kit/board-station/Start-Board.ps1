@@ -87,40 +87,6 @@ function Get-DeadVenvHint([string]$Py) {
   return ("Companion venv python.exe is not recognized or will not run:`n  $Py`nDelete C:\No3Darts\Board1\autodarts-companion\.venv and re-run Board1-FixMe.bat")
 }
 
-# True dead venv only: PowerShell could not find/run $Py itself.
-# Do NOT treat pip logs / script errors / "not recognized" in some other
-# message as a dead venv (that hid the real load-config failure at the bar).
-function Test-IsDeadVenvInvokeError {
-  param($ErrorRecord, [string]$Py)
-  if (-not $ErrorRecord) { return $false }
-  $ex = $ErrorRecord.Exception
-  if (-not $ex) { return $false }
-  if ($ex -is [System.Management.Automation.CommandNotFoundException]) {
-    $name = [string]$ex.CommandName
-    if (-not $name) { return $false }
-    if ($Py -and ($name -eq $Py)) { return $true }
-    $leaf = Split-Path -Leaf $Py
-    if ($leaf -and ($name -eq $leaf) -and -not (Test-Path -LiteralPath $Py)) { return $true }
-    return $false
-  }
-  if ($ex -is [System.ComponentModel.Win32Exception]) {
-    $code = $ex.NativeErrorCode
-    if (($code -eq 2 -or $code -eq 3) -and $Py -and -not (Test-Path -LiteralPath $Py)) { return $true }
-    return $false
-  }
-  $msg = [string]$ex.Message
-  if (-not $msg) { return $false }
-  $isCmdNotFound = ($msg -match 'is not recognized as the name of a cmdlet') -or
-    ($msg -match 'is not recognized as an internal or external command')
-  if ($isCmdNotFound -and $Py -and ($msg.IndexOf($Py, [StringComparison]::OrdinalIgnoreCase) -ge 0)) {
-    return $true
-  }
-  if ($msg -match 'cannot find the file specified' -and $Py -and -not (Test-Path -LiteralPath $Py)) {
-    return $true
-  }
-  return $false
-}
-
 # Ensure-CompanionVenv must return a single python.exe path. Native pip/venv
 # stdout is extra pipeline output in PS 5.1 and would otherwise become $venvPy.
 function Receive-PythonPath([object]$Value) {
@@ -165,7 +131,7 @@ function Get-LoadConfigFailMessage {
   $err = $StdErr
   if ($err -and $err.Length -gt 800) { $err = $err.Substring(0, 800) + "..." }
   $parts = @(
-    "Failed to load config.yaml (not a dead venv - do not delete .venv if pip just succeeded)."
+    "Failed to load config (load-config.py / PyYAML / config.yaml) - not a dead venv. Do not delete .venv if pip just succeeded."
     "  python exit=$ExitCode"
     "  config: $ConfigPath"
     (Get-PythonFileDiag $Py $ScriptPath)
@@ -209,7 +175,8 @@ function Invoke-VenvPythonCapture {
     if ($null -ne $p) { $code = $p.ExitCode }
     return @{ ExitCode = $code; StdOut = $stdout; StdErr = $stderr }
   } catch {
-    if (Test-IsDeadVenvInvokeError $_ $Py) {
+    # Live probe only - never remap from English exception text.
+    if (-not (Test-VenvPythonRuns $Py "import sys")) {
       throw (Get-DeadVenvHint $Py)
     }
     throw
@@ -252,7 +219,8 @@ function Install-CompanionDeps([string]$Py, [string]$Dir) {
       throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)"
     }
   } catch {
-    if (Test-IsDeadVenvInvokeError $_ $Py) {
+    # Live probe only - pip stderr with "not recognized" is not a dead venv.
+    if (-not (Test-VenvPythonRuns $Py "import sys")) {
       throw (Get-DeadVenvHint $Py)
     }
     throw
@@ -479,7 +447,8 @@ try {
   $loadExit = [int]$loaded.ExitCode
   $loadErr = [string]$loaded.StdErr
 } catch {
-  if (Test-IsDeadVenvInvokeError $_ $venvPy) {
+  # Live probe only - never remap from English "not recognized" text.
+  if (-not (Test-VenvPythonRuns $venvPy "import sys")) {
     throw (Get-DeadVenvHint $venvPy)
   }
   throw (Get-LoadConfigFailMessage -Py $venvPy -ScriptPath $LoadConfigPy -ConfigPath $ConfigPath -ExitCode -1 -StdErr "" -ExceptionMessage $_.Exception.Message)
