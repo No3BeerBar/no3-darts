@@ -190,7 +190,7 @@ def dart_to_no3(dart: Any) -> No3Dart:
 
 
 def is_takeout_status(status: str) -> bool:
-    """True when Board Manager signals visit / takeout boundary."""
+    """True when Board Manager signals visit / takeout / removing-darts."""
     s = (status or "").strip().lower()
     if not s:
         return False
@@ -201,10 +201,21 @@ def is_takeout_status(status: str) -> bool:
         "takeout finished",
         "takeoutstarted",
         "takeoutfinished",
+        "removing",
+        "removing darts",
+        "remove darts",
+        "pull darts",
     }:
         return True
-    # Be resilient to "Board: Takeout" / "status=Takeout" style strings
-    return "takeout" in s.replace("_", " ")
+    norm = s.replace("_", " ")
+    # Be resilient to "Board: Takeout" / "Removing darts…" style strings
+    if "takeout" in norm:
+        return True
+    if "removing dart" in norm or "remove dart" in norm:
+        return True
+    if "pull dart" in norm:
+        return True
+    return False
 
 
 def is_takeout_finished_status(status: str) -> bool:

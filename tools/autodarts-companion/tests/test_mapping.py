@@ -107,6 +107,10 @@ def test_fixture_three_darts() -> None:
         ("Takeout started", True),
         ("Takeout finished", True),
         ("takeout", True),
+        ("Removing darts", True),
+        ("removing darts…", True),
+        ("Remove darts", True),
+        ("Pull darts", True),
         ("", False),
     ],
 )

@@ -53,7 +53,11 @@ def _state(status: str, throws: list[dict], event: str | None = None) -> dict:
     return body
 
 
-def _replay(polls: list[dict]) -> list[dict[str, Any]]:
+def _replay(
+    polls: list[dict],
+    *,
+    patron_ready_at: Optional[int] = None,
+) -> list[dict[str, Any]]:
     """
     Minimal mirror of bridge poll ordering (no network).
 
@@ -61,12 +65,14 @@ def _replay(polls: list[dict]) -> list[dict[str, Any]]:
     then seat 1 - matching No3 advancing on end-turn / turnEnded.
 
     Also mirrors visit seat lock + AD visit continuation refusal.
+    patron_ready_at: poll index where patron taps Reset takeout.
     """
     prev_throws: list[dict] = []
     in_takeout = False
     visit_closed = False
     closed_by_scoring = False
     saw_takeout_after_close = False
+    patron_force_ready = False
     empty_polls_in_takeout = 0
     locked_seat: Optional[int] = None
     closed_visit_throws: list[dict] = []
@@ -113,7 +119,7 @@ def _replay(polls: list[dict]) -> list[dict[str, Any]]:
         seat = 1
         mark_closed()
 
-    for state in polls:
+    for poll_i, state in enumerate(polls):
         throws = extract_throws(state)
         status = str(state.get("status") or "")
         takeout_now = is_takeout_state(state)
@@ -122,6 +128,13 @@ def _replay(polls: list[dict]) -> list[dict[str, Any]]:
             empty_polls_in_takeout += 1
         else:
             empty_polls_in_takeout = 0
+
+        if patron_ready_at is not None and poll_i == patron_ready_at:
+            events.append({"type": "patron-ready", "seat": seat})
+            end_turn("takeout-ready ack")
+            mark_closed(throws_snapshot=list(prev_throws or throws))
+            saw_takeout_after_close = True
+            patron_force_ready = True
 
         diff = diff_visit(prev_throws, throws)
         kind = diff["kind"]
@@ -249,14 +262,19 @@ def _replay(polls: list[dict]) -> list[dict[str, Any]]:
             throws_empty=not throws,
             saw_takeout_after_close=saw_takeout_after_close,
             closed_by_scoring=closed_by_scoring,
+            patron_ready=patron_force_ready,
         ):
+            was_patron = patron_force_ready
             visit_closed = False
             closed_by_scoring = False
             saw_takeout_after_close = False
+            patron_force_ready = False
             in_takeout = False
             empty_polls_in_takeout = 0
             locked_seat = None
             prev_throws = []
+            if was_patron:
+                closed_visit_throws = []
             events.append({"type": "unlock", "seat": seat})
             if not retain_prev:
                 continue
@@ -408,9 +426,9 @@ def test_still_broken_takeout_finished_empty_then_late_dart3() -> None:
 
 def test_still_broken_multi_empty_after_takeout_blip_late_dart3() -> None:
     """
-    STILL-BROKEN: Takeout blip + several empty polls (old min=2) before dart 3.
+    Takeout blip + many empty polls before dart 3 must NOT end-turn.
 
-    At 300ms poll, two empties is only ~600ms - AD often surfaces dart 3 later.
+    Auto early-pull used to fire after ~4 empties (~1.2s) and seat-jump.
     """
     t2 = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     t3 = [
@@ -418,9 +436,7 @@ def test_still_broken_multi_empty_after_takeout_blip_late_dart3() -> None:
         _seg("5", 5, 1),
         _seg("D16", 16, 2),
     ]
-    empties = [
-        _state("Throw", []) for _ in range(INCOMPLETE_VISIT_MIN_EMPTY_POLLS - 1)
-    ]
+    empties = [_state("Throw", []) for _ in range(20)]
     events = _replay(
         [
             _state("Throw", t2),
@@ -432,38 +448,80 @@ def test_still_broken_multi_empty_after_takeout_blip_late_dart3() -> None:
     darts = [e for e in events if e["type"] == "dart"]
     assert [d["label"] for d in darts] == ["T20", "5", "D16"]
     assert all(d["seat"] == 0 for d in darts), events
+    assert not any(e["type"] == "end-turn" for e in events)
 
 
-def test_continuation_after_forced_early_end_refuses_wrong_seat() -> None:
-    """
-    Belt-and-suspenders: if end-turn+unlock still happen with only 2 mirrored,
-    re-showing the AD visit must not post dart 3 onto seat 1.
-    """
+def test_lagging_dart3_after_long_takeout_empty_stays_on_seat0() -> None:
+    """John P0: dart 3 lags every visit — never becomes seat 1 dart 1."""
+    t1 = [_seg("T20", 20, 3)]
     t2 = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     t3 = [
         _seg("T20", 20, 3),
         _seg("5", 5, 1),
         _seg("D16", 16, 2),
     ]
-    # Force early-pull confirm with enough empty polls, then late t3
-    empties = [_state("Throw", []) for _ in range(INCOMPLETE_VISIT_MIN_EMPTY_POLLS)]
+    events = _replay(
+        [
+            _state("Throw", t1),
+            _state("Throw", t2),
+            _state("Takeout", t2, event="Takeout"),
+            _state("Takeout finished", [], event="Takeout finished"),
+            *[_state("Throw", []) for _ in range(12)],
+            _state("Throw", t3),
+        ]
+    )
+    darts = [e for e in events if e["type"] == "dart"]
+    assert [d["label"] for d in darts] == ["T20", "5", "D16"]
+    assert all(d["seat"] == 0 for d in darts), events
+    assert not any(d["seat"] == 1 for d in darts)
+
+
+def test_patron_ready_early_pull_allows_next_seat_first_dart() -> None:
+    """Ready ends incomplete visit; next seat's first dart must still score."""
+    t2 = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     events = _replay(
         [
             _state("Throw", t2),
             _state("Takeout", t2),
-            *empties,  # confirmed early pull -> end-turn
+            _state("Throw", []),  # patron ready
             _state("Throw", []),  # unlock
-            _state("Throw", t3),  # continuation - must refuse
+            _state("Throw", [_seg("T19", 19, 3)]),  # next seat dart 1
+        ],
+        patron_ready_at=2,
+    )
+    darts = [e for e in events if e["type"] == "dart"]
+    assert [d["label"] for d in darts] == ["T20", "5", "T19"]
+    assert darts[-1]["seat"] == 1
+    assert any(e["type"] == "patron-ready" for e in events)
+    assert any(e["type"] == "unlock" for e in events)
+
+
+def test_continuation_full_reshow_after_scored_close_refuses_wrong_seat() -> None:
+    """
+    After a scored 3-dart close + takeout unlock, AD re-showing the visit
+    (late residual) must not post onto the next seat.
+    """
+    t1 = [_seg("T20", 20, 3)]
+    t2 = [_seg("T20", 20, 3), _seg("5", 5, 1)]
+    t3 = [
+        _seg("T20", 20, 3),
+        _seg("5", 5, 1),
+        _seg("D16", 16, 2),
+    ]
+    events = _replay(
+        [
+            _state("Throw", t1),
+            _state("Throw", t2),
+            _state("Throw", t3),  # turnEnded / scored close on seat 0
+            _state("Takeout", t3, event="Takeout"),
+            _state("Throw", []),  # unlock after takeout handshake + empty
+            _state("Throw", t3),  # residual re-show — refuse
         ]
     )
     darts = [e for e in events if e["type"] == "dart"]
-    # Only the original 2 on seat 0; never D16 on seat 1
-    assert [d["label"] for d in darts] == ["T20", "5"]
+    assert [d["label"] for d in darts] == ["T20", "5", "D16"]
     assert all(d["seat"] == 0 for d in darts)
     assert any(e["type"] == "continuation-refuse" for e in events)
-    assert not any(
-        e["type"] == "dart" and e.get("label") == "D16" for e in events
-    )
 
 
 def test_visit_seat_lock_blocks_dart_on_advanced_seat() -> None:
