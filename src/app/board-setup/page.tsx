@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** Tiny stub — mini-PC should download Board1-Setup.bat and double-click it. */
+/** Tiny stub - mini-PC should download Board1-Setup.bat and double-click it. */
 export default function BoardSetupPage() {
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: 24 }}>
@@ -13,6 +13,11 @@ export default function BoardSetupPage() {
       <p>
         <a href="/Board1-Setup.bat?v=3">Download Board1-Setup.bat</a>
         {" - single file: save, then double-click on the mini-PC."}
+      </p>
+      <p style={{ marginTop: 16 }}>
+        Something wrong?{" "}
+        <a href="/Board1-FixMe.bat?v=1">Double-click Fix Me</a>
+        {" - kills leftovers, refreshes the kit if needed, brings Board 1 back."}
       </p>
       <p style={{ marginTop: 12, color: "#666", fontSize: 14 }}>
         The bat embeds setup (downloads the kit zip, writes Board 1 config, runs
