@@ -11,9 +11,18 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
    only if `Scripts\python.exe` runs) so a stale companion without
    `expectedPlayerIndex` cannot keep running.
    Otherwise `Board1-Setup.bat` / `start-board.bat` from the kit.
-   If you see python.exe not recognized after Fix Me, delete
+   If python.exe itself will not run after Fix Me, delete
    `C:\No3Darts\Board1\autodarts-companion\.venv` and re-run Fix Me
    (or: `cd` there, `py -3 -m venv --clear .venv`, then `start-board.bat`).
+   If **pip install printed OK** (numpy/opencv/PyYAML) but Start-Board then
+   fails at **load-config** / "dead venv": do **not** delete `.venv` in a loop.
+   Photo the window, then in `cmd` run these three probes:
+
+   ```
+   dir C:\No3Darts\Board1\autodarts-companion\.venv\Scripts\python.exe
+   C:\No3Darts\Board1\autodarts-companion\.venv\Scripts\python.exe -c "print('ok')"
+   C:\No3Darts\Board1\autodarts-companion\.venv\Scripts\python.exe C:\No3Darts\Board1\board-station\load-config.py C:\No3Darts\Board1\board-station\config.yaml
+   ```
 3. Board Manager detecting at `http://127.0.0.1:3180`.
 4. Companion bridge window stays open (`python -m companion bridge`).
 5. iPad: `/play?room=Board%201`. TV: `/tv`.

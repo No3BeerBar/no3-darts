@@ -503,7 +503,7 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
     expect(bat).toContain("Refreshing kit from production (always)");
     expect(bat).toContain("expectedPlayerIndex");
     expect(bat).toContain("Test-CompanionVenvHealthy");
-    expect(bat).toContain("python.exe not recognized");
+    expect(bat).toContain("python.exe itself will not run");
     expect(bat).toContain("autodarts-companion\\.venv");
     for (let i = 0; i < bat.length; i++) {
       expect(bat.charCodeAt(i)).toBeLessThanOrEqual(127);
