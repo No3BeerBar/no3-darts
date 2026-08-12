@@ -59,16 +59,16 @@ afterEach(() => {
 });
 
 describe("Board1 P0: takeout recognize + Ready control", () => {
-  it("TakeoutBanner exposes Ready reset (not a passive-only banner)", () => {
+  it("TakeoutBanner exposes Reset control (not a passive-only banner)", () => {
     const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
     expect(banner).toMatch(/Removing darts/);
-    expect(banner).toMatch(/"Ready"/);
+    expect(banner).toMatch(/"Reset"/);
     expect(banner).toMatch(/onReady/);
     expect(banner).toMatch(/stuck takeout/i);
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/acknowledgeTakeout/);
-    // Ready must stay reachable even during PIN gate / bot turns
+    // Reset must stay reachable even during PIN gate / bot turns
     expect(screen).toMatch(
       /useCameraHealth\(state\?\.roomId,\s*Boolean\(state\)\)/
     );
@@ -76,6 +76,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);
     expect(hook).toMatch(/Optimistic clear/);
+    expect(hook).toMatch(/isLiveTakeoutSignal/);
   });
 
   it("bridge maybe_end_turn fail-closed without expectedPlayerIndex", () => {

@@ -817,16 +817,21 @@ def run_bridge(
 
             if hcfg.enabled:
                 hp = tracker.evaluate(state, ad_ok)
+                if not ad_ok:
+                    # AD unreachable: never leave sticky takeout:true on No3.
+                    # Sandbox / offline must not loop Pull-darts or Ready toasts.
+                    in_takeout = False
+                    post_health({**hp, "takeout": False}, force=True)
+                    maybe_restart(hp)
+                    time.sleep(max(1.0, poll_ms / 1000.0))
+                    continue
                 banner_on = in_takeout or visit_closed
                 # Do not overwrite an active takeout / visit-closed banner
                 if not (banner_on and hp.get("ok") and not hp.get("restarting")):
                     if not banner_on:
                         post_health({**hp, "takeout": False})
-                if not ad_ok or hp.get("level") == "unhealthy":
+                if hp.get("level") == "unhealthy":
                     maybe_restart(hp)
-                if not ad_ok:
-                    time.sleep(max(1.0, poll_ms / 1000.0))
-                    continue
 
             assert state is not None
             throws = extract_throws(state)

@@ -3,10 +3,18 @@
 /**
  * Subscribe to Board Manager / camera health from the companion bridge.
  * SSE `camera_health` + lightweight poll of GET /api/camera/health.
+ *
+ * Takeout / Pull-darts UI only follows a *live* Autodarts takeout signal.
+ * Sandbox (no bridge), AD offline, and stale leftover health must not
+ * sticky-loop "Ready for next visit" or Removing-darts.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { CameraHealth } from "@/lib/camera-health";
+import {
+  isCameraBridgeOffline,
+  isLiveTakeoutSignal,
+  type CameraHealth,
+} from "@/lib/camera-health";
 
 export type CameraHealthNotice = {
   level: string;
@@ -15,12 +23,6 @@ export type CameraHealthNotice = {
   takeout?: boolean;
   ts: number;
 } | null;
-
-function isTakeoutHealth(h: CameraHealth): boolean {
-  return Boolean(
-    h.takeout || h.level === "takeout" || h.reason === "takeout"
-  );
-}
 
 export function useCameraHealth(roomId: string | undefined, enabled = true) {
   const [health, setHealth] = useState<CameraHealth | null>(null);
@@ -34,9 +36,12 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     let cancelled = false;
     let es: EventSource | null = null;
     let hideTimer: number | null = null;
+    /** Edge-trigger ok/recovery toasts so sticky takeout_cleared cannot spam. */
+    let lastOkToastTs: number | null = null;
 
     const showNotice = (h: CameraHealth) => {
-      if (isTakeoutHealth(h)) {
+      // Live Autodarts takeout only — never from stale/offline leftover rows.
+      if (isLiveTakeoutSignal(h)) {
         setTakeout(true);
         setNotice({
           level: "takeout",
@@ -51,6 +56,26 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
 
       setTakeout(false);
 
+      // Offline / unreachable AD: drop takeout UI; do not toast Ready loop.
+      if (isCameraBridgeOffline(h)) {
+        if (h.level === "ok" && !h.restarting) {
+          setNotice(null);
+          return;
+        }
+        setNotice({
+          level: h.level,
+          message:
+            h.restarting
+              ? "Detection restarting…"
+              : h.message || "Cameras unhealthy",
+          restarting: h.restarting,
+          ts: h.ts,
+        });
+        if (hideTimer) window.clearTimeout(hideTimer);
+        hideTimer = null;
+        return;
+      }
+
       if (h.level === "ok" && !h.restarting) {
         // Briefly show recovery, then clear (skip empty "Cameras healthy" noise
         // when clearing takeout — still show between-games reset).
@@ -64,6 +89,15 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
           setNotice(null);
           return;
         }
+        if (!show) {
+          setNotice(null);
+          return;
+        }
+        // Same health event polled every few seconds must not re-toast.
+        if (lastOkToastTs === h.ts) {
+          return;
+        }
+        lastOkToastTs = h.ts;
         setNotice({
           level: "ok",
           message: msg,
@@ -90,7 +124,11 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     };
 
     const apply = (h: CameraHealth | null) => {
-      if (!h) return;
+      if (!h) {
+        setHealth(null);
+        setTakeout(false);
+        return;
+      }
       const want = room.toLowerCase();
       const got = (h.roomId || "").trim().toLowerCase();
       if (got && want && got !== want) return;
@@ -108,6 +146,7 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
         if (!r.ok) return;
         const data = (await r.json()) as { health?: CameraHealth | null };
         if (data.health) apply(data.health);
+        else apply(null);
       } catch {
         /* offline */
       }

@@ -53,3 +53,14 @@ def test_end_turn_payload_never_omits_expected_player_index() -> None:
     }
     # Invalid seat values refuse the post entirely
     assert build_end_turn_payload("Board 1", "x") is None  # type: ignore[arg-type]
+
+
+def test_ad_offline_clears_sticky_takeout_health() -> None:
+    """Sandbox / AD unreachable must not leave Pull-darts sticky on No3."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "companion" / "bridge.py"
+    text = src.read_text(encoding="utf-8")
+    assert "AD unreachable: never leave sticky takeout" in text
+    assert 'post_health({**hp, "takeout": False}, force=True)' in text
+    assert "in_takeout = False" in text
