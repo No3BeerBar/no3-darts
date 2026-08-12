@@ -11,12 +11,18 @@ import {
   isLiveTakeoutSignal,
   type CameraHealth,
 } from "@/lib/camera-health";
+import {
+  MATCH_WON_ATTRACT_MS,
+  TV_ACTIVE_POLL_MS,
+  idleAfterEmptyActivePoll,
+  isLiveTvStatus,
+  nextIdleDeadline,
+  shouldApplyLiveMatch,
+  shouldRefreshLiveSighting,
+  shouldStartMatchWonAttractTimer,
+} from "@/lib/tv-match-feed";
 
 const CACHE_KEY = "no3_tv_match_cache";
-/** Clear live UI after this many ms with no active match on the server. */
-const IDLE_GRACE_MS = 8_000;
-/** After match_won, linger then return to attract if still won / gone. */
-const MATCH_WON_ATTRACT_MS = 20_000;
 
 function cacheKey(room: string) {
   return `${CACHE_KEY}:${room}`;
@@ -47,12 +53,7 @@ function saveCache(room: string, state: GameState | null) {
 }
 
 function isLiveStatus(status: GameState["status"] | undefined): boolean {
-  return (
-    status === "playing" ||
-    status === "paused" ||
-    status === "leg_won" ||
-    status === "match_won"
-  );
+  return isLiveTvStatus(status);
 }
 
 export function useTvMatchFeed(room: string) {
@@ -69,7 +70,10 @@ export function useTvMatchFeed(room: string) {
   roomRef.current = room;
   const healthTimer = useRef<number | null>(null);
   const idleTimer = useRef<number | null>(null);
+  const idleDeadline = useRef<number | null>(null);
   const matchWonTimer = useRef<number | null>(null);
+  const matchWonForId = useRef<string | null>(null);
+  const dismissedWonId = useRef<string | null>(null);
   const lastSeenLiveAt = useRef<number | null>(null);
 
   const goIdle = useCallback((reason: string) => {
@@ -77,10 +81,12 @@ export function useTvMatchFeed(room: string) {
       window.clearTimeout(idleTimer.current);
       idleTimer.current = null;
     }
+    idleDeadline.current = null;
     if (matchWonTimer.current) {
       window.clearTimeout(matchWonTimer.current);
       matchWonTimer.current = null;
     }
+    matchWonForId.current = null;
     setState(null);
     saveCache(roomRef.current, null);
     setIdle(true);
@@ -89,15 +95,25 @@ export function useTvMatchFeed(room: string) {
 
   const scheduleIdle = useCallback(
     (delayMs: number, reason: string) => {
+      const fireAt = Date.now() + Math.max(0, delayMs);
+      const next = nextIdleDeadline(idleDeadline.current, fireAt);
+      if (next == null) return;
+      if (idleDeadline.current != null && next >= idleDeadline.current && idleTimer.current) {
+        return;
+      }
+      idleDeadline.current = next;
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
-      idleTimer.current = window.setTimeout(() => goIdle(reason), delayMs);
+      idleTimer.current = window.setTimeout(
+        () => goIdle(reason),
+        Math.max(0, next - Date.now())
+      );
     },
     [goIdle]
   );
 
   const apply = useCallback(
     (match: GameState | null, source: string) => {
-      if (!match || !isLiveStatus(match.status)) return;
+      if (!shouldApplyLiveMatch(match, dismissedWonId.current)) return;
       const roomNow = roomRef.current;
       const matchRoom = (match.roomId || "").trim().toLowerCase();
       const want = roomNow.trim().toLowerCase();
@@ -107,12 +123,20 @@ export function useTvMatchFeed(room: string) {
         }
       }
 
-      if (idleTimer.current) {
-        window.clearTimeout(idleTimer.current);
-        idleTimer.current = null;
+      if (
+        shouldRefreshLiveSighting({
+          status: match.status,
+          matchId: match.id,
+          lingerMatchId: matchWonForId.current,
+        })
+      ) {
+        if (idleTimer.current) {
+          window.clearTimeout(idleTimer.current);
+          idleTimer.current = null;
+        }
+        idleDeadline.current = null;
+        lastSeenLiveAt.current = Date.now();
       }
-
-      lastSeenLiveAt.current = Date.now();
       setIdle(false);
 
       setState((prev) => {
@@ -123,10 +147,19 @@ export function useTvMatchFeed(room: string) {
       setLastSyncAt(Date.now());
       setStatusText(source === "cache" ? "Restored (waiting for tablet)" : "Live");
 
-      if (match.status === "match_won") {
+      if (
+        shouldStartMatchWonAttractTimer({
+          matchStatus: match.status,
+          matchId: match.id,
+          timerMatchId: matchWonForId.current,
+        })
+      ) {
+        matchWonForId.current = match.id;
         if (matchWonTimer.current) window.clearTimeout(matchWonTimer.current);
         matchWonTimer.current = window.setTimeout(() => {
-          // Still showing a finished match with no newer live state → attract
+          dismissedWonId.current = match.id;
+          matchWonForId.current = null;
+          matchWonTimer.current = null;
           setState((cur) => {
             if (cur && cur.id === match.id && cur.status === "match_won") {
               saveCache(roomRef.current, null);
@@ -137,9 +170,13 @@ export function useTvMatchFeed(room: string) {
             return cur;
           });
         }, MATCH_WON_ATTRACT_MS);
-      } else if (matchWonTimer.current) {
-        window.clearTimeout(matchWonTimer.current);
-        matchWonTimer.current = null;
+      } else if (match.status !== "match_won") {
+        dismissedWonId.current = null;
+        matchWonForId.current = null;
+        if (matchWonTimer.current) {
+          window.clearTimeout(matchWonTimer.current);
+          matchWonTimer.current = null;
+        }
       }
     },
     []
@@ -236,15 +273,21 @@ export function useTvMatchFeed(room: string) {
         }
         const data = await r.json();
         setConnected(true);
-        if (data.match && isLiveStatus((data.match as GameState).status)) {
-          apply(data.match as GameState, "poll");
+        const incoming = (data.match ?? null) as GameState | null;
+        if (shouldApplyLiveMatch(incoming, dismissedWonId.current)) {
+          apply(incoming, "poll");
         } else {
-          // No active match — grace period so brief tablet gaps don't flash attract
-          const seen = lastSeenLiveAt.current;
-          if (!seen) {
-            goIdle("Waiting for match…");
+          // No active match — remaining grace from last live sighting (do not reset)
+          const decision = idleAfterEmptyActivePoll({
+            lastSeenLiveAt: lastSeenLiveAt.current,
+            now: Date.now(),
+          });
+          if (decision.goIdle) {
+            goIdle(
+              lastSeenLiveAt.current ? "Board idle · attract" : "Waiting for match…"
+            );
           } else {
-            scheduleIdle(IDLE_GRACE_MS, "Board idle · attract");
+            scheduleIdle(decision.delayMs, "Board idle · attract");
             setStatusText((prev) =>
               prev.startsWith("Live") || prev.includes("Restored")
                 ? "Waiting for tablet sync…"
@@ -335,7 +378,7 @@ export function useTvMatchFeed(room: string) {
 
     void fetchActive();
     void fetchCameraHealth();
-    pollTimer = window.setInterval(fetchActive, 1500);
+    pollTimer = window.setInterval(fetchActive, TV_ACTIVE_POLL_MS);
     healthPollTimer = window.setInterval(fetchCameraHealth, 4000);
     connectSse();
 
