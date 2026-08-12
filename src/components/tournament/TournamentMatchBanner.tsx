@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GameModeId, ModeConfig, PlayerRef } from "@/engine";
 import { canShowTournamentLaneStart } from "@/lib/clear-active-match";
+import { playHref } from "@/lib/play-kiosk";
 import type { TournamentFormat, TournamentMatch, TournamentPlayer } from "@/lib/tournament";
 import { defaultModeConfig, resolveModeForLeg } from "@/lib/tournament";
 import { isPlayAdminUnlocked } from "@/hooks/usePlayAdmin";
@@ -169,7 +170,7 @@ export function TournamentMatchBanner({
           }
         );
       }
-      router.push("/play");
+      router.push(playHref(room));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start tournament match");
       setStarting(false);

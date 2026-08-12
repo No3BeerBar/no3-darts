@@ -54,7 +54,7 @@ import { useCameraHealth } from "@/hooks/useCameraHealth";
 import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
-import { statsHrefFromPlay } from "@/lib/play-kiosk";
+import { setupHref, statsHrefFromPlay } from "@/lib/play-kiosk";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -267,7 +267,7 @@ function ScoringScreenInner() {
           <TournamentMatchBanner staffUnlocked={admin.isAdmin} />
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link href="/" className="btn-primary min-h-12 px-8">
+          <Link href={setupHref(settings.roomName)} className="btn-primary min-h-12 px-8">
             Set up a game
           </Link>
           <button
@@ -277,7 +277,10 @@ function ScoringScreenInner() {
           >
             Saved players
           </button>
-          <Link href={statsHrefFromPlay("/play")} className="btn-ghost min-h-12 px-6">
+          <Link
+            href={statsHrefFromPlay("/play", settings.roomName)}
+            className="btn-ghost min-h-12 px-6"
+          >
             Stats
           </Link>
         </div>
@@ -529,7 +532,7 @@ function ScoringScreenInner() {
               How to play
             </button>
             <Link
-              href={statsHrefFromPlay("/play")}
+              href={statsHrefFromPlay("/play", settings.roomName)}
               className="btn-ghost min-h-10 px-3 font-display text-xs tracking-wider text-zinc-300"
             >
               Stats
@@ -571,7 +574,10 @@ function ScoringScreenInner() {
                     ▶
                   </button>
                 ) : null}
-                <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">
+                <Link
+                  href={setupHref(settings.roomName)}
+                  className="btn-ghost min-h-10 px-3 text-xs"
+                >
                   Setup
                 </Link>
                 <button type="button" onClick={admin.lock} className="btn-ghost min-h-10 px-3 text-xs">

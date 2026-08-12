@@ -19,7 +19,7 @@ import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import { HowToPlayModal } from "@/components/play/HowToPlayModal";
 import { TournamentMatchBanner } from "@/components/tournament/TournamentMatchBanner";
 import { abandonMatchAction } from "@/lib/clear-active-match";
-import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
+import { playHref } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
 import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
 import { cn } from "@/lib/utils";
@@ -372,7 +372,7 @@ export function GameSetup() {
           roomId: settings.roomName,
         });
       }
-      router.push("/play");
+      router.push(playHref(settings.roomName));
     } catch (e) {
       setSetupError(e instanceof Error ? e.message : "Could not start match");
     }
@@ -551,7 +551,11 @@ export function GameSetup() {
               {resumeNeedsPin ? " · PIN required to resume" : ""}
             </div>
           </div>
-          <button type="button" onClick={() => router.push("/play")} className="btn-primary min-h-11">
+          <button
+            type="button"
+            onClick={() => router.push(playHref(settings.roomName))}
+            className="btn-primary min-h-11"
+          >
             Resume
           </button>
           <button type="button" onClick={onCancelMatch} className="btn-ghost min-h-11 text-red-300">
@@ -1197,7 +1201,7 @@ export function GameSetup() {
       <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => router.replace(PLAY_IDLE_HREF)}
+          onClick={() => router.replace(playHref(settings.roomName))}
           className="btn-ghost min-h-14 flex-1 px-4 font-display text-base tracking-wider text-red-300"
         >
           Cancel
