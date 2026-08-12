@@ -30,6 +30,17 @@ Full wiring: `docs/BOARD-STATION.md`.
 If either P0 fails: stop bar play, redeploy kit/bridge from main, re-run:
 
 ```bash
+npm run test:board1
+```
+
+Full suites (no hardware):
+
+```bash
 npm test
 cd tools/autodarts-companion && python3 -m pytest -q
 ```
+
+Board 1 automated net: companion poll fuzzer
+(`tools/autodarts-companion/tests/test_visit_poll_fuzzer.py`) + camera route
+409 / takeout reject / undo (`src/lib/camera-routes-board1.test.ts`) +
+Board1-Setup / Board1-FixMe ASCII + PS 5.1 guards.

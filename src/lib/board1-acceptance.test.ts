@@ -321,3 +321,54 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
     expect(page).toMatch(/Fix Me/i);
   });
 });
+
+describe("Board1 acceptance: camera multi-step undo", () => {
+  it("applyCameraUndo walks a full visit and fails closed when idle", async () => {
+    const { applyCameraUndo } = await import("@/lib/server-game-store");
+    const state = board1Match("Board1 Accept Undo");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Accept Undo");
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: "Board1 Accept Undo",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board1 Accept Undo",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 1,
+          roomId: "Board1 Accept Undo",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      requestTakeoutReady("Board1 Accept Undo");
+
+      const u1 = applyCameraUndo({ roomId: "Board1 Accept Undo" });
+      expect(u1.ok).toBe(true);
+      if (u1.ok) {
+        expect(u1.state.currentPlayerIndex).toBe(0);
+        expect(u1.state.currentTurnDarts).toHaveLength(2);
+      }
+      expect(applyCameraUndo({ roomId: "Board1 Accept Undo" }).ok).toBe(true);
+      expect(applyCameraUndo({ roomId: "Board1 Accept Undo" }).ok).toBe(true);
+      const idle = applyCameraUndo({ roomId: "Board1 Accept Undo" });
+      expect(idle.ok).toBe(false);
+      if (!idle.ok) expect(idle.error).toMatch(/Nothing to undo/i);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Accept Undo");
+    }
+  });
+});
