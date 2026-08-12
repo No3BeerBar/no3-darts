@@ -200,6 +200,11 @@ export interface Turn {
   timestamp: number;
   /** Leg this visit belongs to (for live MPR/PPR current vs overall). */
   legNumber?: number;
+  /**
+   * Snapshot of playerStates at the start of this visit (pre-darts).
+   * Required for mode-safe Undo on Cricket / Killer (marks, lives, etc.).
+   */
+  baselineStates?: PlayerGameState[];
 }
 
 export type GameStatus = "setup" | "playing" | "leg_won" | "match_won" | "paused" | "finished";

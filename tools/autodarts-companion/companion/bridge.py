@@ -131,17 +131,24 @@ def _dart_payload(dart: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
+# How long a playing/paused sighting blocks null-match recal (fail closed).
+_RECENTLY_PLAYING_S = 60.0
+
+
 def fetch_no3_match_allows_recal(
     no3_url: str,
     room: str,
     headers: dict[str, str],
     dry_run: bool,
+    *,
+    recently_playing: bool = False,
 ) -> bool:
     """
     Ask No3 whether this room is at a real between-games boundary.
 
     Fail closed (False) on network/parse errors so mid-game recal never runs
-    when we cannot confirm match state.
+    when we cannot confirm match state. Null match after a recent playing
+    sighting also fails closed.
     """
     if dry_run:
         return False
@@ -153,7 +160,8 @@ def fetch_no3_match_allows_recal(
     if match is not None and not isinstance(match, dict):
         return False
     return no3_match_allows_between_games_recal(
-        match if isinstance(match, dict) else None
+        match if isinstance(match, dict) else None,
+        recently_playing=recently_playing,
     )
 
 
@@ -225,6 +233,7 @@ def run_bridge(
     closed_visit_throws: list[dict[str, Any]] = []
     last_recal_gate_at = 0.0
     recal_gate_allows = False
+    last_seen_playing_at = 0.0
 
     console.print(
         f"[bold]Autodarts -> No3 bridge[/bold]\n"
@@ -508,16 +517,41 @@ def run_bridge(
                 force=True,
             )
 
-    def refresh_recal_gate() -> bool:
-        """Cache No3 between-games gate briefly to avoid hammering active match."""
-        nonlocal last_recal_gate_at, recal_gate_allows
+    def refresh_recal_gate(*, force: bool = False) -> bool:
+        """
+        Cache No3 between-games gate briefly to avoid hammering active match.
+
+        Never trust a cached True - only cache deny. Always re-fetch before a
+        real recal attempt (force=True).
+        """
+        nonlocal last_recal_gate_at, recal_gate_allows, last_seen_playing_at
+        if dry_run:
+            recal_gate_allows = False
+            return False
         now = time.time()
-        if now - last_recal_gate_at < 2.0:
-            return recal_gate_allows
+        if (
+            not force
+            and now - last_recal_gate_at < 2.0
+            and not recal_gate_allows
+        ):
+            return False
         last_recal_gate_at = now
-        recal_gate_allows = fetch_no3_match_allows_recal(
-            no3_url, room, headers, dry_run
-        )
+        # Peek match to track recent playing (fail closed on null after mid-match)
+        url = f"{no3_url.rstrip('/')}/api/matches/active"
+        data = _get_json(url, headers, dry_run=False, params={"room": room})
+        match = data.get("match") if isinstance(data, dict) else None
+        if isinstance(match, dict):
+            st = str(match.get("status") or "").strip().lower()
+            if st in ("playing", "paused"):
+                last_seen_playing_at = now
+        recently = (now - last_seen_playing_at) < _RECENTLY_PLAYING_S
+        if data is None:
+            recal_gate_allows = False
+        else:
+            recal_gate_allows = no3_match_allows_between_games_recal(
+                match if isinstance(match, dict) else None,
+                recently_playing=recently,
+            )
         return recal_gate_allows
 
     def maybe_between_games_recal(
@@ -527,8 +561,8 @@ def run_bridge(
         visit_just_cleared: bool = False,
     ) -> None:
         # No3 gate first: never recal while match is playing/paused.
-        # (Cached briefly; only consulted on status change / visit clear.)
-        allows = refresh_recal_gate()
+        # Fresh fetch immediately before recal (no stale True cache).
+        allows = refresh_recal_gate(force=True)
         if not tracker.should_recal_between_games(
             status,
             throws,

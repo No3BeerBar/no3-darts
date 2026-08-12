@@ -13,6 +13,7 @@ import type {
   GameState,
   MatchFormat,
   ModeConfig,
+  PlayerGameState,
   PlayerRef,
   TeamRef,
 } from "./types";
@@ -190,6 +191,23 @@ export function applyDartRaw(state: GameState, dart: DartThrow): ApplyDartResult
   return result;
 }
 
+/** Stash start-of-visit baseline onto turns that were just finalized. */
+function attachBaselineToNewTurns(
+  state: GameState,
+  prevTurnCount: number,
+  baseline: PlayerGameState[] | null | undefined
+): void {
+  if (!baseline?.length) return;
+  for (let i = prevTurnCount; i < state.turns.length; i++) {
+    if (!state.turns[i].baselineStates) {
+      state.turns[i] = {
+        ...state.turns[i],
+        baselineStates: structuredClone(baseline),
+      };
+    }
+  }
+}
+
 /** Apply a dart; auto-finalize turn when mode says so */
 export function applyDart(state: GameState, dart: DartThrow): ApplyDartResult {
   if (state.status !== "playing") {
@@ -205,10 +223,13 @@ export function applyDart(state: GameState, dart: DartThrow): ApplyDartResult {
     working = captureBaseline(working);
   }
 
+  const visitBaseline = working.turnBaseline;
   const prevTurns = working.turns.length;
   const handler = getHandler(working.mode);
   let result = handler.applyDart(working, dart);
   tagNewTurnsWithLeg(result.state, prevTurns);
+  // Turns pushed mid-apply (e.g. cricket checkout) need the start baseline
+  attachBaselineToNewTurns(result.state, prevTurns, visitBaseline);
 
   // Auto end turn when appropriate (and not already leg/match over)
   if (
@@ -216,8 +237,10 @@ export function applyDart(state: GameState, dart: DartThrow): ApplyDartResult {
     handler.shouldEndTurn(result.state)
   ) {
     const beforeFin = result.state.turns.length;
+    const baselineForFin = result.state.turnBaseline ?? visitBaseline;
     const fin = FINALIZERS[result.state.mode](result.state);
     tagNewTurnsWithLeg(fin.state, beforeFin);
+    attachBaselineToNewTurns(fin.state, beforeFin, baselineForFin);
     // New visit baseline for next thrower
     fin.state.turnBaseline = structuredClone(fin.state.playerStates);
     result = {
@@ -339,21 +362,17 @@ export function editLastTurn(state: GameState): ApplyDartResult {
     next.legWinnerId = null;
   }
 
-  // Restore score/state to start of that visit
-  ps.score = last.startScore;
-  // Build baseline = current states with this player's score reset (approx)
-  // Prefer: reverse endScore → startScore for thrower only already done
-  next.turnBaseline = structuredClone(next.playerStates);
-  // Replay last.darts via correction so mode side-effects re-apply cleanly
-  // First set player states: for X01 startScore is enough; for killer/cricket
-  // we need baseline from before the turn. Use startScore on thrower and
-  // re-apply darts — imperfect for multi-player side effects in one dart.
-  // For killer: undo lives by replaying from a reconstructed baseline is hard
-  // without full history. We store baseline on each turn end going forward.
-
+  // Restore full start-of-visit playerStates when we stored them (Cricket/Killer).
+  // Legacy turns without baselineStates fall back to score-only restore.
   next.currentTurnDarts = [];
-  next.playerStates[pIdx].score = last.startScore;
-  next.turnBaseline = structuredClone(next.playerStates);
+  if (last.baselineStates?.length) {
+    next.playerStates = structuredClone(last.baselineStates);
+    next.turnBaseline = structuredClone(last.baselineStates);
+  } else {
+    ps.score = last.startScore;
+    next.playerStates[pIdx].score = last.startScore;
+    next.turnBaseline = structuredClone(next.playerStates);
+  }
 
   // Put darts back without auto-ending
   let working = next;
@@ -381,9 +400,11 @@ export function endTurn(state: GameState): ApplyDartResult {
     next.updatedAt = Date.now();
     return { state: next, events: [{ type: "turn_end", timestamp: Date.now() }], callout: "PASS" };
   }
+  const baseline = state.turnBaseline;
   const prevTurns = state.turns.length;
   const result = FINALIZERS[state.mode](state);
   tagNewTurnsWithLeg(result.state, prevTurns);
+  attachBaselineToNewTurns(result.state, prevTurns, baseline);
   result.state.turnBaseline = structuredClone(result.state.playerStates);
   result.state.updatedAt = Date.now();
   return result;

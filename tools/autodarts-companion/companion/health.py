@@ -159,16 +159,24 @@ class HealthTracker:
         self.last_recal_at = time.time()
 
 
-def no3_match_allows_between_games_recal(match: Optional[dict[str, Any]]) -> bool:
+def no3_match_allows_between_games_recal(
+    match: Optional[dict[str, Any]],
+    *,
+    recently_playing: bool = False,
+) -> bool:
     """
     True when No3 has no mid-game scoring match for the room.
 
     Recal is allowed when there is no match, or the match is at a leg/match
     boundary (leg_won / match_won / finished / setup). Never while playing
     or paused - that is mid-visit / mid-match.
+
+    When match is null/missing but the bridge recently saw playing/paused for
+    this room, fail closed so a brief active-match lookup miss cannot mid-game
+    recalibrate.
     """
     if not match:
-        return True
+        return not recently_playing
     status = str(match.get("status") or "").strip().lower()
     if status in ("playing", "paused"):
         return False
@@ -176,9 +184,6 @@ def no3_match_allows_between_games_recal(match: Optional[dict[str, Any]]) -> boo
         return True
     # Unknown status: fail closed
     return False
-
-    def mark_recal(self) -> None:
-        self.last_recal_at = time.time()
 
 
 def _message_for(reason: str) -> str:
