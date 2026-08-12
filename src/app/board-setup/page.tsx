@@ -12,10 +12,11 @@ export default function BoardSetupPage() {
       <h1 style={{ fontSize: 18, marginBottom: 12 }}>Board 1 Setup</h1>
       <p>
         <a href="/Board1-Setup.bat">Download Board1-Setup.bat</a>
-        {" — save, then double-click on the mini-PC."}
+        {" — single file: save, then double-click on the mini-PC."}
       </p>
       <p style={{ marginTop: 12, color: "#666", fontSize: 14 }}>
-        Kit zip (used by the bat):{" "}
+        The bat embeds setup (downloads the kit zip, writes Board 1 config, runs
+        start-board). Kit zip only:{" "}
         <a href="/board-station-board1.zip">/board-station-board1.zip</a>
       </p>
     </main>
