@@ -2,8 +2,15 @@
  * Seat authentication for in-progress matches.
  *
  * Active games persist in localStorage independently of the tablet session cookie.
- * Registered (PIN) seats must stay verified across resume; guests never need PIN.
- * Sign-out / lost session for a seat invalidates that seat until PIN again.
+ * Registered (PIN) seats must be verified for scoring; guests never need PIN.
+ *
+ * Scoring trust lives only in `verifiedPlayerIds` for this match (seeded at start,
+ * or after resume PIN). The session cookie alone does **not** unlock scoring —
+ * a fresh page load / app restart clears verified seats so Resume re-prompts PIN.
+ * Stay-signed-in between back-to-back matches uses the cookie + tablet roster for
+ * setup seating, not this blob.
+ *
+ * Sign-out / lost session for a bound seat also invalidates that seat until PIN again.
  */
 
 import type { PlayerRef } from "@/engine/types";
@@ -116,8 +123,24 @@ export function invalidateSeat(playerId: string): SeatAuthState | null {
 }
 
 /**
+ * Fresh document load restored an in-progress match from localStorage.
+ * Clear scoring trust so registered seats must re-enter PIN (iPad app kill /
+ * browser restart). Does not touch the session cookie or sticky tablet roster.
+ */
+export function invalidateSeatAuthOnPageRestore(matchId: string): SeatAuthState {
+  const next: SeatAuthState = {
+    matchId,
+    verifiedPlayerIds: [],
+    boundSessionPlayerId: null,
+  };
+  setSeatAuth(next);
+  return next;
+}
+
+/**
  * Effective verified ids for a match given current tablet session.
- * - Current session player always counts as verified for their own seat.
+ * - Only seats listed in seat-auth count (after seed or resume PIN).
+ * - Session cookie alone never grants scoring trust (survives app kill).
  * - If the bound session player signed out / cookie cleared, that seat is dropped.
  */
 export function effectiveVerifiedSeatIds(
@@ -135,7 +158,6 @@ export function effectiveVerifiedSeatIds(
       ids.delete(seatAuth.boundSessionPlayerId);
     }
   }
-  if (sessionPlayerId) ids.add(sessionPlayerId);
   return [...ids];
 }
 

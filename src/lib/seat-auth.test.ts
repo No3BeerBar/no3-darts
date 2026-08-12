@@ -5,6 +5,7 @@ import {
   effectiveVerifiedSeatIds,
   getSeatAuth,
   invalidateSeat,
+  invalidateSeatAuthOnPageRestore,
   markSeatVerified,
   seatsNeedingReauth,
   seedSeatAuthForMatch,
@@ -182,6 +183,51 @@ describe("seat auth / resume re-verification", () => {
     );
     const players = [{ id: "alice", name: "Alice", isGuest: false }];
     expect(seatsNeedingReauth("new", players, null)).toEqual([
+      { id: "alice", name: "Alice" },
+    ]);
+  });
+
+  it("requires PIN after fresh page restore even when session cookie survives (John iPad app-kill)", () => {
+    installMemoryStorage();
+    const players = [
+      { id: "alice", name: "Alice", isGuest: false },
+      { id: "bob", name: "Bob", isGuest: true },
+    ];
+    // Continuous kiosk: match started, seats trusted, cookie sticky
+    seedSeatAuthForMatch("m1", players, "alice");
+    expect(canScoreMatch("m1", players, "alice")).toBe(true);
+
+    // App kill / clear-apps: localStorage + 30-day cookie often survive, but a
+    // fresh document load must clear scoring trust before Resume.
+    invalidateSeatAuthOnPageRestore("m1");
+    expect(getSeatAuth()).toMatchObject({
+      matchId: "m1",
+      verifiedPlayerIds: [],
+      boundSessionPlayerId: null,
+    });
+    // Cookie still Alice — must NOT silently unlock scoring
+    expect(effectiveVerifiedSeatIds("m1", getSeatAuth(), "alice")).toEqual([]);
+    expect(seatsNeedingReauth("m1", players, "alice")).toEqual([
+      { id: "alice", name: "Alice" },
+    ]);
+    expect(canScoreMatch("m1", players, "alice")).toBe(false);
+
+    // Re-PIN via ResumeAuthGate
+    markSeatVerified("m1", "alice", "alice");
+    expect(canScoreMatch("m1", players, "alice")).toBe(true);
+  });
+
+  it("does not treat session cookie alone as scoring trust without seat-auth seed", () => {
+    installMemoryStorage();
+    const players = [{ id: "alice", name: "Alice", isGuest: false }];
+    // No seed / empty restore auth — sticky cookie must not open the seat
+    setSeatAuth({
+      matchId: "m1",
+      verifiedPlayerIds: [],
+      boundSessionPlayerId: null,
+    });
+    expect(canScoreMatch("m1", players, "alice")).toBe(false);
+    expect(seatsNeedingReauth("m1", players, "alice")).toEqual([
       { id: "alice", name: "Alice" },
     ]);
   });
