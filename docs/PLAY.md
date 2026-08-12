@@ -53,7 +53,7 @@ Ending a completed match clears the **match** and match seat-auth — it does **
 - **Bots** — see [Bot opponents](#bot-opponents) below.
 - Empty directory: picker says so and offers **Create account**.
 - Wired to `GET /api/players` (same register + PIN data as before).
-- After **2 minutes idle** (not mid-match) everyone is signed out → next visit is the cold picker path again.
+- After **2 minutes idle** when not mid-match (and again after a match ends) everyone is signed out → next visit is the cold picker path again.
 
 ## Bot opponents
 
@@ -137,11 +137,18 @@ Registered (name + PIN) seats are **not** trusted from that blob alone:
 
 ### Session stickiness + idle logout
 
-- If a player has **not** signed out, they **stay signed in** across end-game → start-next-game loops on the **same continuous SPA session** (no re-PIN just because a match ended).
+John’s idle rules (exact):
+
+1. **Not in a match** (idle `/play` or setup `/`) → auto sign everyone out after **2 minutes of inactivity**.
+2. **In a match** (playing / paused / between legs) → leave people signed in (no idle logout mid-match; thinking time between darts is fine).
+3. **After match ends** (`match_won`, End game → idle) → start the **2-minute inactivity** timer again; then sign out.
+
+Also:
+
+- If a player has **not** signed out, they **stay signed in** across end-game → start-next-game loops on the **same continuous SPA session** (no re-PIN just because a match ended) — until the 2-minute idle timer fires.
 - A **new document load** of `/play` or setup `/` (board bookmark, reload, app restart) always starts **cold** — cookie alone must not show Signed in or unlock scoring.
 - PIN entry when nobody is signed in on the tablet **establishes** the session cookie (sticky for that document session). Unlocking another registered seat while someone is already signed in still uses verify-without-stealing-session.
-- If the tablet sits on **idle play / setup** (not mid-match) with **no touch/key/scroll for more than 2 minutes**, everyone on that tablet is signed out and the next game needs PIN again.
-- Thinking time between darts mid-match never triggers that logout.
+- Touch / key / scroll on play or setup resets the armed idle timer.
 - Explicit **Sign out** still clears immediately (and invalidates seat-auth).
 
 Guests stay ephemeral (no history / leaderboard). Do not continue scoring under a signed-out registered name.

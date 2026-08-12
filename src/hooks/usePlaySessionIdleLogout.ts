@@ -1,9 +1,13 @@
 "use client";
 
 /**
- * While on idle play / setup (not mid-match), log the tablet session out after
- * 2 minutes with no touch/key/scroll activity. Resets on interaction.
- * Does not run during active scoring — thinking time between darts is fine.
+ * Tablet session idle logout (John's rules):
+ * 1. Not in a match → sign out after 2 minutes inactivity.
+ * 2. Mid-match (playing / paused / leg_won) → stay signed in.
+ * 3. After match ends (match_won → idle) → arm the 2-minute timer again.
+ *
+ * Resets on touch/key/scroll while armed. Runs from AppShell for both setup
+ * `/` and bare `/play`.
  */
 
 import { useEffect, useRef } from "react";
