@@ -40,9 +40,12 @@ const removedMatchIds = new Map<string, number>();
 const matchWonAt = new Map<string, number>();
 
 /** Ignore resurrecting a cleared match for this long (in-flight POST). */
-export const CLEARED_MATCH_TOMBSTONE_MS = 120_000;
+export const CLEARED_MATCH_TOMBSTONE_MS = 45_000;
 /** Winner screen may stay "active" briefly, then attract. */
-export const MATCH_WON_ACTIVE_MS = 4_000;
+export const MATCH_WON_ACTIVE_MS = 15_000;
+
+type RoomTombstone = { matchId: string; updatedAt: number; removedAt: number };
+const removedRooms = new Map<string, RoomTombstone>();
 
 function normalizeRoomId(roomId: string): string {
   let s = (roomId || "").trim().replace(/\s+/g, " ");
@@ -64,6 +67,27 @@ function isTombstoned(id: string, now = Date.now()): boolean {
     return false;
   }
   return true;
+}
+
+function roomTombstoneKey(roomId: string): string {
+  return normalizeRoomId(roomId).toLowerCase();
+}
+
+/** Same id, or same room with an older/equal snapshot than the match we just ended. */
+function shouldRefuseRevive(state: GameState, now = Date.now()): boolean {
+  if (isTombstoned(state.id, now)) return true;
+  const room = state.roomId;
+  if (!room) return false;
+  const key = roomTombstoneKey(room);
+  const t = removedRooms.get(key);
+  if (!t) return false;
+  if (now - t.removedAt > CLEARED_MATCH_TOMBSTONE_MS) {
+    removedRooms.delete(key);
+    return false;
+  }
+  if (state.id === t.matchId) return true;
+  // Older snapshot for this room (in-flight heartbeat). Equal/newer + new id = next game.
+  return (state.updatedAt ?? 0) < t.updatedAt;
 }
 
 function pruneInactiveMatches(now = Date.now()): void {
@@ -110,8 +134,8 @@ export function upsertServerMatch(state: GameState): void {
     removeServerMatch(state.id);
     return;
   }
-  // End game already cleared this id — do not let a late heartbeat resurrect it.
-  if (isTombstoned(state.id)) {
+  // End game already cleared this id/room — do not let a late heartbeat resurrect it.
+  if (shouldRefuseRevive(state)) {
     return;
   }
 
@@ -138,7 +162,10 @@ export function upsertServerMatch(state: GameState): void {
   } else {
     matchWonAt.delete(state.id);
   }
-  if (state.roomId) indexRoom(state.roomId, state.id);
+  if (state.roomId) {
+    indexRoom(state.roomId, state.id);
+    removedRooms.delete(roomTombstoneKey(state.roomId));
+  }
   realignCameraGateFromMatch(prev, state);
   emit({ type: "match_update", data: state });
 }
@@ -205,6 +232,13 @@ export function removeServerMatch(id: string): void {
   unindexRoom(m?.roomId, id);
   if (m?.roomId) clearTakeoutHold(m.roomId);
   removedMatchIds.set(id, Date.now());
+  if (m?.roomId) {
+    removedRooms.set(roomTombstoneKey(m.roomId), {
+      matchId: id,
+      updatedAt: m.updatedAt ?? 0,
+      removedAt: Date.now(),
+    });
+  }
   if (existed) emit({ type: "match_removed", data: { id } });
 }
 
@@ -213,6 +247,7 @@ export function resetServerGameStore(): void {
   matches.clear();
   byRoom.clear();
   removedMatchIds.clear();
+  removedRooms.clear();
   matchWonAt.clear();
 }
 

@@ -8,7 +8,7 @@
 import { useEffect } from "react";
 import { useGameStore } from "@/store/game-store";
 import { isHeartbeatMatchStatus } from "@/lib/live-match";
-import { startMatchHeartbeat } from "@/lib/sync-server";
+import { startMatchHeartbeat, stopMatchSync } from "@/lib/sync-server";
 
 export function useMatchHeartbeat(enabled = true) {
   const displayOnly = useGameStore((s) => s.displayOnly);
@@ -21,6 +21,9 @@ export function useMatchHeartbeat(enabled = true) {
     if (!isHeartbeatMatchStatus(status)) return;
 
     const stop = startMatchHeartbeat(() => useGameStore.getState().state, 2500);
-    return stop;
+    return () => {
+      stop();
+      stopMatchSync();
+    };
   }, [enabled, displayOnly, matchId, status]);
 }

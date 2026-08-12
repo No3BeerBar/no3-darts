@@ -30,7 +30,7 @@ import {
 } from "@/lib/seat-auth";
 import { isHeartbeatMatchStatus } from "@/lib/live-match";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
-import { clearMatchFromServer, syncMatchToServer } from "@/lib/sync-server";
+import { clearMatchFromServer, stopMatchSync, syncMatchToServer } from "@/lib/sync-server";
 import { useSessionStore } from "@/store/session-store";
 
 /** Save history / stats / Postgres only when a PIN account played. Guests are ephemeral. */
@@ -62,8 +62,8 @@ interface GameStore {
   pause: () => void;
   resume: () => void;
   nextLeg: (opts?: { modeConfig?: ModeConfig }) => void;
-  finishAndSave: () => void;
-  clearGame: () => void;
+  finishAndSave: () => void | Promise<void>;
+  clearGame: () => void | Promise<void>;
   /** Apply remote state (TV / multi-device) without re-posting loops when displayOnly */
   setState: (state: GameState | null, opts?: { localOnly?: boolean }) => void;
   getCheckout: () => CheckoutSuggestion | null;
@@ -237,25 +237,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
     recordFinishedMatch(buildStoredMatch(finished));
     // Clear match + seat-auth only — do NOT logout the tablet PIN session
+    stopMatchSync();
     clearSeatAuth();
     persist(null);
     set({ state: null, lastCallout: "Saved", lastHighlight: null });
-    // Drop server copy so TV returns to attract mode
+    // Stop heartbeat first, then await DELETE so an in-flight POST cannot revive.
     if (prevId) {
-      clearMatchFromServer(prevId, finished);
+      return clearMatchFromServer(prevId, finished);
     }
   },
 
   clearGame: () => {
     if (get().displayOnly) return;
+    stopMatchSync();
     const prev = get().state;
     // Tear down match seat trust only — tablet session cookie stays until Sign out / idle
     clearSeatAuth();
     persist(null);
     set({ state: null, lastCallout: null, lastHighlight: null });
-    // Drop server copy so TV stops showing the match
     if (prev?.id) {
-      clearMatchFromServer(prev.id, prev);
+      return clearMatchFromServer(prev.id, prev);
     }
   },
 
