@@ -122,6 +122,23 @@ def _get_json(
     return data if isinstance(data, dict) else None
 
 
+def build_end_turn_payload(
+    room: str, seat: Optional[int]
+) -> Optional[dict[str, Any]]:
+    """
+    Fail-closed end-turn body for No3.
+
+    Never omit expectedPlayerIndex - server rejects blind end-turn while a
+    visit is active / for READY ack after auto turnEnded.
+    """
+    if seat is None:
+        return None
+    try:
+        return {"roomId": room, "expectedPlayerIndex": int(seat)}
+    except (TypeError, ValueError):
+        return None
+
+
 def _dart_payload(dart: dict[str, Any]) -> dict[str, Any]:
     kind, number = dart_to_no3(dart)
     item: dict[str, Any] = {"kind": kind, "number": number, "confidence": 0.99}
@@ -325,8 +342,8 @@ def run_bridge(
             if end_turn_sent:
                 mark_visit_closed(reason)
             return
-        # Hard invariant: never POST end-turn without expectedPlayerIndex when
-        # a visit is/was locked. If seat fetch fails, fail closed (no end-turn).
+        # Hard invariant: never POST end-turn without expectedPlayerIndex.
+        # If seat fetch fails, fail closed (no end-turn).
         seat = locked_seat if locked_seat is not None else fetch_no3_seat()
         if seat is None:
             console.print(
@@ -348,11 +365,15 @@ def run_bridge(
             )
             mark_visit_closed(f"seat mismatch:{reason}")
             return
-        payload: dict[str, Any] = {
-            "roomId": room,
-            "expectedPlayerIndex": seat,
-        }
-        console.print(f"[cyan]end-turn[/cyan] ({reason})")
+        payload = build_end_turn_payload(room, seat)
+        if payload is None:
+            console.print(
+                f"[red]end-turn blocked[/red] ({reason}) - "
+                "invalid seat for expectedPlayerIndex"
+            )
+            mark_visit_closed(f"bad seat for end-turn:{reason}")
+            return
+        console.print(f"[cyan]end-turn[/cyan] ({reason}) seat={seat}")
         resp = _post_json(end_url, payload, headers, dry_run)
         if resp is None:
             return
