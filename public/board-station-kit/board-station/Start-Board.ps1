@@ -65,20 +65,48 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 $CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
 $venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
 
-function Ensure-CompanionVenv([string]$Dir) {
-  $py = Join-Path $Dir ".venv\Scripts\python.exe"
-  if (Test-Path -LiteralPath $py) { return $py }
-  Write-Host "Creating companion venv in $Dir ..."
+function Test-CompanionDeps([string]$Py) {
+  # Cheap smoke check - skip pip when runtime imports already work.
+  & $Py -c "import yaml,requests,numpy,cv2" 2>$null
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Install-CompanionDeps([string]$Py, [string]$Dir) {
+  Write-Host "Installing companion deps (first run only, may take a few minutes)..." -ForegroundColor Yellow
   Push-Location $Dir
   try {
-    python -m venv .venv
-    $py = Join-Path $Dir ".venv\Scripts\python.exe"
-    & $py -m pip install -r requirements.txt
+    & $Py -m pip install --disable-pip-version-check -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+      throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)"
+    }
   } finally {
     Pop-Location
   }
+}
+
+function Ensure-CompanionVenv([string]$Dir) {
+  $py = Join-Path $Dir ".venv\Scripts\python.exe"
   if (-not (Test-Path -LiteralPath $py)) {
-    throw "Failed to create companion venv at $py"
+    Write-Host "Creating companion venv in $Dir ..."
+    Push-Location $Dir
+    try {
+      python -m venv .venv
+    } finally {
+      Pop-Location
+    }
+    $py = Join-Path $Dir ".venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $py)) {
+      throw "Failed to create companion venv at $py"
+    }
+    Install-CompanionDeps $py $Dir
+    return $py
+  }
+  if (-not (Test-CompanionDeps $py)) {
+    Write-Host "Companion venv missing runtime deps - repairing..." -ForegroundColor Yellow
+    Install-CompanionDeps $py $Dir
+    if (-not (Test-CompanionDeps $py)) {
+      throw "Companion venv still missing deps after pip install (yaml/requests/numpy/cv2)"
+    }
   }
   return $py
 }
