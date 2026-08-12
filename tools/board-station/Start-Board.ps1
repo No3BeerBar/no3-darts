@@ -10,6 +10,10 @@
 
 .NOTES
   Bar ops entry point. See docs/BOARD-STATION.md
+  Exit codes:
+    0 = ok
+    1 = script error (see step + message; photo this window)
+    3 = Autodarts not running and no exe/.lnk found
 #>
 
 [CmdletBinding()]
@@ -24,6 +28,11 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $ConfigPath) { $ConfigPath = Join-Path $Here "config.yaml" }
 $Example = Join-Path $Here "config.example.yaml"
 $LoadConfigPy = Join-Path $Here "load-config.py"
+$script:Step = "init"
+
+function Set-Step([string]$Name) {
+  $script:Step = $Name
+}
 
 function Write-Banner([string]$Text) {
   Write-Host ""
@@ -54,19 +63,29 @@ function Find-Browser([string]$Name) {
 
 function Test-CompanionDeps([string]$Py) {
   # Cheap smoke check - skip pip when runtime imports already work.
-  & $Py -c "import yaml,requests,numpy,cv2" 2>$null
-  return ($LASTEXITCODE -eq 0)
+  # Continue: native stderr must not become a terminating error under Stop.
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $Py -c "import yaml,requests,numpy,cv2" 1>$null 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } finally {
+    $ErrorActionPreference = $prev
+  }
 }
 
 function Install-CompanionDeps([string]$Py, [string]$Dir) {
   Write-Host "Installing companion deps (first run only, may take a few minutes)..." -ForegroundColor Yellow
   Push-Location $Dir
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   try {
     & $Py -m pip install --disable-pip-version-check -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
       throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)"
     }
   } finally {
+    $ErrorActionPreference = $prev
     Pop-Location
   }
 }
@@ -201,11 +220,13 @@ function Write-AutodartsMissingError([string]$AdHost, [int]$AdPort, [string]$Con
   Write-Host '   "C:\\Program Files\\Autodarts\\Autodarts.exe"'
   Write-Host '   "C:\\Users\\Public\\Desktop\\Autodarts.lnk"'
   Write-Host "============================================================" -ForegroundColor Red
+  Write-Host " PHOTO THIS WINDOW and send it to No.3 support if you need help." -ForegroundColor Cyan
   Write-Host ""
 }
 
 try {
 
+Set-Step "config"
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
   if (Test-Path -LiteralPath $Example) {
     Copy-Item -LiteralPath $Example -Destination $ConfigPath
@@ -216,15 +237,27 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 # Resolve companion dir early (default) so we can use its venv + PyYAML for config
+Set-Step "companion-venv"
 $CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
 $venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
 
 $venvPy = Ensure-CompanionVenv $CompanionDirGuess
 
-# Reliable YAML -> JSON via PyYAML (shipped with companion requirements)
-$cfgJson = & $venvPy $LoadConfigPy $ConfigPath
-if ($LASTEXITCODE -ne 0 -or -not $cfgJson) {
-  throw "Failed to load config.yaml (need PyYAML in companion venv)"
+# Reliable YAML -> JSON via PyYAML (shipped with companion requirements).
+# Out-String: Windows PS 5.1 captures native stdout as a string[] (one line each);
+# ConvertFrom-Json then fails on the first "{" line alone - looks like a crash
+# right after a successful first pip install.
+Set-Step "load-config"
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  $cfgJson = & $venvPy $LoadConfigPy $ConfigPath | Out-String
+  $loadExit = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $prevEap
+}
+if ($loadExit -ne 0 -or [string]::IsNullOrWhiteSpace($cfgJson)) {
+  throw "Failed to load config.yaml (need PyYAML in companion venv; python exit=$loadExit)"
 }
 $cfg = $cfgJson | ConvertFrom-Json
 
@@ -242,6 +275,7 @@ $ExePath = if ($ad.exe_path) { [string]$ad.exe_path } else { $env:AUTODARTS_EXE 
 $StartIfMissing = if ($null -ne $ad.start_if_missing) { [bool]$ad.start_if_missing } else { $true }
 $ReadyTimeout = if ($ad.ready_timeout_s) { [int]$ad.ready_timeout_s } else { 45 }
 
+Set-Step "companion-dir"
 $CompanionDir = Join-Path $Here $(if ($bridge.companion_dir) { [string]$bridge.companion_dir } else { "..\autodarts-companion" })
 $CompanionDir = [System.IO.Path]::GetFullPath($CompanionDir)
 if ($CompanionDir -ne $CompanionDirGuess) {
@@ -266,6 +300,7 @@ function Test-AutodartsReady {
 }
 
 # --- 1) Autodarts Board Manager ---
+Set-Step "autodarts-board-manager"
 Write-Banner "1/3 Autodarts Board Manager"
 $procNames = @()
 if ($ad.process_names) { $procNames = @($ad.process_names) }
@@ -279,6 +314,7 @@ if ($ready) {
   if ($ExePath) {
     if (Test-Path -LiteralPath $ExePath) {
       $exeUsable = $true
+      Write-Host "Using configured Autodarts path: $ExePath"
     } else {
       Write-Host "exe_path not found: $ExePath" -ForegroundColor Yellow
       Write-Host "Searching common locations for Autodarts..." -ForegroundColor Yellow
@@ -317,14 +353,27 @@ if ($ready) {
       Write-Host "Board Manager already responding on :$AdPort" -ForegroundColor Green
     } else {
       Write-AutodartsMissingError -AdHost $AdHost -AdPort $AdPort -ConfigPath $ConfigPath
-      throw "Autodarts Board Manager not found and API not responding on :${AdPort} (AUTODARTS_MISSING)"
+      exit 3
     }
   }
 } else {
+  if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath)) {
+    $found = Find-AutodartsExe
+    if ($found) {
+      $ExePath = $found
+      Write-Host "Found Autodarts at $ExePath" -ForegroundColor Green
+      Save-ExePathToConfig -Path $ConfigPath -ExePath $ExePath
+    }
+  }
+  if (-not (Test-AutodartsReady) -and (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath))) {
+    Write-AutodartsMissingError -AdHost $AdHost -AdPort $AdPort -ConfigPath $ConfigPath
+    exit 3
+  }
   Write-Host "start_if_missing=false and Board Manager not up - continuing anyway." -ForegroundColor Yellow
 }
 
 # --- 2) Companion bridge ---
+Set-Step "companion-bridge"
 Write-Banner "2/3 Companion bridge"
 if (-not (Test-Path -LiteralPath $CompanionDir)) {
   throw "Companion dir missing: $CompanionDir"
@@ -377,6 +426,7 @@ if ($bridgeEnabled) {
 }
 
 # --- 3) Kiosk / URLs ---
+Set-Step "displays-kiosk"
 Write-Banner "3/3 Displays (TV + iPad)"
 $tvUrl = Expand-UrlTemplate $(if ($kiosk.tv_url) { [string]$kiosk.tv_url } else { "{no3.url}/tv" }) $No3Url
 $playUrl = Expand-UrlTemplate $(if ($kiosk.play_url) { [string]$kiosk.play_url } else { "{no3.url}/play" }) $No3Url
@@ -431,6 +481,7 @@ if ($kioskOn -and $browser -ne "none") {
   Write-Host "Kiosk disabled - open TV URL manually if needed."
 }
 
+Set-Step "done"
 Write-Banner "Board stack launched"
 Write-Host "Keep the bridge window open while playing."
 Write-Host "Fix misreads on the iPad (tap dart -> pick segment) or in Autodarts Board Manager."
@@ -439,14 +490,20 @@ Write-Host ""
 
 } catch {
   Write-Host ""
-  Write-Host "============================================================" -ForegroundColor Red
-  Write-Host " ERROR: Start-Board failed (uncaught)" -ForegroundColor Red
-  Write-Host "============================================================" -ForegroundColor Red
-  Write-Host $_.Exception.Message -ForegroundColor Red
+  Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+  Write-Host " ERROR: Start-Board FAILED" -ForegroundColor Red
+  Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+  Write-Host ""
+  Write-Host " Step:      $($script:Step)" -ForegroundColor Yellow
+  Write-Host " Error:     $($_.Exception.Message)" -ForegroundColor Red
+  if ($_.InvocationInfo.PositionMessage) {
+    Write-Host " Location:  $($_.InvocationInfo.PositionMessage.Trim())"
+  }
   if ($_.ScriptStackTrace) {
     Write-Host $_.ScriptStackTrace
   }
-  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host ""
+  Write-Host " PHOTO THIS WINDOW and send it to No.3 support." -ForegroundColor Cyan
   Write-Host ""
   exit 1
 }

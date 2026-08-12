@@ -12,6 +12,8 @@ set EXITCODE=%ERRORLEVEL%
 if not "%EXITCODE%"=="0" (
   echo.
   echo Start-Board failed with exit %EXITCODE%.
+  echo PHOTO this window if you need help.
+  if "%EXITCODE%"=="3" echo Exit 3 = Autodarts missing / not running.
   pause
 )
 endlocal & exit /b %EXITCODE%

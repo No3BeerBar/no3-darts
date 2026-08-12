@@ -69,7 +69,9 @@ def main() -> int:
         return 1
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     cfg = deep_merge(DEFAULTS, raw)
-    json.dump(cfg, sys.stdout, indent=2)
+    # Compact one-line JSON: Windows PowerShell 5.1 splits native stdout on
+    # newlines into a string[], which breaks ConvertFrom-Json unless joined.
+    json.dump(cfg, sys.stdout, separators=(",", ":"))
     return 0
 
 
