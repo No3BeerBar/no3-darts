@@ -325,6 +325,6 @@ describe("bridge AD-offline clears takeout (source)", () => {
       "utf8"
     );
     expect(bridge).toMatch(/AD unreachable: never leave sticky takeout/);
-    expect(bridge).toMatch(/post_health\(\{ \*\*hp, "takeout": False \}, force=True\)/);
+    expect(bridge).toContain('post_health({**hp, "takeout": False}, force=True)');
   });
 });
