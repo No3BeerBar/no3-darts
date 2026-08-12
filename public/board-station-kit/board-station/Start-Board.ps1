@@ -61,14 +61,48 @@ function Find-Browser([string]$Name) {
   return $null
 }
 
+function Test-VenvPythonRuns([string]$Py, [string]$Code) {
+  # Real invoke - Test-Path is not enough (dead leftover .venv / Store stub).
+  # Catch "not recognized as the name of a cmdlet" so callers can recreate.
+  if (-not $Py) { return $false }
+  if (-not (Test-Path -LiteralPath $Py)) { return $false }
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $out = & $Py -c $Code 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+    if ($Code -eq "print('ok')") {
+      $text = ($out | Out-String)
+      return ($text -match "ok")
+    }
+    return $true
+  } catch {
+    return $false
+  } finally {
+    $ErrorActionPreference = $prev
+  }
+}
+
+function Get-DeadVenvHint([string]$Py) {
+  return ("Companion venv python.exe is not recognized or will not run:`n  $Py`nDelete C:\No3Darts\Board1\autodarts-companion\.venv and re-run Board1-FixMe.bat")
+}
+
+function Assert-VenvPythonRunnable([string]$Py) {
+  if (Test-VenvPythonRuns $Py "import sys") { return }
+  throw (Get-DeadVenvHint $Py)
+}
+
 function Test-CompanionDeps([string]$Py) {
   # Cheap smoke check - skip pip when runtime imports already work.
   # Continue: native stderr must not become a terminating error under Stop.
+  if (-not (Test-VenvPythonRuns $Py "import sys")) { return $false }
   $prev = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
     & $Py -c "import yaml,requests,numpy,cv2" 1>$null 2>$null
     return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
   } finally {
     $ErrorActionPreference = $prev
   }
@@ -84,26 +118,74 @@ function Install-CompanionDeps([string]$Py, [string]$Dir) {
     if ($LASTEXITCODE -ne 0) {
       throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)"
     }
+  } catch {
+    if ($_.Exception.Message -match "not recognized") {
+      throw (Get-DeadVenvHint $Py)
+    }
+    throw
   } finally {
     $ErrorActionPreference = $prev
     Pop-Location
   }
+  Assert-VenvPythonRunnable $Py
+}
+
+function New-CompanionVenv([string]$Dir) {
+  Write-Host "Creating companion venv in $Dir ..."
+  $venvDir = Join-Path $Dir ".venv"
+  if (Test-Path -LiteralPath $venvDir) {
+    Write-Host "  Removing broken companion .venv ..."
+    Remove-Item -LiteralPath $venvDir -Recurse -Force
+  }
+
+  $created = $false
+  Push-Location $Dir
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $pyCheck = Join-Path $Dir ".venv\Scripts\python.exe"
+    Write-Host "  Trying: py -3 -m venv --clear .venv"
+    try {
+      & py -3 -m venv --clear .venv
+    } catch {
+      Write-Host ("  py -3 failed: " + $_.Exception.Message)
+    }
+    if (Test-Path -LiteralPath $pyCheck) { $created = $true }
+    if (-not $created) {
+      Write-Host "  Trying: python -m venv --clear .venv"
+      try {
+        & python -m venv --clear .venv
+      } catch {
+        Write-Host ("  python failed: " + $_.Exception.Message)
+      }
+      if (Test-Path -LiteralPath $pyCheck) { $created = $true }
+    }
+  } finally {
+    $ErrorActionPreference = $prev
+    Pop-Location
+  }
+
+  $py = Join-Path $Dir ".venv\Scripts\python.exe"
+  if (-not $created -or -not (Test-Path -LiteralPath $py)) {
+    throw ("Failed to create companion venv (python.exe missing). Tried py -3 and python.`n  Expected: $py`n  Install Python 3 from https://www.python.org/downloads/ (check Add to PATH), then re-run Board1-FixMe.bat")
+  }
+  if (-not (Test-VenvPythonRuns $Py "print('ok')")) {
+    throw ("Companion venv python.exe exists but does not run:`n  $py`n  Delete C:\No3Darts\Board1\autodarts-companion\.venv and re-run Board1-FixMe.bat")
+  }
+  return $py
 }
 
 function Ensure-CompanionVenv([string]$Dir) {
   $py = Join-Path $Dir ".venv\Scripts\python.exe"
+  $needCreate = $false
   if (-not (Test-Path -LiteralPath $py)) {
-    Write-Host "Creating companion venv in $Dir ..."
-    Push-Location $Dir
-    try {
-      python -m venv .venv
-    } finally {
-      Pop-Location
-    }
-    $py = Join-Path $Dir ".venv\Scripts\python.exe"
-    if (-not (Test-Path -LiteralPath $py)) {
-      throw "Failed to create companion venv at $py"
-    }
+    $needCreate = $true
+  } elseif (-not (Test-VenvPythonRuns $py "import sys")) {
+    Write-Host "Companion venv python.exe is broken - recreating..." -ForegroundColor Yellow
+    $needCreate = $true
+  }
+  if ($needCreate) {
+    $py = New-CompanionVenv $Dir
     Install-CompanionDeps $py $Dir
     return $py
   }
@@ -253,6 +335,11 @@ $ErrorActionPreference = "Continue"
 try {
   $cfgJson = & $venvPy $LoadConfigPy $ConfigPath | Out-String
   $loadExit = $LASTEXITCODE
+} catch {
+  if ($_.Exception.Message -match "not recognized") {
+    throw (Get-DeadVenvHint $venvPy)
+  }
+  throw
 } finally {
   $ErrorActionPreference = $prevEap
 }
