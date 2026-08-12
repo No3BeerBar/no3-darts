@@ -26,7 +26,7 @@ const NAV = [
 
 /** Fullscreen / kiosk surfaces — no AppShell chrome at all. */
 function isBareRoute(pathname: string) {
-  return pathname === "/play" || pathname === "/tv";
+  return pathname === "/play" || pathname === "/tv" || pathname === "/board-setup";
 }
 
 function ShellBrand() {

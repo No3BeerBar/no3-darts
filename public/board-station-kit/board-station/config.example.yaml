@@ -1,0 +1,56 @@
+# Board station config — copy to config.yaml on the Windows mini-PC.
+# Double-click start-board.bat (or run Start-Board.ps1) to bring up the stack.
+
+# Autodarts Board Manager (detector)
+autodarts:
+  host: "127.0.0.1"
+  port: 3180
+  # EDIT for this PC — do not leave a wrong path. Examples:
+  #   "C:\\Program Files\\Autodarts\\Autodarts.exe"
+  #   "C:\\Users\\Public\\Desktop\\Autodarts.lnk"
+  exe_path: ""
+  process_names:
+    - "Autodarts"
+    - "autodarts"
+    - "AutodartsDesktop"
+  start_if_missing: true
+  # Seconds to wait for http://host:port/api/state after launch
+  ready_timeout_s: 45
+
+# No3 scoring UI (hosted or LAN)
+no3:
+  url: "https://no3-darts-production.up.railway.app"
+  room_id: "Board 1"
+  camera_api_key: ""   # same as CAMERA_API_KEY on Railway if set
+
+# Companion bridge (lives next to this folder)
+bridge:
+  enabled: true
+  # Relative to tools/board-station/ — override if you relocate the repo
+  companion_dir: "../autodarts-companion"
+
+# Kiosk / displays
+# TV: usually the mini-PC HDMI out. iPad is a separate device — script prints the play URL.
+kiosk:
+  enabled: true
+  # msedge | chrome | none
+  browser: "msedge"
+  # Open TV on HDMI / second display (kiosk fullscreen).
+  # /tv shows attract (leaderboards + games) when idle, live match when active.
+  open_tv: true
+  tv_url: "{no3.url}/tv"
+  # Optional: also open play URL on this PC (usually leave false — use iPad)
+  open_play: false
+  play_url: "{no3.url}/play"
+  # Extra Chrome/Edge args (space-separated). --kiosk is added when open_tv is true.
+  extra_args: "--autoplay-policy=no-user-gesture-required"
+  # If you use a second Windows display for the TV, set monitor index (0=primary).
+  # Edge/Chrome don't always honor this; see docs/BOARD-STATION.md for display tips.
+  tv_display: 1
+
+health:
+  enabled: true
+  fps_min: 5.0
+  unhealthy_seconds: 15.0
+  restart_cooldown_seconds: 60.0
+  between_games_recal: true

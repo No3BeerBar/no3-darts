@@ -1,0 +1,46 @@
+# Board station config — Board 1 (production)
+# Double-click start-board.bat to bring up the stack.
+
+# Autodarts Board Manager (detector)
+autodarts:
+  host: "127.0.0.1"
+  port: 3180
+  # TODO: set this on the mini-PC before first run. Examples:
+  #   "C:\\Program Files\\Autodarts\\Autodarts.exe"
+  #   "C:\\Users\\Public\\Desktop\\Autodarts.lnk"
+  exe_path: ""
+  process_names:
+    - "Autodarts"
+    - "autodarts"
+    - "AutodartsDesktop"
+  start_if_missing: true
+  ready_timeout_s: 45
+
+# No3 scoring UI (Railway production)
+no3:
+  url: "https://no3-darts-production.up.railway.app"
+  room_id: "Board 1"
+  camera_api_key: ""
+
+# Companion bridge (sibling folder — do not move without updating this)
+bridge:
+  enabled: true
+  companion_dir: "../autodarts-companion"
+
+# Kiosk / displays
+kiosk:
+  enabled: true
+  browser: "msedge"
+  open_tv: true
+  tv_url: "{no3.url}/tv"
+  open_play: false
+  play_url: "{no3.url}/play"
+  extra_args: "--autoplay-policy=no-user-gesture-required"
+  tv_display: 1
+
+health:
+  enabled: true
+  fps_min: 5.0
+  unhealthy_seconds: 15.0
+  restart_cooldown_seconds: 60.0
+  between_games_recal: true

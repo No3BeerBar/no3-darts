@@ -1,0 +1,27 @@
+{
+  "status": "Throw detected",
+  "numThrows": 3,
+  "throws": [
+    {
+      "segment": {
+        "name": "25",
+        "number": 25,
+        "multiplier": 1
+      }
+    },
+    {
+      "segment": {
+        "name": "Bull",
+        "number": 25,
+        "multiplier": 2
+      }
+    },
+    {
+      "segment": {
+        "name": "Miss",
+        "number": 0,
+        "multiplier": 0
+      }
+    }
+  ]
+}

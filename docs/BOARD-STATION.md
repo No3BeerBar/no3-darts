@@ -2,6 +2,8 @@
 
 Bar ops guide for **No. 3 Craft Beer Bar**: Autodarts detects throws; No3 scores and shows the match.
 
+**Phone / mini-PC download:** open [`/board-setup`](https://no3-darts-production.up.railway.app/board-setup) on the live app for the Board 1 zip kit (unzip → edit `exe_path` → `start-board.bat`).
+
 > DIY OpenCV under `detection/` is experimental — **not** the bar path. Prefer Autodarts Board Manager + companion bridge.
 
 ## Wiring

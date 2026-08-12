@@ -5,7 +5,9 @@
   "description": "Self-hosted darts scoring for No. 3 Craft Beer Bar",
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "node scripts/build-board-station-kit.mjs",
     "build": "next build",
+    "build:board-kit": "node scripts/build-board-station-kit.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
