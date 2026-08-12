@@ -17,12 +17,15 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
 1. Start any mode on **Board 1** (guest + bot is fine).
 2. Throw until Autodarts enters **Takeout / Removing darts / Hand**.
 3. iPad shows **Removing darts - takeout** with a working **Reset** button.
-4. Camera scoring stays paused (no late dart onto the next seat).
-5. Pull darts, tap **Reset** - banner clears; next visit can start.
-6. Companion log: `takeout` / `takeout-ready` / `end-turn ... seat=` / `next visit ready`.
-7. **Takeout finished** must not leave Pull-darts stuck forever.
-8. Sandbox / no Autodarts / AD offline: no Pull-darts banner and no looping
-   "Ready for next visit" toast. Manual board taps still score.
+4. **TV (`/tv`)** shows a big yellow **Removing darts** banner telling patrons
+   to pull darts and tap **Reset** on the scoring tablet — impossible to miss
+   from across the bar. Banner clears when takeout clears.
+5. Camera scoring stays paused (no late dart onto the next seat).
+6. Pull darts, tap **Reset** - iPad + TV banners clear; next visit can start.
+7. Companion log: `takeout` / `takeout-ready` / `end-turn ... seat=` / `next visit ready`.
+8. **Takeout finished** must not leave Pull-darts stuck forever.
+9. Sandbox / no Autodarts / AD offline: no Pull-darts banner on iPad **or TV**
+   and no looping "Ready for next visit" toast. Manual board taps still score.
 
 ## 2. Dart 3 never jumps seats - 90s
 
