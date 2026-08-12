@@ -70,7 +70,8 @@ describe("isLiveTakeoutSignal", () => {
     expect(isCameraBridgeOffline(null)).toBe(true);
   });
 
-  it("takeout health true + connected → live banner signal", () => {
+  it("takeout && connected!==false && fresh ts → live", () => {
+    expect(CAMERA_HEALTH_FRESH_MS).toBe(30_000);
     expect(
       isLiveTakeoutSignal({
         roomId: "Board 1",
@@ -83,9 +84,20 @@ describe("isLiveTakeoutSignal", () => {
         ts: Date.now(),
       })
     ).toBe(true);
+    // connected undefined still allowed (not === false)
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        takeout: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
   });
 
-  it("AD offline / disconnected → not live takeout", () => {
+  it("AD offline / connected===false → not live takeout", () => {
     expect(
       isLiveTakeoutSignal({
         roomId: "Board 1",
@@ -98,9 +110,20 @@ describe("isLiveTakeoutSignal", () => {
         ts: Date.now(),
       })
     ).toBe(false);
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        takeout: true,
+        connected: false,
+        ts: Date.now(),
+      })
+    ).toBe(false);
   });
 
-  it("stale leftover takeout → not live", () => {
+  it("stale leftover takeout (>30s) → not live", () => {
     expect(
       isLiveTakeoutSignal({
         roomId: "Board 1",
@@ -179,7 +202,7 @@ describe("sandbox takeout hold / banner", () => {
         join(ROOT, "src/components/scoring/TakeoutBanner.tsx"),
         "utf8"
       );
-      expect(banner).toMatch(/: ["']Reset["']/);
+      expect(banner).toMatch(/: ["']Reset takeout["']/);
       expect(banner).toMatch(/Removing darts/);
       const hook = readFileSync(
         join(ROOT, "src/hooks/useCameraHealth.ts"),
@@ -266,8 +289,8 @@ describe("sandbox takeout hold / banner", () => {
     }
   });
 
-  it("manual board scoring (upsert) is not blocked by camera takeout hold", () => {
-    const state = match("Sandbox Manual");
+  it("manual board taps NEVER blocked by takeout hold (camera only)", () => {
+    let state = match("Sandbox Manual");
     upsertServerMatch(state);
     clearTakeoutHold("Sandbox Manual");
     try {
@@ -285,23 +308,26 @@ describe("sandbox takeout hold / banner", () => {
         getCameraGateSnapshot("Sandbox Manual").holdUntilTakeoutClear
       ).toBe(true);
 
-      // Tablet path: local applyDart + upsert — must succeed under hold
-      const dart = createDart("single", 20, { source: "manual" });
-      const next = applyDart(state, dart).state;
-      expect(next.currentTurnDarts).toHaveLength(1);
-      upsertServerMatch(next);
-      const stored = applyCameraDart; // camera still blocked
-      void stored;
-      const cam = applyCameraDart({
+      // Camera new-visit blocked
+      const camBlocked = applyCameraDart({
         kind: "single",
-        number: 5,
+        number: 20,
         roomId: "Sandbox Manual",
         expectedPlayerIndex: 0,
       });
-      // Camera appends onto open visit are allowed; new empty visit is held.
-      // We opened a visit via upsert with 1 dart — camera may append.
-      // Re-assert hold still only gates camera *new visit* / empty seat:
-      expect(getCameraGateSnapshot("Sandbox Manual").openVisitSeat).toBe(0);
+      expect(camBlocked.ok).toBe(false);
+      if (!camBlocked.ok) {
+        expect(camBlocked.error).toMatch(/Takeout (active|hold)/i);
+      }
+
+      // Tablet path: local applyDart + upsert — must succeed under hold
+      for (const n of [20, 5, 1] as const) {
+        const dart = createDart("single", n, { source: "manual" });
+        state = applyDart(state, dart).state;
+        upsertServerMatch(state);
+      }
+      expect(state.currentPlayerIndex).toBe(1);
+      expect(state.currentTurnDarts).toHaveLength(0);
 
       // ScoringScreen must not disable board on takeoutActive
       const screen = readFileSync(
@@ -311,7 +337,7 @@ describe("sandbox takeout hold / banner", () => {
       expect(screen).toMatch(/interactive=\{!botThrowing\}/);
       expect(screen).not.toMatch(/interactive=\{!botThrowing && !takeout/);
       expect(screen).not.toMatch(/interactive=\{!takeout/);
-      expect(cam.ok || !cam.ok).toBe(true); // exercised camera path
+      expect(screen).toMatch(/source:\s*["']manual["']/);
     } finally {
       removeServerMatch(state.id);
     }
@@ -319,13 +345,19 @@ describe("sandbox takeout hold / banner", () => {
 });
 
 describe("bridge AD-offline clears takeout (source)", () => {
-  it("companion posts takeout:false when AD is unreachable", () => {
+  it("companion posts takeout:false + connected:false; still handles Ready ack", () => {
     const bridge = readFileSync(
       join(ROOT, "tools/autodarts-companion/companion/bridge.py"),
       "utf8"
     );
-    expect(bridge).toMatch(/AD unreachable: never leave sticky takeout/);
-    expect(bridge).toContain('post_health({**hp, "takeout": False}, force=True)');
+    expect(bridge).toMatch(/AD unreachable: ALWAYS clear sticky takeout/);
+    expect(bridge).toContain('"takeout": False');
+    expect(bridge).toContain('"connected": False');
+    expect(bridge).toContain('handle_takeout_ready_ack(prev_status or "", [])');
+    expect(bridge).toContain("ad_takeout: bool = False");
+    expect(bridge).toContain(
+      "if active and (not ad_ok or not ad_takeout):"
+    );
   });
 });
 

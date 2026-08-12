@@ -22,9 +22,9 @@ export type CameraHealth = {
 
 /**
  * Health older than this is not a live Autodarts / bridge takeout signal.
- * Bridge takeout heartbeats are ~8s; ok heartbeats ~20s while degraded.
+ * Spec: 15–30s TTL. Bridge takeout heartbeats are ~8s.
  */
-export const CAMERA_HEALTH_FRESH_MS = 45_000;
+export const CAMERA_HEALTH_FRESH_MS = 30_000;
 
 /** True when the companion reports AD/Board Manager unreachable (or no report). */
 export function isCameraBridgeOffline(
@@ -37,20 +37,22 @@ export function isCameraBridgeOffline(
 }
 
 /**
- * Patron Pull-darts / Removing-darts UI + camera takeout gating may only arm
- * from a *live* Autodarts takeout signal. Sandbox / no bridge / AD offline /
- * stale leftover health must never sticky-loop the banner or toast.
+ * Takeout is active only when:
+ *   takeout && connected !== false && health ts fresh (≤30s)
+ * Else clients/server must clear takeout UI + holdUntilTakeoutClear.
  */
 export function isLiveTakeoutSignal(
   h: CameraHealth | null | undefined,
   now = Date.now()
 ): boolean {
   if (!h) return false;
-  if (isCameraBridgeOffline(h)) return false;
+  // Exact gate: connected===false kills takeout (undefined still allowed).
+  if (h.connected === false) return false;
+  if (h.reason === "board_manager_offline") return false;
   const active =
     Boolean(h.takeout) || h.level === "takeout" || h.reason === "takeout";
   if (!active) return false;
-  if (typeof h.ts === "number" && now - h.ts > CAMERA_HEALTH_FRESH_MS) {
+  if (typeof h.ts !== "number" || now - h.ts > CAMERA_HEALTH_FRESH_MS) {
     return false;
   }
   return true;
@@ -64,4 +66,11 @@ export function isStaleCameraHealth(
   if (!h) return true;
   if (typeof h.ts !== "number") return true;
   return now - h.ts > CAMERA_HEALTH_FRESH_MS;
+}
+
+/** Explicit connected gate used by server/client docs + tests. */
+export function isConnectedForTakeout(
+  h: CameraHealth | null | undefined
+): boolean {
+  return Boolean(h) && h!.connected !== false;
 }

@@ -59,10 +59,10 @@ afterEach(() => {
 });
 
 describe("Board1 P0: takeout recognize + Ready control", () => {
-  it("TakeoutBanner exposes Reset control (not a passive-only banner)", () => {
+  it("TakeoutBanner exposes Reset takeout control (not a passive-only banner)", () => {
     const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
     expect(banner).toMatch(/Removing darts/);
-    expect(banner).toMatch(/"Reset"/);
+    expect(banner).toMatch(/"Reset takeout"/);
     expect(banner).toMatch(/onReady/);
     expect(banner).toMatch(/stuck takeout/i);
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");

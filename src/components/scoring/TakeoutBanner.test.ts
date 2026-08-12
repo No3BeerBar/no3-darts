@@ -14,13 +14,13 @@ const SRC = readFileSync(
 );
 
 describe("TakeoutBanner", () => {
-  it("is a client component with Reset control while takeout is active", () => {
+  it("is a client component with Reset takeout control while takeout is active", () => {
     expect(SRC).toContain('"use client"');
     expect(SRC).toMatch(/export function TakeoutBanner/);
     expect(SRC).toMatch(/if \(!active\) return null/);
     expect(SRC).toMatch(/onReady/);
     expect(SRC).toMatch(/busy \? ["']Resetting/);
-    expect(SRC).toMatch(/: ["']Reset["']/);
+    expect(SRC).toMatch(/: ["']Reset takeout["']/);
     expect(SRC).toMatch(/disabled=\{busy\}/);
     expect(SRC).toMatch(/onClick=\{onReady\}/);
   });
@@ -30,6 +30,6 @@ describe("TakeoutBanner", () => {
     expect(SRC).toMatch(/takeout/i);
     expect(SRC).toMatch(/Camera scoring paused/);
     expect(SRC).toMatch(/Pull your darts/);
-    expect(SRC).toMatch(/tap Reset/);
+    expect(SRC).toMatch(/tap Reset takeout/);
   });
 });

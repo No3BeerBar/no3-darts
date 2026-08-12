@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Patron-visible Autodarts takeout / remove-darts state.
- * Bridge pauses camera scoring while this is active; Reset clears so the
- * next visit can start clean (bartender-proof — not a passive banner only).
+ * Bridge pauses camera scoring while this is active; Reset takeout clears so
+ * the next visit can start clean (bartender-proof — not a passive banner only).
  *
  * Only mount when there is a *live* Autodarts takeout signal (see
  * isLiveTakeoutSignal). Sandbox / no bridge must never show this.
@@ -34,8 +34,8 @@ export function TakeoutBanner({
             Removing darts - takeout
           </p>
           <p className="text-xs text-sky-200/90">
-            Camera scoring paused. Pull your darts, then tap Reset so the next
-            visit can start. Reset clears a stuck takeout from /play.
+            Camera scoring paused. Pull your darts, then tap Reset takeout so
+            the next visit can start. Clears a stuck takeout from /play.
           </p>
         </div>
         <button
@@ -47,7 +47,7 @@ export function TakeoutBanner({
             "hover:bg-sky-300 disabled:opacity-60"
           )}
         >
-          {busy ? "Resetting…" : "Reset"}
+          {busy ? "Resetting…" : "Reset takeout"}
         </button>
       </div>
     </div>
