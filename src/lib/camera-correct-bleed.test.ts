@@ -123,7 +123,7 @@ describe("camera correct bleed guard", () => {
   it("end-turn after only 2 darts advances seat so a later dart lands on P2", () => {
     // Documents No3 server behavior the Autodarts bridge must avoid:
     // never POST /end-turn before dart 3 of a full visit is mirrored.
-    let state = createGame({
+    const state = createGame({
       modeConfig: {
         mode: "x01",
         config: { startScore: 501, doubleIn: false, doubleOut: false },
