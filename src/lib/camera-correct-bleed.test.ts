@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDart, createDart, createGame } from "@/engine";
+import { applyDart, createDart, createGame, type GameState } from "@/engine";
 import {
   applyCameraCorrect,
   applyCameraDart,
@@ -11,21 +11,31 @@ import {
 const alice = { id: "p1", name: "Alice", isGuest: true };
 const bob = { id: "p2", name: "Bob", isGuest: true };
 
+function x01Board(roomId: string) {
+  return createGame({
+    modeConfig: {
+      mode: "x01",
+      config: { startScore: 501, doubleIn: false, doubleOut: false },
+    },
+    players: [alice, bob],
+    matchFormat: { legsToWin: 1, setsToWin: 1 },
+    roomId,
+  });
+}
+
+function withDarts(state: GameState, ...darts: ReturnType<typeof createDart>[]) {
+  return darts.reduce((s, d) => applyDart(s, d).state, state);
+}
+
 describe("camera correct bleed guard", () => {
   it("refuses non-empty correct onto the next thrower's empty visit", () => {
-    let state = createGame({
-      modeConfig: {
-        mode: "x01",
-        config: { startScore: 501, doubleIn: false, doubleOut: false },
-      },
-      players: [alice, bob],
-      matchFormat: { legsToWin: 1, setsToWin: 1 },
-      roomId: "Board 1",
-    });
     // Full visit auto-ends -> Bob is current with empty open visit
-    state = applyDart(state, createDart("single", 20)).state;
-    state = applyDart(state, createDart("single", 5)).state;
-    state = applyDart(state, createDart("single", 1)).state;
+    const state = withDarts(
+      x01Board("Board 1"),
+      createDart("single", 20),
+      createDart("single", 5),
+      createDart("single", 1)
+    );
     expect(state.currentPlayerIndex).toBe(1);
     expect(state.currentTurnDarts).toHaveLength(0);
 
@@ -50,16 +60,7 @@ describe("camera correct bleed guard", () => {
   });
 
   it("still accepts mid-visit correct on the open thrower", () => {
-    let state = createGame({
-      modeConfig: {
-        mode: "x01",
-        config: { startScore: 501, doubleIn: false, doubleOut: false },
-      },
-      players: [alice, bob],
-      matchFormat: { legsToWin: 1, setsToWin: 1 },
-      roomId: "Board 1",
-    });
-    state = applyDart(state, createDart("triple", 20)).state;
+    const state = withDarts(x01Board("Board 1"), createDart("triple", 20));
     upsertServerMatch(state);
     try {
       const result = applyCameraCorrect({
