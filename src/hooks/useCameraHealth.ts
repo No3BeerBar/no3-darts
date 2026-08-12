@@ -168,11 +168,18 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: room }),
       });
-      // Optimistic: keep banner until bridge clears takeout via health SSE
+      // Keep banner until bridge posts takeout_cleared / ok via health SSE.
+      // Bridge ends incomplete visit, probes AD reset, then unlocks when clear.
+      setNotice({
+        level: "takeout",
+        message: "Resetting takeout…",
+        takeout: true,
+        ts: Date.now(),
+      });
     } catch {
       /* offline */
     } finally {
-      window.setTimeout(() => setTakeoutBusy(false), 1200);
+      window.setTimeout(() => setTakeoutBusy(false), 1600);
     }
   }, [roomId]);
 
