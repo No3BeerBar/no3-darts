@@ -4,6 +4,7 @@ import {
   applyCameraCorrect,
   applyCameraDart,
   applyCameraEndTurn,
+  applyCameraUndo,
   clearTakeoutHold,
   getCameraGateSnapshot,
   requestTakeoutReady,
@@ -395,6 +396,71 @@ describe("camera correct bleed guard", () => {
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold("Board HealthClear");
+    }
+  });
+
+  it("undo after 3-dart visit clears takeout hold so camera can score again", () => {
+    const state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board UndoHold",
+    });
+    upsertServerMatch(state);
+    clearTakeoutHold("Board UndoHold");
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: "Board UndoHold",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board UndoHold",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 1,
+          roomId: "Board UndoHold",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(getCameraGateSnapshot("Board UndoHold").holdUntilTakeoutClear).toBe(
+        true
+      );
+
+      expect(applyCameraUndo({ roomId: "Board UndoHold" }).ok).toBe(true);
+      expect(applyCameraUndo({ roomId: "Board UndoHold" }).ok).toBe(true);
+      expect(applyCameraUndo({ roomId: "Board UndoHold" }).ok).toBe(true);
+      expect(getCameraGateSnapshot("Board UndoHold").holdUntilTakeoutClear).toBe(
+        false
+      );
+
+      const again = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: "Board UndoHold",
+        expectedPlayerIndex: 0,
+      });
+      expect(again.ok).toBe(true);
+      if (again.ok) {
+        expect(again.state.currentPlayerIndex).toBe(0);
+        expect(again.state.currentTurnDarts).toHaveLength(1);
+      }
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board UndoHold");
     }
   });
 });

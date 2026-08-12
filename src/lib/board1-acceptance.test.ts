@@ -71,6 +71,13 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(hook).toMatch(/acknowledgeTakeout/);
   });
 
+  it("ResumeAuthGate pulls /api/matches/active before re-enabling scoring", () => {
+    const gate = readSrc("src/components/scoring/ResumeAuthGate.tsx");
+    expect(gate).toMatch(/\/api\/matches\/active/);
+    expect(gate).toMatch(/localOnly:\s*true/);
+    expect(gate).toMatch(/markSeatVerified/);
+  });
+
   it("takeout health + hold pause scoring on an empty next-seat visit", () => {
     const state = board1Match("Board1 Takeout Pause");
     upsertServerMatch(state);

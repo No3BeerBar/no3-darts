@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ConfirmDialog } from "@/components/play/ConfirmDialog";
-import type { PlayerRef } from "@/engine/types";
+import type { GameState, PlayerRef } from "@/engine/types";
 import { playHref } from "@/lib/play-kiosk";
 import { markSeatVerified, seatsNeedingReauth } from "@/lib/seat-auth";
 import { useGameStore } from "@/store/game-store";
@@ -138,9 +138,30 @@ export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAut
             useSessionStore.getState().player?.id ?? player.id;
           markSeatVerified(matchId, player.id, liveSessionId);
           setError(null);
-          setTick((t) => t + 1);
-          onVerifiedChange();
           setAuthOpen(false);
+          // Pull server match before parent enables camera/scoring — avoids
+          // stale localStorage wiping newer Autodarts darts after reauth.
+          void (async () => {
+            try {
+              const room = useSettingsStore.getState().roomName || "Board 1";
+              const r = await fetch(
+                `/api/matches/active?room=${encodeURIComponent(room)}&_=${Date.now()}`,
+                { cache: "no-store" }
+              );
+              if (r.ok) {
+                const data = (await r.json()) as { match?: GameState };
+                if (data.match?.id === matchId) {
+                  useGameStore.getState().setState(data.match, {
+                    localOnly: true,
+                  });
+                }
+              }
+            } catch {
+              /* offline — keep local */
+            }
+            setTick((t) => t + 1);
+            onVerifiedChange();
+          })();
         }}
       />
     </div>

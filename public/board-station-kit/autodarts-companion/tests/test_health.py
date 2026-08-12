@@ -74,6 +74,10 @@ def test_between_games_skips_when_darts_still_in() -> None:
 
 def test_no3_match_allows_between_games_recal() -> None:
     assert no3_match_allows_between_games_recal(None) is True
+    # Null match after a recent playing sighting must fail closed (mid-game)
+    assert (
+        no3_match_allows_between_games_recal(None, recently_playing=True) is False
+    )
     assert no3_match_allows_between_games_recal({"status": "playing"}) is False
     assert no3_match_allows_between_games_recal({"status": "paused"}) is False
     assert no3_match_allows_between_games_recal({"status": "leg_won"}) is True

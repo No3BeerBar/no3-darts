@@ -103,6 +103,25 @@ describe("multi-step undo", () => {
     expect(state.playerStates[0].marks?.[20] ?? 0).toBe(0);
   });
 
+  it("full cricket visit undo does not double marks", () => {
+    let state = cricketGame();
+    state = applyDart(state, createDart("triple", 20)).state;
+    state = applyDart(state, createDart("single", 19)).state;
+    state = applyDart(state, createDart("single", 18)).state; // auto end
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.playerStates[0].marks?.[20]).toBe(3);
+    expect(state.playerStates[0].marks?.[19]).toBe(1);
+    expect(state.playerStates[0].marks?.[18]).toBe(1);
+    expect(state.turns.at(-1)?.baselineStates).toBeTruthy();
+
+    state = undo(state).state; // reopen with 2 darts (drop last)
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(state.currentTurnDarts).toHaveLength(2);
+    expect(state.playerStates[0].marks?.[20]).toBe(3);
+    expect(state.playerStates[0].marks?.[19]).toBe(1);
+    expect(state.playerStates[0].marks?.[18] ?? 0).toBe(0);
+  });
+
   it("returns Nothing to undo when idle", () => {
     const state = x01Game();
     const result = undo(state);

@@ -46,8 +46,10 @@ export function upsertServerMatch(state: GameState): void {
     const nextN = countProgress(state);
     if (existN > nextN) return;
   }
+  const prev = existing;
   matches.set(state.id, state);
   if (state.roomId) byRoom.set(state.roomId, state.id);
+  realignCameraGateFromMatch(prev, state);
   emit({ type: "match_update", data: state });
 }
 
@@ -135,7 +137,7 @@ function normRoom(roomId: string): string {
 type RoomCameraGate = {
   /** Seat locked for the open Autodarts visit (null when no open visit). */
   openVisitSeat: number | null;
-  /** After turn end — refuse next-seat scoring until takeout clear / Ready. */
+  /** After turn end - refuse next-seat scoring until takeout clear / Ready. */
   holdUntilTakeoutClear: boolean;
 };
 
@@ -182,7 +184,7 @@ function seatLockRejected(
     state.currentTurnDarts.length === 0 &&
     !opts?.allowEmptyVisit
   ) {
-    return "Takeout hold — pull darts before next visit scores";
+    return "Takeout hold - pull darts before next visit scores";
   }
 
   if (visitOpen && state.currentTurnDarts.length > 0) {
@@ -193,7 +195,7 @@ function seatLockRejected(
     const want = Math.trunc(expectedPlayerIndex);
     const locked = gate.openVisitSeat ?? state.currentPlayerIndex;
     if (want !== state.currentPlayerIndex || want !== locked) {
-      return `Seat mismatch — expected player ${want}, current is ${state.currentPlayerIndex}`;
+      return `Seat mismatch - expected player ${want}, current is ${state.currentPlayerIndex}`;
     }
     return null;
   }
@@ -203,7 +205,7 @@ function seatLockRejected(
   }
   const want = Math.trunc(expectedPlayerIndex);
   if (want !== state.currentPlayerIndex) {
-    return `Seat mismatch — expected player ${want}, current is ${state.currentPlayerIndex}`;
+    return `Seat mismatch - expected player ${want}, current is ${state.currentPlayerIndex}`;
   }
   return null;
 }
@@ -220,6 +222,28 @@ function markVisitClosedForTakeout(state: GameState): void {
   const gate = getCameraGate(room);
   gate.openVisitSeat = null;
   gate.holdUntilTakeoutClear = true;
+}
+
+/**
+ * Keep camera visit gate aligned after tablet Upsert / Undo.
+ * Undo reopens a visit or walks progress backward - clear stuck takeout hold.
+ */
+function realignCameraGateFromMatch(
+  prev: GameState | undefined,
+  next: GameState
+): void {
+  if (!next.roomId) return;
+  const gate = getCameraGate(next.roomId);
+  if (next.currentTurnDarts.length > 0) {
+    gate.openVisitSeat = next.currentPlayerIndex;
+    gate.holdUntilTakeoutClear = false;
+    return;
+  }
+  if (prev && countProgress(next) < countProgress(prev)) {
+    // Progress went backward (Undo) with empty open visit - allow rescoring
+    gate.holdUntilTakeoutClear = false;
+    gate.openVisitSeat = null;
+  }
 }
 
 /**
@@ -246,9 +270,9 @@ export function applyCameraDart(
 
   if (!state) return { ok: false, error: "No active match found" };
   if (state.status !== "playing") return { ok: false, error: `Match status is ${state.status}` };
-  // Bot seats generate their own darts on the tablet — ignore Autodarts/camera
+  // Bot seats generate their own darts on the tablet - ignore Autodarts/camera
   if (currentThrowerIsBot(state)) {
-    return { ok: false, error: "Bot thrower — camera scoring paused" };
+    return { ok: false, error: "Bot thrower - camera scoring paused" };
   }
   const seatErr = seatLockRejected(state, event.expectedPlayerIndex);
   if (seatErr) return { ok: false, error: seatErr };
@@ -292,7 +316,7 @@ export function applyCameraDart(
   return { ok: true, state: result.state, callout: result.callout, turnEnded };
 }
 
-/** Hands pulled darts / takeout — advance to next thrower if visit still open. */
+/** Hands pulled darts / takeout - advance to next thrower if visit still open. */
 export function applyCameraEndTurn(opts: {
   matchId?: string;
   roomId?: string;
@@ -304,10 +328,10 @@ export function applyCameraEndTurn(opts: {
     return { ok: false, error: `Match status is ${state.status}` };
   }
   if (currentThrowerIsBot(state)) {
-    return { ok: false, error: "Bot thrower — camera scoring paused" };
+    return { ok: false, error: "Bot thrower - camera scoring paused" };
   }
 
-  // Visit already empty (3rd dart auto-ended) — re-broadcast; keep takeout hold
+  // Visit already empty (3rd dart auto-ended) - re-broadcast; keep takeout hold
   if (state.currentTurnDarts.length === 0) {
     markVisitClosedForTakeout(state);
     emit({ type: "match_update", data: state });
@@ -360,7 +384,7 @@ export function applyCameraCorrect(opts: {
     return { ok: false, error: `Match status is ${state.status}` };
   }
   if (state.status === "playing" && currentThrowerIsBot(state)) {
-    return { ok: false, error: "Bot thrower — camera scoring paused" };
+    return { ok: false, error: "Bot thrower - camera scoring paused" };
   }
   if (state.status === "playing") {
     const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
@@ -387,7 +411,7 @@ export function applyCameraCorrect(opts: {
   ) {
     return {
       ok: false,
-      error: "No open visit — refusing correct onto next thrower",
+      error: "No open visit - refusing correct onto next thrower",
     };
   }
 
@@ -459,6 +483,12 @@ export function applyCameraUndo(opts: {
 
   const result = undo(state);
   matches.set(result.state.id, result.state);
+  // Undo reopens / shrinks the visit - clear takeout hold so camera can score
+  if (result.state.currentTurnDarts.length > 0) {
+    markVisitOpen(result.state);
+  } else {
+    clearTakeoutHold(normRoom(result.state.roomId || "Board 1"));
+  }
   emit({
     type: "dart_detected",
     data: {
@@ -483,7 +513,7 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   cameraHealthByRoom.set(room, next);
   // Also index case-insensitive lookup key
   cameraHealthByRoom.set(room.toLowerCase(), next);
-  // Bridge cleared takeout / Ready — release next-seat scoring hold
+  // Bridge cleared takeout / Ready - release next-seat scoring hold
   // (Do not clear on ordinary "Cameras healthy" heartbeats.)
   if (
     !next.takeout &&
@@ -497,7 +527,7 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   return next;
 }
 
-/** Patron / staff ack: "darts pulled — ready for next visit" (bridge consumes). */
+/** Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes). */
 const takeoutReadyByRoom = new Map<string, number>();
 
 export function requestTakeoutReady(roomId: string): { roomId: string; ts: number } {
