@@ -186,8 +186,10 @@ logs_dir: "./logs"
 
 ## Tests
 
+Dev-only (not installed on the bar mini-PC):
+
 ```powershell
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
