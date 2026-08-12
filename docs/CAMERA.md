@@ -45,6 +45,8 @@ type DartDetectedEvent = {
   radius?: number;     // 0–1 from center
   confidence?: number; // 0–1
   timestamp?: number;
+  /** When set, server refuses (409) if currentPlayerIndex differs. */
+  expectedPlayerIndex?: number;
 };
 ```
 

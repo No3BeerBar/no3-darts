@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     matchId?: string;
     darts?: CameraCorrectDart[];
     reason?: string;
+    expectedPlayerIndex?: number;
   };
   try {
     body = await request.json();
@@ -73,10 +74,15 @@ export async function POST(request: Request) {
     roomId: body.roomId,
     darts,
     reason: body.reason,
+    expectedPlayerIndex:
+      typeof body.expectedPlayerIndex === "number"
+        ? body.expectedPlayerIndex
+        : undefined,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 404 });
+    const status = /seat mismatch/i.test(result.error) ? 409 : 404;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({

@@ -299,4 +299,10 @@ export interface DartDetectedEvent {
   radius?: number;
   confidence?: number;
   timestamp?: number;
+  /**
+   * When set, server refuses the post if currentPlayerIndex differs.
+   * Companion bridge locks the seat for an open Autodarts visit so dart 3
+   * cannot land on the next player after a premature end-turn/unlock.
+   */
+  expectedPlayerIndex?: number;
 }

@@ -7,10 +7,14 @@ from pathlib import Path
 
 from companion.client import diff_visit, extract_throws, VISIT_APPEND
 from companion.visit_gate import (
+    INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
+    is_ad_visit_continuation,
     is_takeout_state,
     scoring_frozen,
+    seat_matches_lock,
     should_clear_stale_takeout,
     should_end_turn_on_clear,
+    should_end_turn_on_empty_takeout_finished,
     should_end_turn_on_takeout,
     should_end_turn_leaving_takeout_empty,
     should_unlock_next_visit,
@@ -88,7 +92,7 @@ def test_clear_does_not_end_turn_mid_throw() -> None:
         )
         is True
     )
-    # Early pull confirmed via takeout finished
+    # P0: takeout_finished alone must NOT end incomplete visits (late dart 3)
     assert (
         should_end_turn_on_clear(
             takeout=True,
@@ -97,11 +101,34 @@ def test_clear_does_not_end_turn_mid_throw() -> None:
             prev_throw_count=2,
             takeout_finished=True,
         )
-        is True
+        is False
     )
     assert (
         should_end_turn_on_clear(
             takeout=False, in_takeout=False, visit_closed=True
+        )
+        is True
+    )
+
+
+def test_takeout_finished_empty_needs_sustained_polls() -> None:
+    assert (
+        should_end_turn_on_empty_takeout_finished(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            status="Takeout finished",
+            empty_polls=1,
+        )
+        is False
+    )
+    assert (
+        should_end_turn_on_empty_takeout_finished(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            status="Takeout finished",
+            empty_polls=INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
         )
         is True
     )
@@ -147,7 +174,7 @@ def test_leaving_takeout_empty_needs_consecutive_polls() -> None:
             throws_empty=True,
             in_takeout=True,
             takeout=False,
-            empty_polls=1,
+            empty_polls=2,
         )
         is False
     )
@@ -157,10 +184,19 @@ def test_leaving_takeout_empty_needs_consecutive_polls() -> None:
             throws_empty=True,
             in_takeout=True,
             takeout=False,
-            empty_polls=2,
+            empty_polls=INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
         )
         is True
     )
+
+
+def test_seat_lock_and_continuation_helpers() -> None:
+    assert seat_matches_lock(locked_seat=0, current_seat=1) is False
+    assert seat_matches_lock(locked_seat=1, current_seat=1) is True
+    closed = [_seg("T20", 20, 3), _seg("5", 5, 1)]
+    late = closed + [_seg("D16", 16, 2)]
+    assert is_ad_visit_continuation(closed, late) is True
+    assert is_ad_visit_continuation(closed, [_seg("T19", 19, 3)]) is False
 
 
 def test_unlock_requires_takeout_handshake_or_scored_close() -> None:

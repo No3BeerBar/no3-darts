@@ -13,7 +13,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { matchId?: string; roomId?: string } = {};
+  let body: {
+    matchId?: string;
+    roomId?: string;
+    expectedPlayerIndex?: number;
+  } = {};
   try {
     body = await request.json();
   } catch {
@@ -23,10 +27,15 @@ export async function POST(request: Request) {
   const result = applyCameraEndTurn({
     matchId: body.matchId,
     roomId: body.roomId,
+    expectedPlayerIndex:
+      typeof body.expectedPlayerIndex === "number"
+        ? body.expectedPlayerIndex
+        : undefined,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 404 });
+    const status = /seat mismatch/i.test(result.error) ? 409 : 404;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({

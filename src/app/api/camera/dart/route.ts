@@ -29,6 +29,10 @@ export async function POST(request: Request) {
   }
 
   const number = typeof body.number === "number" ? body.number : 0;
+  const expectedPlayerIndex =
+    typeof body.expectedPlayerIndex === "number"
+      ? body.expectedPlayerIndex
+      : undefined;
   const result = applyCameraDart({
     kind,
     number,
@@ -38,10 +42,12 @@ export async function POST(request: Request) {
     radius: body.radius,
     confidence: body.confidence,
     timestamp: body.timestamp ?? Date.now(),
+    expectedPlayerIndex,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 404 });
+    const status = /seat mismatch/i.test(result.error) ? 409 : 404;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({
