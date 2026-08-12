@@ -38,7 +38,12 @@ from .health import (
     restart_board_manager,
     wait_for_board_manager,
 )
-from .mapping import dart_to_no3, format_segment_label, is_takeout_finished_status
+from .mapping import (
+    dart_to_no3,
+    format_segment_label,
+    is_takeout_finished_status,
+    is_takeout_status,
+)
 from .visit_gate import (
     is_ad_visit_continuation,
     is_takeout_state,
@@ -478,8 +483,23 @@ def run_bridge(
                     f"[yellow]health[/yellow] {level}: {body['message']}"
                 )
 
-    def post_takeout_health(status: str, *, active: bool, message: str) -> None:
+    def post_takeout_health(
+        status: str,
+        *,
+        active: bool,
+        message: str,
+        ad_takeout: bool = False,
+    ) -> None:
+        """
+        Post takeout / clear health to No3.
+
+        Never arm takeout:true without a fresh AD takeout read this poll
+        (ad_takeout=True) while Board Manager is reachable. Clears
+        (active=False) are always allowed so Ready/Reset can unblock.
+        """
         nonlocal last_takeout_post_at
+        if active and (not ad_ok or not ad_takeout):
+            return
         now = time.time()
         # Heartbeat takeout banner while active; always post on edge transitions
         if active and now - last_takeout_post_at < 8.0 and last_health_level == "takeout":
@@ -487,14 +507,15 @@ def run_bridge(
         last_takeout_post_at = now
         post_health(
             {
-                "ok": True,
+                "ok": True if ad_ok else False,
                 "level": "takeout" if active else "ok",
                 "message": message,
                 "reason": "takeout" if active else "takeout_cleared",
                 "fps": [],
                 "min_fps": None,
                 "cameras": [],
-                "connected": True,
+                # Never claim connected while AD is unreachable
+                "connected": bool(ad_ok),
                 "status": status,
                 "unhealthy_for_s": 0,
                 "restarting": False,
@@ -798,11 +819,14 @@ def run_bridge(
                     by_scoring=True,
                     throws_snapshot=full_throws,
                 )
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
+                # Only arm banner when this AD poll shows takeout
+                if is_takeout_status(status or ""):
+                    post_takeout_health(
+                        status,
+                        active=True,
+                        message="Pull darts - takeout",
+                        ad_takeout=True,
+                    )
                 break
 
     try:
@@ -818,11 +842,16 @@ def run_bridge(
             if hcfg.enabled:
                 hp = tracker.evaluate(state, ad_ok)
                 if not ad_ok:
-                    # AD unreachable: never leave sticky takeout:true on No3.
-                    # Sandbox / offline must not loop Pull-darts or Ready toasts.
+                    # AD unreachable: ALWAYS clear sticky takeout on No3.
+                    # Do not let banner_on block offline health. Still consume
+                    # patron Reset/Ready ack so /play is never wedged offline.
                     in_takeout = False
-                    post_health({**hp, "takeout": False}, force=True)
+                    post_health(
+                        {**hp, "takeout": False, "connected": False},
+                        force=True,
+                    )
                     maybe_restart(hp)
+                    handle_takeout_ready_ack(prev_status or "", [])
                     time.sleep(max(1.0, poll_ms / 1000.0))
                     continue
                 banner_on = in_takeout or visit_closed
@@ -888,11 +917,13 @@ def run_bridge(
                     throws_snapshot=list(throws),
                 )
                 saw_takeout_after_close = True
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
+                if takeout_now:
+                    post_takeout_health(
+                        status,
+                        active=True,
+                        message="Pull darts - takeout",
+                        ad_takeout=True,
+                    )
 
             if kind == VISIT_APPEND:
                 if visit_closed:
@@ -977,6 +1008,7 @@ def run_bridge(
                             status,
                             active=True,
                             message="Pull darts - takeout",
+                            ad_takeout=True,
                         )
                     elif should_end_turn_on_takeout(
                         visit_closed=visit_closed,
@@ -994,6 +1026,7 @@ def run_bridge(
                             status,
                             active=True,
                             message="Pull darts - takeout",
+                            ad_takeout=True,
                         )
                     else:
                         console.print(
@@ -1005,6 +1038,7 @@ def run_bridge(
                             status,
                             active=True,
                             message="Pull darts - takeout",
+                            ad_takeout=True,
                         )
             elif takeout_now and in_takeout:
                 if patron_force_ready:
@@ -1031,6 +1065,7 @@ def run_bridge(
                         status,
                         active=True,
                         message="Pull darts - takeout",
+                        ad_takeout=True,
                     )
             elif should_end_turn_leaving_takeout_empty(
                 visit_closed=visit_closed,
@@ -1067,14 +1102,10 @@ def run_bridge(
                         message="Ready for next visit",
                     )
             elif visit_closed and not takeout_now and throws:
-                # Board left active takeout but darts still listed - keep pause
-                # (unless patron Ready already cleared the handshake)
-                if not patron_force_ready:
-                    post_takeout_health(
-                        status,
-                        active=True,
-                        message="Pull darts - takeout",
-                    )
+                # Board left active takeout but darts still listed - keep local
+                # freeze (visit_closed). Do NOT post takeout:true without a
+                # fresh AD takeout read (would sticky-loop sandbox/UI).
+                pass
 
             unlock_if_ready(status, throws, takeout=takeout_now)
 

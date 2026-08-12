@@ -16,7 +16,7 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
 
 1. Start any mode on **Board 1** (guest + bot is fine).
 2. Throw until Autodarts enters **Takeout / Removing darts / Hand**.
-3. iPad shows **Removing darts - takeout** with a working **Reset** button.
+3. iPad shows **Removing darts - takeout** with a working **Reset takeout** button.
 4. **TV (`/tv`)** shows a big yellow **Removing darts** banner telling patrons
    to pull darts and tap **Reset** on the scoring tablet — impossible to miss
    from across the bar. Banner clears when takeout clears.

@@ -61,6 +61,13 @@ def test_ad_offline_clears_sticky_takeout_health() -> None:
 
     src = Path(__file__).resolve().parents[1] / "companion" / "bridge.py"
     text = src.read_text(encoding="utf-8")
-    assert "AD unreachable: never leave sticky takeout" in text
-    assert 'post_health({**hp, "takeout": False}, force=True)' in text
+    assert "AD unreachable: ALWAYS clear sticky takeout" in text
+    assert '"connected": False' in text
+    assert 'post_health(' in text
+    assert '"takeout": False' in text
     assert "in_takeout = False" in text
+    # Ready/Reset ack must still run while AD is offline
+    assert "handle_takeout_ready_ack(prev_status or \"\", [])" in text
+    # Never arm takeout:true without a fresh AD takeout read
+    assert "ad_takeout: bool = False" in text
+    assert "if active and (not ad_ok or not ad_takeout):" in text
