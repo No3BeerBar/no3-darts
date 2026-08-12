@@ -105,12 +105,21 @@ Disable with `health.enabled: false` or `python -m companion bridge --no-health`
 
 ### Between games (calibration / reset)
 
-When the board is empty after takeout (safe window), bridge probes local HTTP reset/calibrate paths (`/api/reset`, `/api/calibrate`, …). **Not all Board Manager builds expose these.**
+Bridge probes local HTTP reset/calibrate paths (`/api/reset`, `/api/calibrate`, …) only when **both** are true:
 
-- If a probe succeeds → logged as `recal OK`
-- If none accept → **manual fallback:** open Board Manager UI → Calibration / reset between games when cams drift
+1. Autodarts board is empty at a takeout / throw boundary  
+2. No3 reports **no live playing/paused match** on that room (`GET /api/matches/active`) — i.e. between games or at `leg_won` / `match_won`
+
+Ordinary visit takeout while a match is `playing` does **not** run recal (avoids mid-game “Board reset between games” and sticky hits).
+
+- If a probe succeeds → logged as `recal OK` + green toast on `/play`  
+- If none accept → **manual fallback:** open Board Manager UI → Calibration / reset between games when cams drift  
 
 `health.between_games_recal: false` skips the probe.
+
+### Takeout / remove-darts
+
+While Autodarts status is Takeout*, the bridge **pauses** `POST /api/camera/dart` and `/correct` (end-turn still runs once). `/play` shows **Pull darts — takeout** with **Ready for next visit** (acks via `POST /api/camera/takeout-ready`; bridge may probe a board reset and resume scoring).
 
 ## Related docs
 

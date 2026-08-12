@@ -126,14 +126,20 @@ class HealthTracker:
         prev_status: str,
         *,
         visit_just_cleared: bool = False,
+        match_allows_recal: bool = False,
     ) -> bool:
         """
-        True once when the board is empty in a safe between-games window:
-        - status becomes Takeout finished (empty throws), or
-        - status returns to Throw after takeout (empty throws), or
-        - throws list just cleared while status is/was takeout.
+        True once in a *real* between-games / between-legs window.
+
+        Autodarts takeout alone is NOT enough - that fires every visit.
+        Caller must set match_allows_recal from No3 match status (no live
+        playing/paused match). Empty board + AD takeout/throw boundary still
+        required so we never probe while darts are in.
         """
         if not self.config.between_games_recal:
+            return False
+        # Fail closed: never recal mid-match without an explicit No3 gate.
+        if not match_allows_recal:
             return False
         if throws:
             return False
@@ -148,6 +154,28 @@ class HealthTracker:
             "takeout" in s or "takeout" in prev
         )
         return bool(finished or entered_throw or cleared_after_takeout)
+
+    def mark_recal(self) -> None:
+        self.last_recal_at = time.time()
+
+
+def no3_match_allows_between_games_recal(match: Optional[dict[str, Any]]) -> bool:
+    """
+    True when No3 has no mid-game scoring match for the room.
+
+    Recal is allowed when there is no match, or the match is at a leg/match
+    boundary (leg_won / match_won / finished / setup). Never while playing
+    or paused - that is mid-visit / mid-match.
+    """
+    if not match:
+        return True
+    status = str(match.get("status") or "").strip().lower()
+    if status in ("playing", "paused"):
+        return False
+    if status in ("leg_won", "match_won", "finished", "setup"):
+        return True
+    # Unknown status: fail closed
+    return False
 
     def mark_recal(self) -> None:
         self.last_recal_at = time.time()

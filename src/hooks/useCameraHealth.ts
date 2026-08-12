@@ -5,19 +5,28 @@
  * SSE `camera_health` + lightweight poll of GET /api/camera/health.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CameraHealth } from "@/lib/camera-health";
 
 export type CameraHealthNotice = {
   level: string;
   message: string;
   restarting?: boolean;
+  takeout?: boolean;
   ts: number;
 } | null;
+
+function isTakeoutHealth(h: CameraHealth): boolean {
+  return Boolean(
+    h.takeout || h.level === "takeout" || h.reason === "takeout"
+  );
+}
 
 export function useCameraHealth(roomId: string | undefined, enabled = true) {
   const [health, setHealth] = useState<CameraHealth | null>(null);
   const [notice, setNotice] = useState<CameraHealthNotice>(null);
+  const [takeout, setTakeout] = useState(false);
+  const [takeoutBusy, setTakeoutBusy] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -27,11 +36,37 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     let hideTimer: number | null = null;
 
     const showNotice = (h: CameraHealth) => {
+      if (isTakeoutHealth(h)) {
+        setTakeout(true);
+        setNotice({
+          level: "takeout",
+          message: h.message || "Pull darts — takeout",
+          takeout: true,
+          ts: h.ts,
+        });
+        if (hideTimer) window.clearTimeout(hideTimer);
+        hideTimer = null;
+        return;
+      }
+
+      setTakeout(false);
+
       if (h.level === "ok" && !h.restarting) {
-        // Briefly show recovery, then clear
+        // Briefly show recovery, then clear (skip empty "Cameras healthy" noise
+        // when clearing takeout — still show between-games reset).
+        const msg = h.message || "Cameras healthy";
+        const show =
+          h.reason === "between_games_recal" ||
+          h.reason === "takeout_cleared" ||
+          msg.toLowerCase().includes("reset") ||
+          msg.toLowerCase().includes("ready");
+        if (!show && msg === "Cameras healthy") {
+          setNotice(null);
+          return;
+        }
         setNotice({
           level: "ok",
-          message: h.message || "Cameras healthy",
+          message: msg,
           ts: h.ts,
         });
         if (hideTimer) window.clearTimeout(hideTimer);
@@ -124,5 +159,22 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     };
   }, [enabled, roomId]);
 
-  return { health, notice };
+  const acknowledgeTakeout = useCallback(async () => {
+    const room = (roomId || "Board 1").trim() || "Board 1";
+    setTakeoutBusy(true);
+    try {
+      await fetch("/api/camera/takeout-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: room }),
+      });
+      // Optimistic: keep banner until bridge clears takeout via health SSE
+    } catch {
+      /* offline */
+    } finally {
+      window.setTimeout(() => setTakeoutBusy(false), 1200);
+    }
+  }, [roomId]);
+
+  return { health, notice, takeout, takeoutBusy, acknowledgeTakeout };
 }

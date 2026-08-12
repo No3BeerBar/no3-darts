@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from companion.health import HealthConfig, HealthTracker
+from companion.health import (
+    HealthConfig,
+    HealthTracker,
+    no3_match_allows_between_games_recal,
+)
 
 
 def test_healthy_state_clears_timer() -> None:
@@ -24,12 +28,20 @@ def test_offline_becomes_unhealthy() -> None:
     assert t.should_restart() is False  # cooldown
 
 
-def test_between_games_recal_on_takeout_finished() -> None:
+def test_between_games_recal_requires_match_gate() -> None:
     t = HealthTracker(HealthConfig(between_games_recal=True))
-    assert t.should_recal_between_games("Takeout finished", [], "Takeout")
+    # Same AD signal that used to fire every visit - blocked without No3 gate
+    assert not t.should_recal_between_games(
+        "Takeout finished", [], "Takeout", match_allows_recal=False
+    )
+    assert t.should_recal_between_games(
+        "Takeout finished", [], "Takeout", match_allows_recal=True
+    )
     t.mark_recal()
     # Cooldown
-    assert not t.should_recal_between_games("Takeout finished", [], "Takeout")
+    assert not t.should_recal_between_games(
+        "Takeout finished", [], "Takeout", match_allows_recal=True
+    )
 
 
 def test_between_games_recal_on_visit_cleared_after_takeout() -> None:
@@ -39,17 +51,33 @@ def test_between_games_recal_on_visit_cleared_after_takeout() -> None:
         [],
         "Takeout",
         visit_just_cleared=True,
+        match_allows_recal=True,
     )
     assert not t.should_recal_between_games(
         "Throw",
         [],
         "Throw",
         visit_just_cleared=True,
+        match_allows_recal=True,
     )
 
 
 def test_between_games_skips_when_darts_still_in() -> None:
     t = HealthTracker(HealthConfig(between_games_recal=True))
     assert not t.should_recal_between_games(
-        "Takeout finished", [{"x": 1}], "Takeout"
+        "Takeout finished",
+        [{"x": 1}],
+        "Takeout",
+        match_allows_recal=True,
     )
+
+
+def test_no3_match_allows_between_games_recal() -> None:
+    assert no3_match_allows_between_games_recal(None) is True
+    assert no3_match_allows_between_games_recal({"status": "playing"}) is False
+    assert no3_match_allows_between_games_recal({"status": "paused"}) is False
+    assert no3_match_allows_between_games_recal({"status": "leg_won"}) is True
+    assert no3_match_allows_between_games_recal({"status": "match_won"}) is True
+    assert no3_match_allows_between_games_recal({"status": "finished"}) is True
+    assert no3_match_allows_between_games_recal({"status": "setup"}) is True
+    assert no3_match_allows_between_games_recal({"status": "mystery"}) is False

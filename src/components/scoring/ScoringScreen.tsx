@@ -67,6 +67,7 @@ import { NumberPad } from "./NumberPad";
 import { PlayAdminPinModal } from "./PlayAdminPinModal";
 import { PlayerPanel } from "./PlayerPanel";
 import { ResumeAuthGate } from "./ResumeAuthGate";
+import { TakeoutBanner } from "./TakeoutBanner";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
 
@@ -219,7 +220,12 @@ function ScoringScreenInner() {
   useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  const { notice: cameraNotice } = useCameraHealth(
+  const {
+    notice: cameraNotice,
+    takeout: takeoutActive,
+    takeoutBusy,
+    acknowledgeTakeout,
+  } = useCameraHealth(
     state?.roomId,
     Boolean(state) && seatsOk && !botThrowing
   );
@@ -412,6 +418,11 @@ function ScoringScreenInner() {
     <div className="play-match flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
+      <TakeoutBanner
+        active={takeoutActive}
+        busy={takeoutBusy}
+        onReady={() => void acknowledgeTakeout()}
+      />
 
       {!seatsOk && (
         <ResumeAuthGate

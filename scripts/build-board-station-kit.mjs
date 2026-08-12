@@ -36,6 +36,7 @@ const SKIP_NAMES = new Set([
   ".gitignore",
   ".venv",
   "__pycache__",
+  ".pytest_cache",
   ".DS_Store",
   "config.yaml", // we write a ready Board 1 config
 ]);
@@ -101,6 +102,7 @@ health:
   fps_min: 5.0
   unhealthy_seconds: 15.0
   restart_cooldown_seconds: 60.0
+  # Only when No3 match is absent / leg-or-match boundary (not mid-visit)
   between_games_recal: true
 `;
 

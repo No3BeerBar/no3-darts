@@ -140,7 +140,9 @@ POST /api/camera/end-turn
 { "roomId": "Board 1" }
 ```
 
-Disable with `--no-end-turn` if you only want dart posts.
+While Autodarts status contains **Takeout**, dart/correct posts are **paused** (no phantom scores during remove-darts). The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge consumes it, may probe a board reset, and resumes scoring.
+
+Disable end-turn with `--no-end-turn` if you only want dart posts.
 
 ## Corrections
 
@@ -157,7 +159,7 @@ See [`docs/CAMERA.md`](../../docs/CAMERA.md) and [`docs/BOARD-STATION.md`](../..
 
 With `health.enabled: true` (default), the bridge posts `/api/camera/health` and may restart Board Manager when offline or FPS stays below `fps_min`. Set `autodarts.exe_path` (or `health.exe_path`) so restart can relaunch the app.
 
-Between games (empty board after takeout), the bridge probes local reset/calibrate HTTP paths; if none exist, calibrate manually in Board Manager.
+Between games, the bridge probes local reset/calibrate HTTP paths only when the board is empty **and** No3 has no playing/paused match on the room (real game boundary - not every visit takeout). If none exist, calibrate manually in Board Manager.
 
 ## Config
 

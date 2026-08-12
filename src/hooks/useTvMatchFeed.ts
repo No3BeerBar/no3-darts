@@ -256,10 +256,22 @@ export function useTvMatchFeed(room: string) {
             level?: string;
             message?: string;
             restarting?: boolean;
+            takeout?: boolean;
+            reason?: string;
           };
           const want = roomRef.current.trim().toLowerCase();
           const got = (h.roomId || "").trim().toLowerCase();
           if (got && want && got !== want) return;
+          const takeout =
+            Boolean(h.takeout) ||
+            h.level === "takeout" ||
+            h.reason === "takeout";
+          if (takeout) {
+            setCameraNotice(h.message || "Pull darts — takeout");
+            if (healthTimer.current) window.clearTimeout(healthTimer.current);
+            healthTimer.current = null;
+            return;
+          }
           if (h.level === "ok" && !h.restarting) {
             setCameraNotice(null);
             return;

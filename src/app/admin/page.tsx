@@ -227,7 +227,7 @@ export default function AdminPage() {
             POST /api/camera/dart
           </li>
           <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
-            POST /api/camera/end-turn
+            POST /api/camera/end-turn · POST /api/camera/takeout-ready
           </li>
           <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
             GET /api/camera/stream (SSE)

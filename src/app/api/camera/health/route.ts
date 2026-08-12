@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     status: body.status,
     unhealthyForS: body.unhealthyForS,
     restarting: body.restarting,
+    takeout: Boolean(body.takeout) || body.level === "takeout" || body.reason === "takeout",
     ts: typeof body.ts === "number" ? body.ts : Date.now(),
   });
 
