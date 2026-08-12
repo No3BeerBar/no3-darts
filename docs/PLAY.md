@@ -130,15 +130,16 @@ Registered (name + PIN) seats are **not** trusted from that blob alone:
 
 - Starting a match records seat verification (`no3_seat_auth`).
 - **Sign out** (or a lost session cookie) invalidates that player’s seats.
-- A **fresh page load / app restart** (iPad clear-apps → reopen) clears scoring trust even if the session cookie and `localStorage` match blob survive — Resume re-prompts PIN before scoring.
+- A **fresh page load / app restart** (iPad clear-apps → reopen) or **opening the board `/play` link** clears scoring trust **and** the sticky session chrome (cookie + tablet roster) even if site data survives — idle play does not show “Signed in”, and Resume re-prompts PIN before scoring.
 - Loading / resuming an in-progress match re-checks every non-guest seat. If any need PIN again, scoring is blocked until they re-enter PIN (or **Abort match**).
 - Pure **guest** matches resume with no PIN. Mixed matches only re-prompt the registered seats.
-- Mid-match on a **continuous** kiosk session (no full reload) keeps seat trust; idle 2-min logout still only arms off idle play/setup.
+- Mid-match on a **continuous** kiosk session (no full reload) keeps seat trust after PIN; idle 2-min logout still only arms off idle play/setup.
 
 ### Session stickiness + idle logout
 
-- If a player has **not** signed out, they **stay signed in** across end-game → start-next-game loops (no re-PIN just because a match ended).
-- PIN entry when nobody is signed in on the tablet **establishes** the session cookie (sticky). Unlocking another registered seat while someone is already signed in still uses verify-without-stealing-session.
+- If a player has **not** signed out, they **stay signed in** across end-game → start-next-game loops on the **same continuous SPA session** (no re-PIN just because a match ended).
+- A **new document load** of `/play` or setup `/` (board bookmark, reload, app restart) always starts **cold** — cookie alone must not show Signed in or unlock scoring.
+- PIN entry when nobody is signed in on the tablet **establishes** the session cookie (sticky for that document session). Unlocking another registered seat while someone is already signed in still uses verify-without-stealing-session.
 - If the tablet sits on **idle play / setup** (not mid-match) with **no touch/key/scroll for more than 2 minutes**, everyone on that tablet is signed out and the next game needs PIN again.
 - Thinking time between darts mid-match never triggers that logout.
 - Explicit **Sign out** still clears immediately (and invalidates seat-auth).

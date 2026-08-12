@@ -118,7 +118,9 @@ function ScoringScreenInner() {
     hydrate();
     settings.hydrate();
     hydratePlayers();
-    void hydrateSession();
+    // Fresh document load of /play: clear sticky cookie chrome + seat trust.
+    // SPA re-entry after PIN uses hydrateSession() without playEntry.
+    void hydrateSession({ playEntry: true });
   }, [hydrate, settings, setDisplayOnly, hydrateSession, hydratePlayers]);
 
   // Board size follows the reserved board column only — never visit/seat chrome

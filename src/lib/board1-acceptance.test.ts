@@ -126,6 +126,25 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(gate).toMatch(/markSeatVerified/);
   });
 
+  it("fresh /play document entry clears sticky session + seat trust (John signed-in repro)", () => {
+    const entry = readSrc("src/lib/play-entry-gate.ts");
+    expect(entry).toMatch(/gatePlayDocumentEntry/);
+    expect(entry).toMatch(/clearPlayEntrySessionCookie/);
+    expect(entry).toMatch(/invalidateSeatAuthOnPageRestore/);
+    expect(entry).toMatch(/clearTabletSessionPlayers/);
+
+    const scoring = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(scoring).toMatch(/hydrateSession\(\{\s*playEntry:\s*true\s*\}\)/);
+
+    const setup = readSrc("src/components/setup/GameSetup.tsx");
+    expect(setup).toMatch(/hydrateSession\(\{\s*playEntry:\s*true\s*\}\)/);
+
+    const session = readSrc("src/store/session-store.ts");
+    expect(session).toMatch(/opts\?\.playEntry/);
+    expect(session).toMatch(/gatePlayDocumentEntry/);
+    expect(session).toMatch(/player:\s*null/);
+  });
+
   it("takeout health + hold pause scoring on an empty next-seat visit", () => {
     const state = board1Match("Board1 Takeout Pause");
     upsertServerMatch(state);

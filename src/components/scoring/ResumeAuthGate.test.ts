@@ -53,19 +53,19 @@ describe("ResumeAuthGate contract (seat-auth)", () => {
     expect(canScoreMatch("m-resume", players, "alice")).toBe(true);
 
     // App kill / fresh load clears scoring trust (cookie alone is not enough)
-    invalidateSeatAuthOnPageRestore();
+    invalidateSeatAuthOnPageRestore("m-resume");
     expect(seatsNeedingReauth("m-resume", players, "alice").map((p) => p.id)).toEqual(
       ["alice", "bob"]
     );
     expect(canScoreMatch("m-resume", players, "alice")).toBe(false);
 
-    markSeatVerified("m-resume", "alice");
+    markSeatVerified("m-resume", "alice", "alice");
     expect(seatsNeedingReauth("m-resume", players, "alice").map((p) => p.id)).toEqual(
       ["bob"]
     );
     expect(canScoreMatch("m-resume", players, "alice")).toBe(false);
 
-    markSeatVerified("m-resume", "bob");
+    markSeatVerified("m-resume", "bob", "alice");
     expect(seatsNeedingReauth("m-resume", players, "alice")).toEqual([]);
     expect(canScoreMatch("m-resume", players, "alice")).toBe(true);
   });
@@ -83,7 +83,7 @@ describe("ResumeAuthGate contract (seat-auth)", () => {
       },
     ];
     seedSeatAuthForMatch("m-guests", players, null);
-    invalidateSeatAuthOnPageRestore();
+    invalidateSeatAuthOnPageRestore("m-guests");
     expect(seatsNeedingReauth("m-guests", players, null)).toEqual([]);
     expect(canScoreMatch("m-guests", players, null)).toBe(true);
   });
