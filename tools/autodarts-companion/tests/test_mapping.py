@@ -9,6 +9,7 @@ import pytest
 
 from companion.mapping import (
     dart_to_no3,
+    is_takeout_finished_status,
     is_takeout_status,
     label_to_kind_number,
 )
@@ -111,3 +112,18 @@ def test_fixture_three_darts() -> None:
 )
 def test_is_takeout_status(status: str, expected: bool) -> None:
     assert is_takeout_status(status) is expected
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        ("Takeout finished", True),
+        ("TakeoutFinished", True),
+        ("takeout_finished", True),
+        ("Takeout", False),
+        ("Takeout started", False),
+        ("Throw", False),
+    ],
+)
+def test_is_takeout_finished_status(status: str, expected: bool) -> None:
+    assert is_takeout_finished_status(status) is expected

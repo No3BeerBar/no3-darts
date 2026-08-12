@@ -9,7 +9,10 @@ from companion.client import diff_visit, extract_throws, VISIT_APPEND
 from companion.visit_gate import (
     is_takeout_state,
     scoring_frozen,
+    should_clear_stale_takeout,
     should_end_turn_on_clear,
+    should_end_turn_on_takeout,
+    should_end_turn_leaving_takeout_empty,
     should_unlock_next_visit,
 )
 
@@ -46,25 +49,115 @@ def test_clear_does_not_end_turn_mid_throw() -> None:
     # Flicker empty between dart 2 and dart 3
     assert (
         should_end_turn_on_clear(
-            takeout=False, in_takeout=False, visit_closed=False
+            takeout=False,
+            in_takeout=False,
+            visit_closed=False,
+            prev_throw_count=2,
+        )
+        is False
+    )
+    # Incomplete visit + takeout clear flicker: wait for dart 3 / finished
+    assert (
+        should_end_turn_on_clear(
+            takeout=True,
+            in_takeout=False,
+            visit_closed=False,
+            prev_throw_count=2,
+            takeout_finished=False,
         )
         is False
     )
     assert (
         should_end_turn_on_clear(
-            takeout=True, in_takeout=False, visit_closed=False
+            takeout=False,
+            in_takeout=True,
+            visit_closed=False,
+            prev_throw_count=2,
+            takeout_finished=False,
+        )
+        is False
+    )
+    # Full visit already mirrored -> clear during takeout ends turn
+    assert (
+        should_end_turn_on_clear(
+            takeout=True,
+            in_takeout=True,
+            visit_closed=False,
+            prev_throw_count=3,
+            takeout_finished=False,
         )
         is True
     )
+    # Early pull confirmed via takeout finished
     assert (
         should_end_turn_on_clear(
-            takeout=False, in_takeout=True, visit_closed=False
+            takeout=True,
+            in_takeout=True,
+            visit_closed=False,
+            prev_throw_count=2,
+            takeout_finished=True,
         )
         is True
     )
     assert (
         should_end_turn_on_clear(
             takeout=False, in_takeout=False, visit_closed=True
+        )
+        is True
+    )
+
+
+def test_takeout_defers_end_turn_until_three_throws() -> None:
+    assert (
+        should_end_turn_on_takeout(visit_closed=False, throws_count=2) is False
+    )
+    assert (
+        should_end_turn_on_takeout(visit_closed=False, throws_count=3) is True
+    )
+    assert (
+        should_end_turn_on_takeout(visit_closed=True, throws_count=3) is False
+    )
+
+
+def test_stale_takeout_clear_only_when_throws_remain() -> None:
+    assert (
+        should_clear_stale_takeout(
+            takeout=False,
+            in_takeout=True,
+            visit_closed=False,
+            throws_empty=False,
+        )
+        is True
+    )
+    assert (
+        should_clear_stale_takeout(
+            takeout=False,
+            in_takeout=True,
+            visit_closed=False,
+            throws_empty=True,
+        )
+        is False
+    )
+
+
+def test_leaving_takeout_empty_needs_consecutive_polls() -> None:
+    assert (
+        should_end_turn_leaving_takeout_empty(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            takeout=False,
+            empty_polls=1,
+        )
+        is False
+    )
+    assert (
+        should_end_turn_leaving_takeout_empty(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            takeout=False,
+            empty_polls=2,
         )
         is True
     )

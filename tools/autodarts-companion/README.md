@@ -71,7 +71,7 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 1. On the tablet: start any No3 game (X01 / Cricket / Killer / ...) on room **Board 1**.  
 2. On the board PC: Autodarts Board Manager **Start** (detecting).  
 3. Run `bridge` - each new Autodarts dart is POSTed to No3.  
-4. When Autodarts signals **Takeout** (or clears throws), bridge calls `POST /api/camera/end-turn` so early 1-2 dart visits advance correctly. After a full 3-dart visit No3 usually auto-ends the turn already; the extra call is harmless.
+4. When Autodarts signals **Takeout** with a full 3-dart visit (or confirms an early pull via clear / takeout finished), bridge calls `POST /api/camera/end-turn`. Takeout while only 1-2 throws are visible **defers** end-turn so dart 3 cannot seat-jump onto the next player. After a full 3-dart visit No3 usually auto-ends already; the extra call is harmless.
 5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit - no double-scoring.
 6. Players can also fix on the iPad: tap the dart -> pick the right segment.
 7. Health: FPS / disconnect -> notify No3 + restart Board Manager (needs `exe_path` in config).

@@ -123,6 +123,8 @@ Autodarts `/api/state` signals takeout via `status` / `event` (`Takeout`, `Takeo
 
 Each poll **syncs AD throw growth onto the current No3 seat first**, then handles takeout/end-turn. That way a 3-dart visit that flips to Takeout in the same poll still maps all 3 darts to one seat (never dart 3 on the next player).
 
+**Takeout with fewer than 3 throws defers end-turn** until dart 3 is mirrored or the board stays empty after takeout (confirmed early pull). A Takeout blip after dart 2 must not advance the seat, or dart 3 lands on the next player after an empty-board unlock.
+
 The bridge then **freezes** further `POST /api/camera/dart` and `/correct` when the No3 visit is closed (`turnEnded` / end-turn) or AD remains in takeout. Empty-board flickers mid-visit do **not** end-turn. Scoring resumes when `throws` is empty, AD has left takeout, and a takeout handshake or scored close was seen.
 
 `/play` shows **Pull darts — takeout** with **Ready for next visit** (acks via `POST /api/camera/takeout-ready`; bridge may probe a board reset but still waits for a clean board).

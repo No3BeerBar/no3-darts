@@ -205,3 +205,11 @@ def is_takeout_status(status: str) -> bool:
         return True
     # Be resilient to "Board: Takeout" / "status=Takeout" style strings
     return "takeout" in s.replace("_", " ")
+
+
+def is_takeout_finished_status(status: str) -> bool:
+    """True when AD signals darts have been removed (takeout complete)."""
+    s = (status or "").strip().lower().replace("_", " ")
+    if not s:
+        return False
+    return "takeout finished" in s or s.replace(" ", "") == "takeoutfinished"

@@ -3,6 +3,7 @@ import { applyDart, createDart, createGame } from "@/engine";
 import {
   applyCameraCorrect,
   applyCameraDart,
+  applyCameraEndTurn,
   upsertServerMatch,
   removeServerMatch,
 } from "@/lib/server-game-store";
@@ -113,6 +114,59 @@ describe("camera correct bleed guard", () => {
         expect(third.turnEnded).toBe(true);
         expect(third.state.currentPlayerIndex).toBe(1);
         expect(third.state.currentTurnDarts).toHaveLength(0);
+      }
+    } finally {
+      removeServerMatch(state.id);
+    }
+  });
+
+  it("end-turn after only 2 darts advances seat so a later dart lands on P2", () => {
+    // Documents No3 server behavior the Autodarts bridge must avoid:
+    // never POST /end-turn before dart 3 of a full visit is mirrored.
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board SeatJump",
+    });
+    upsertServerMatch(state);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board SeatJump",
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board SeatJump",
+        }).ok
+      ).toBe(true);
+
+      const ended = applyCameraEndTurn({ roomId: "Board SeatJump" });
+      expect(ended.ok).toBe(true);
+      if (ended.ok) {
+        expect(ended.state.currentPlayerIndex).toBe(1);
+        expect(ended.state.currentTurnDarts).toHaveLength(0);
+      }
+
+      const lateThird = applyCameraDart({
+        kind: "double",
+        number: 16,
+        roomId: "Board SeatJump",
+      });
+      expect(lateThird.ok).toBe(true);
+      if (lateThird.ok) {
+        // This is the P0 symptom if the bridge ends early — dart 3 on next seat
+        expect(lateThird.state.currentPlayerIndex).toBe(1);
+        expect(lateThird.state.currentTurnDarts).toHaveLength(1);
+        expect(lateThird.state.currentTurnDarts[0]?.number).toBe(16);
       }
     } finally {
       removeServerMatch(state.id);
