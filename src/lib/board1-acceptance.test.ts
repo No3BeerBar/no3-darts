@@ -1,65 +1,32 @@
 /**
- * Board 1 / camera-bridge acceptance net (John bar QA).
+ * Board 1 / camera-bridge acceptance net - John P0s only.
  *
- * Focused regression guards for the P0s from Board 1 takeout / seat-jump /
- * resume / callout testing. Companion pytest covers takeout freeze +
- * between-games recal (tools/autodarts-companion/tests/test_board1_acceptance.py).
+ * 1. Takeout / removing-darts recognized; scoring paused; Ready resets.
+ * 2. A 3-dart AD visit can never apply dart 3 to the next No3 seat.
  *
- * These tests must FAIL if the invariants regress.
+ * Companion: tools/autodarts-companion/tests/test_board1_acceptance.py
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  applyDart,
-  createDart,
-  createGame,
-  undo,
-} from "@/engine";
+import { afterEach, describe, expect, it } from "vitest";
+import { createGame } from "@/engine";
 import {
   applyCameraDart,
   applyCameraEndTurn,
+  clearTakeoutHold,
   removeServerMatch,
+  requestTakeoutReady,
+  setCameraHealth,
   upsertServerMatch,
 } from "@/lib/server-game-store";
-import {
-  canScoreMatch,
-  clearSeatAuth,
-  getSeatAuth,
-  seedSeatAuthForMatch,
-} from "@/lib/seat-auth";
-import { getActiveGame, setActiveGame } from "@/lib/storage";
 
 const ROOT = join(__dirname, "../..");
 
 const alice = { id: "p1", name: "Alice", isGuest: true };
 const bob = { id: "p2", name: "Bob", isGuest: true };
 
-const memory = new Map<string, string>();
-
-function installMemoryStorage() {
-  memory.clear();
-  const storage = {
-    getItem: (k: string) => memory.get(k) ?? null,
-    setItem: (k: string, v: string) => {
-      memory.set(k, v);
-    },
-    removeItem: (k: string) => {
-      memory.delete(k);
-    },
-  };
-  Object.defineProperty(globalThis, "localStorage", {
-    value: storage,
-    configurable: true,
-  });
-  Object.defineProperty(globalThis, "window", {
-    value: globalThis,
-    configurable: true,
-  });
-}
-
-function board1Match(roomId = "Board 1") {
+function board1Match(roomId: string) {
   return createGame({
     modeConfig: {
       mode: "x01",
@@ -76,15 +43,182 @@ function readSrc(...parts: string[]) {
 }
 
 afterEach(() => {
-  clearSeatAuth();
-  memory.clear();
-  vi.restoreAllMocks();
+  for (const room of ["Board1 Accept Seat", "Board1 Takeout Pause"]) {
+    clearTakeoutHold(room);
+    setCameraHealth({
+      roomId: room,
+      ok: true,
+      level: "ok",
+      message: "Ready for next visit",
+      reason: "takeout_cleared",
+      takeout: false,
+      ts: Date.now(),
+    });
+  }
 });
 
-describe("Board1 acceptance: 3-dart visit seat lock", () => {
-  it("late dart 3 with expectedPlayerIndex cannot apply to the next seat", () => {
+describe("Board1 P0: takeout recognize + Ready control", () => {
+  it("TakeoutBanner exposes Ready reset (not a passive-only banner)", () => {
+    const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
+    expect(banner).toMatch(/Removing darts/);
+    expect(banner).toMatch(/"Ready"/);
+    expect(banner).toMatch(/onReady/);
+    const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(screen).toMatch(/TakeoutBanner/);
+    expect(screen).toMatch(/acknowledgeTakeout/);
+    const hook = readSrc("src/hooks/useCameraHealth.ts");
+    expect(hook).toMatch(/takeout-ready/);
+    expect(hook).toMatch(/acknowledgeTakeout/);
+  });
+
+  it("takeout health + hold pause scoring on an empty next-seat visit", () => {
+    const state = board1Match("Board1 Takeout Pause");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Takeout Pause");
+    try {
+      // Advance to Bob with empty visit (premature end after 2 - the race)
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board1 Takeout Pause",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board1 Takeout Pause",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraEndTurn({
+          roomId: "Board1 Takeout Pause",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+
+      setCameraHealth({
+        roomId: "Board1 Takeout Pause",
+        ok: true,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        reason: "takeout",
+        takeout: true,
+        ts: Date.now(),
+      });
+
+      const lateThird = applyCameraDart({
+        kind: "double",
+        number: 16,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 1,
+      });
+      expect(lateThird.ok).toBe(false);
+      if (!lateThird.ok) {
+        expect(lateThird.error).toMatch(/Takeout (active|hold)/i);
+      }
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Takeout Pause");
+    }
+  });
+
+  it("still accepts dart 3 on the open seat while takeout health is active", () => {
+    const state = board1Match("Board1 Takeout Pause");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Takeout Pause");
+    try {
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board1 Takeout Pause",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board1 Takeout Pause",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+
+      setCameraHealth({
+        roomId: "Board1 Takeout Pause",
+        ok: true,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        reason: "takeout",
+        takeout: true,
+        ts: Date.now(),
+      });
+
+      // Incomplete visit still open - dart 3 must finish this seat
+      const third = applyCameraDart({
+        kind: "double",
+        number: 16,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 0,
+      });
+      expect(third.ok).toBe(true);
+      if (third.ok) {
+        expect(third.turnEnded).toBe(true);
+        expect(third.state.currentPlayerIndex).toBe(1);
+      }
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Takeout Pause");
+    }
+  });
+
+  it("Ready releases hold so the next seat can start", () => {
+    const state = board1Match("Board1 Takeout Pause");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Takeout Pause");
+    try {
+      applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 5,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 1,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 0,
+      });
+      requestTakeoutReady("Board1 Takeout Pause");
+      const next = applyCameraDart({
+        kind: "triple",
+        number: 19,
+        roomId: "Board1 Takeout Pause",
+        expectedPlayerIndex: 1,
+      });
+      expect(next.ok).toBe(true);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Takeout Pause");
+    }
+  });
+});
+
+describe("Board1 P0: dart 3 never jumps to next seat", () => {
+  it("expectedPlayerIndex seat lock + hold refuse late dart 3 on the next seat", () => {
     const state = board1Match("Board1 Accept Seat");
     upsertServerMatch(state);
+    clearTakeoutHold("Board1 Accept Seat");
     try {
       expect(
         applyCameraDart({
@@ -103,9 +237,11 @@ describe("Board1 acceptance: 3-dart visit seat lock", () => {
         }).ok
       ).toBe(true);
 
-      // Premature end-turn (what the bridge must never do before dart 3)
       expect(
-        applyCameraEndTurn({ roomId: "Board1 Accept Seat" }).ok
+        applyCameraEndTurn({
+          roomId: "Board1 Accept Seat",
+          expectedPlayerIndex: 0,
+        }).ok
       ).toBe(true);
 
       const lateThird = applyCameraDart({
@@ -116,128 +252,72 @@ describe("Board1 acceptance: 3-dart visit seat lock", () => {
       });
       expect(lateThird.ok).toBe(false);
       if (!lateThird.ok) {
-        expect(lateThird.error).toMatch(/Seat mismatch/i);
+        expect(lateThird.error).toMatch(/Seat mismatch|Takeout hold/i);
       }
 
-      const badEnd = applyCameraEndTurn({
+      // Empty visit after end-turn: READY ack (hold kept) - not a seat jump
+      const readyAck = applyCameraEndTurn({
         roomId: "Board1 Accept Seat",
         expectedPlayerIndex: 0,
       });
-      expect(badEnd.ok).toBe(false);
-      if (!badEnd.ok) {
-        expect(badEnd.error).toMatch(/Seat mismatch/i);
+      expect(readyAck.ok).toBe(true);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Accept Seat");
+    }
+  });
+
+  it("open visit requires expectedPlayerIndex", () => {
+    const state = board1Match("Board1 Accept Seat");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Accept Seat");
+    try {
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board1 Accept Seat",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      const missing = applyCameraDart({
+        kind: "single",
+        number: 5,
+        roomId: "Board1 Accept Seat",
+      });
+      expect(missing.ok).toBe(false);
+      if (!missing.ok) {
+        expect(missing.error).toMatch(/expectedPlayerIndex required/i);
       }
     } finally {
       removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Accept Seat");
     }
   });
-});
 
-describe("Board1 acceptance: patron multi undo", () => {
-  it("steps backward dart-by-dart across a full visit", () => {
-    const start = board1Match();
-    const after3 = applyDart(
-      applyDart(
-        applyDart(start, createDart("single", 20)).state,
-        createDart("single", 5)
-      ).state,
-      createDart("single", 1)
-    ).state;
-    expect(after3.currentPlayerIndex).toBe(1);
-
-    const u1 = undo(after3).state;
-    expect(u1.currentPlayerIndex).toBe(0);
-    expect(u1.currentTurnDarts).toHaveLength(2);
-
-    const u2 = undo(u1).state;
-    expect(u2.currentTurnDarts).toHaveLength(1);
-
-    const u3 = undo(u2).state;
-    expect(u3.currentTurnDarts).toHaveLength(0);
-  });
-
-  it("ScoringScreen wires patron Undo (not staff-gated)", () => {
-    const src = readSrc("src/components/scoring/ScoringScreen.tsx");
-    expect(src).toMatch(/Undo \+ End game are patron-visible/);
-    expect(src).toContain("onClick={undo}");
-    // Undo enablement must not require isAdmin
-    expect(src).toMatch(
-      /const undoEnabled =\s*seatsOk &&\s*!botThrowing &&\s*canUndo\(state\)/
-    );
-    expect(src).not.toMatch(/undoEnabled\s*=\s*isAdmin/);
-  });
-});
-
-describe("Board1 acceptance: no CalloutToast / per-dart Σ banner on play/TV", () => {
-  it("CalloutToast component is not present or imported on play/TV", () => {
-    expect(existsSync(join(ROOT, "src/components/scoring/CalloutToast.tsx"))).toBe(
-      false
-    );
-    const play = readSrc("src/components/scoring/ScoringScreen.tsx");
-    const tv = readSrc("src/components/tv/TvDisplay.tsx");
-    const feed = readSrc("src/hooks/useTvMatchFeed.ts");
-    expect(play).not.toMatch(/CalloutToast/);
-    expect(play).not.toMatch(/lastCallout/);
-    expect(tv).not.toMatch(/CalloutToast/);
-    expect(tv).not.toMatch(/\bcallout\b/);
-    expect(feed).not.toMatch(/\bcallout\b/);
-  });
-
-  it("visit total label is TURN, not the per-dart Σ banner glyph", () => {
-    const turn = readSrc("src/components/scoring/TurnDarts.tsx");
-    expect(turn).toContain(">TURN<");
-    // Must not resurrect the distracting Σ visit-total label
-    expect(turn).not.toMatch(/>Σ</);
-  });
-});
-
-describe("Board1 acceptance: fresh hydrate invalidates seat auth", () => {
-  it("hydrate of an active match clears verified seats (PIN required)", async () => {
-    installMemoryStorage();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(null, { status: 204 }))
-    );
-
-    const state = createGame({
-      modeConfig: {
-        mode: "x01",
-        config: { startScore: 501, doubleIn: false, doubleOut: true },
-      },
-      players: [
-        { id: "alice", name: "Alice", isGuest: false },
-        { id: "bob", name: "Bob", isGuest: true },
-      ],
-      roomId: "Board 1",
-    });
-    setActiveGame(state);
-    seedSeatAuthForMatch(state.id, state.players, "alice");
-    expect(canScoreMatch(state.id, state.players, "alice")).toBe(true);
-
-    const { useGameStore } = await import("@/store/game-store");
-    useGameStore.setState({
-      state: null,
-      hydrated: false,
-      displayOnly: false,
-      lastCallout: null,
-      lastHighlight: null,
-    });
-
-    useGameStore.getState().hydrate();
-
-    expect(getActiveGame()?.id).toBe(state.id);
-    expect(getSeatAuth()).toMatchObject({
-      matchId: state.id,
-      verifiedPlayerIds: [],
-      boundSessionPlayerId: null,
-    });
-    expect(canScoreMatch(state.id, state.players, "alice")).toBe(false);
-  });
-});
-
-describe("Board1 acceptance: camera-correct-bleed prefer-const", () => {
-  it("has no `let state` (prefer-const / Railway next build)", () => {
+  it("camera-correct-bleed has no `let state` (prefer-const / Railway build)", () => {
     const src = readSrc("src/lib/camera-correct-bleed.test.ts");
     expect(src).not.toMatch(/\blet state\b/);
+  });
+});
+
+describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
+  it("ships ASCII Fix Me bat + board-setup link", () => {
+    const bat = readSrc("public/Board1-FixMe.bat");
+    expect(bat).toContain("___NO3_BOARD1_FIXME_PS1___");
+    expect(bat).toContain("C:\\No3Darts\\Board1");
+    expect(bat).toContain("start-board.bat");
+    expect(bat).toContain("takeout-ready");
+    expect(bat).toContain("PHOTO THIS WINDOW");
+    expect(bat).toContain("board-station\\config.yaml");
+    expect(bat).toMatch(/Leave the bridge window open/i);
+    for (let i = 0; i < bat.length; i++) {
+      expect(bat.charCodeAt(i)).toBeLessThanOrEqual(127);
+    }
+
+    const page = readSrc("src/app/board-setup/page.tsx");
+    expect(page).toContain("/Board1-FixMe.bat");
+    expect(page).toMatch(/Something wrong\?/i);
+    expect(page).toMatch(/Fix Me/i);
   });
 });

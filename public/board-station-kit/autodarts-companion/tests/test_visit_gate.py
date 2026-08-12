@@ -41,7 +41,12 @@ def test_fixture_takeout_keeps_throws() -> None:
 
 def test_event_only_takeout_detected() -> None:
     assert is_takeout_state({"status": "Throw", "event": "Takeout"}) is True
+    assert is_takeout_state({"status": "Throw", "event": "Hand"}) is True
+    assert is_takeout_state({"status": "Throw", "event": "Partial Takeout"}) is True
     assert is_takeout_state({"status": "Throw detected", "event": "Dart"}) is False
+    # Board State "Takeout finished" is complete - not active freeze
+    assert is_takeout_state({"status": "Takeout finished", "event": "Empty"}) is False
+    assert is_takeout_state({"status": "Takeout finished", "throws": []}) is False
 
 
 def test_visit_closed_freezes_without_takeout_status() -> None:
@@ -111,7 +116,8 @@ def test_clear_does_not_end_turn_mid_throw() -> None:
     )
 
 
-def test_takeout_finished_empty_needs_sustained_polls() -> None:
+def test_takeout_finished_empty_never_auto_ends_incomplete() -> None:
+    """P0: dart 3 lag > empty flicker - no auto early-pull end-turn."""
     assert (
         should_end_turn_on_empty_takeout_finished(
             visit_closed=False,
@@ -130,7 +136,17 @@ def test_takeout_finished_empty_needs_sustained_polls() -> None:
             status="Takeout finished",
             empty_polls=INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
         )
-        is True
+        is False
+    )
+    assert (
+        should_end_turn_on_empty_takeout_finished(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            status="Takeout finished",
+            empty_polls=50,
+        )
+        is False
     )
 
 
@@ -167,7 +183,7 @@ def test_stale_takeout_clear_only_when_throws_remain() -> None:
     )
 
 
-def test_leaving_takeout_empty_needs_consecutive_polls() -> None:
+def test_leaving_takeout_empty_never_auto_ends_incomplete() -> None:
     assert (
         should_end_turn_leaving_takeout_empty(
             visit_closed=False,
@@ -186,7 +202,17 @@ def test_leaving_takeout_empty_needs_consecutive_polls() -> None:
             takeout=False,
             empty_polls=INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
         )
-        is True
+        is False
+    )
+    assert (
+        should_end_turn_leaving_takeout_empty(
+            visit_closed=False,
+            throws_empty=True,
+            in_takeout=True,
+            takeout=False,
+            empty_polls=50,
+        )
+        is False
     )
 
 
@@ -196,11 +222,20 @@ def test_seat_lock_and_continuation_helpers() -> None:
     closed = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     late = closed + [_seg("D16", 16, 2)]
     assert is_ad_visit_continuation(closed, late) is True
-    assert is_ad_visit_continuation(closed, [_seg("T19", 19, 3)]) is False
+    # Re-detect of an already-mirrored dart after incomplete close
+    assert is_ad_visit_continuation(closed, [_seg("T20", 20, 3)]) is True
+    # New segment alone after incomplete close is not assumed continuation
+    # (patron Ready early-pull then next seat's first dart must work)
+    assert is_ad_visit_continuation(closed, [_seg("D16", 16, 2)]) is False
+    # Brand-new visit after a completed 3-dart close is not continuation
+    done = closed + [_seg("D16", 16, 2)]
+    assert is_ad_visit_continuation(done, [_seg("T19", 19, 3)]) is False
+    # Residual last dart of a full visit alone still counts as continuation
+    assert is_ad_visit_continuation(done, [_seg("D16", 16, 2)]) is True
 
 
-def test_unlock_requires_takeout_handshake_or_scored_close() -> None:
-    # Empty + not takeout alone is not enough (prevents dart-3-on-P2 after flicker)
+def test_unlock_requires_takeout_handshake_or_patron_ready() -> None:
+    # Empty + scored-close alone is NOT enough (residual dart 3 race)
     assert (
         should_unlock_next_visit(
             visit_closed=True,
@@ -216,18 +251,29 @@ def test_unlock_requires_takeout_handshake_or_scored_close() -> None:
             visit_closed=True,
             takeout=False,
             throws_empty=True,
-            saw_takeout_after_close=True,
-            closed_by_scoring=False,
+            saw_takeout_after_close=False,
+            closed_by_scoring=True,
         )
-        is True
+        is False
     )
     assert (
         should_unlock_next_visit(
             visit_closed=True,
             takeout=False,
             throws_empty=True,
+            saw_takeout_after_close=True,
+            closed_by_scoring=False,
+        )
+        is True
+    )
+    # Patron Ready may unlock even if AD takeout string is sticky
+    assert (
+        should_unlock_next_visit(
+            visit_closed=True,
+            takeout=True,
+            throws_empty=True,
             saw_takeout_after_close=False,
-            closed_by_scoring=True,
+            patron_ready=True,
         )
         is True
     )
@@ -240,6 +286,18 @@ def test_unlock_requires_takeout_handshake_or_scored_close() -> None:
             closed_by_scoring=True,
         )
         is False
+    )
+    # Patron Ready clears stuck handshake when board empty
+    assert (
+        should_unlock_next_visit(
+            visit_closed=True,
+            takeout=True,
+            throws_empty=True,
+            saw_takeout_after_close=False,
+            closed_by_scoring=False,
+            patron_ready=True,
+        )
+        is True
     )
 
 
@@ -287,3 +345,17 @@ def test_throw_fixture_not_takeout() -> None:
     state = _load("state_throw.json")
     assert is_takeout_state(state) is False
     assert extract_throws(state) == []
+
+
+def test_official_ad_takeout_finished_and_hand_fixtures() -> None:
+    """Real Board/Detection states from Autodarts docs."""
+    finished = _load("state_takeout_finished.json")
+    assert finished["status"] == "Takeout finished"
+    assert is_takeout_state(finished) is False
+    assert extract_throws(finished) == []
+
+    hand = _load("state_takeout_hand.json")
+    assert hand["status"] == "Takeout started"
+    assert hand["event"] == "Hand"
+    assert is_takeout_state(hand) is True
+    assert len(extract_throws(hand)) == 3

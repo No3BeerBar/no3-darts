@@ -131,7 +131,7 @@ Parsing prefers `segment.number` + `segment.multiplier` (stable across Board Man
 
 ## Takeout / end-turn
 
-Autodarts board states include **Throw**, **Throw detected**, **Takeout**, **Takeout started**, **Takeout finished**.
+Autodarts `/api/state` fields (Board Manager docs): **status** Board State (`Throw`, `Throw detected`, `Takeout`, `Takeout started`, `Takeout finished`) and **event** Detection State (`Wait`, `Stable`, `Empty`, `Dart`, `Hand`, `Partial Takeout`, `Takeout`). Active remove-darts = Takeout / Takeout started / Hand / Partial Takeout. **Takeout finished** means complete - it must not leave Pull-darts stuck.
 
 On takeout (or when the `throws` list clears), the bridge calls:
 
@@ -140,7 +140,7 @@ POST /api/camera/end-turn
 { "roomId": "Board 1" }
 ```
 
-Poll order: mirror AD throw appends/replaces onto the **current** No3 seat first, then end-turn on Takeout. A 3-dart visit that becomes Takeout in the same poll still scores all 3 on one seat. Incomplete visits need sustained empty polls before early-pull end-turn (not a single Takeout-finished clear). The bridge locks `currentPlayerIndex` for the open visit and sends `expectedPlayerIndex` (server 409 on mismatch). If AD re-shows a closed visit after unlock, that continuation is refused. After the visit closes, further dart/correct posts freeze until the board is empty and AD leaves takeout. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
+Poll order: mirror AD throw appends/replaces onto the **current** No3 seat first, then end-turn on Takeout. A 3-dart visit that becomes Takeout in the same poll still scores all 3 on one seat. Incomplete visits need sustained empty polls before early-pull end-turn (not a single Takeout-finished clear). The bridge locks `currentPlayerIndex` for the open visit and sends `expectedPlayerIndex` (server requires it while a visit is open; 409 on mismatch). After turn end the server **holds next-seat scoring** until takeout clear / Ready. If AD re-shows a closed visit after unlock, that continuation is refused. After the visit closes, further dart/correct posts freeze until the board is empty and AD leaves *active* takeout. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready** hits `/api/camera/takeout-ready` (clears banner + handshake); the bridge may probe Board Manager `/api/reset` and unlocks when throws are empty. Mid-match between-games recal stays gated.
 
 Disable end-turn with `--no-end-turn` if you only want dart posts.
 

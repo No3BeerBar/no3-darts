@@ -4,6 +4,8 @@ Bar ops guide for **No. 3 Craft Beer Bar**: Autodarts detects throws; No3 scores
 
 **Mini-PC bootstrap:** download [`Board1-Setup.bat`](https://no3-darts-production.up.railway.app/Board1-Setup.bat) → double-click. **Single file** — Edge only needs the `.bat` (setup PowerShell is embedded; no separate `.ps1` fetch). It pulls the kit zip, writes Board 1 `config.yaml`, finds Autodarts if possible, and runs `start-board.bat`. Kit zip: [`/board-station-board1.zip`](https://no3-darts-production.up.railway.app/board-station-board1.zip).
 
+**Something wrong?** Download [`Board1-FixMe.bat`](https://no3-darts-production.up.railway.app/Board1-FixMe.bat) (or double-click `C:\No3Darts\Board1\Board1-FixMe.bat` if already installed) — kills leftover bridge/start-board processes, refreshes the kit zip only if stale (keeps `config.yaml` / `exe_path`), starts Autodarts if `:3180` is down, clears stuck takeout state best-effort, and re-runs `start-board.bat`. Loud errors say **PHOTO THIS WINDOW**.
+
 > DIY OpenCV under `detection/` is experimental — **not** the bar path. Prefer Autodarts Board Manager + companion bridge.
 
 ## Wiring
@@ -119,17 +121,31 @@ Ordinary visit takeout while a match is `playing` does **not** run recal (avoids
 
 ### Takeout / remove-darts
 
-Autodarts `/api/state` signals takeout via `status` / `event` (`Takeout`, `Takeout started`, `Takeout finished`) and may still list the prior visit in `throws` (see companion fixtures).
+Autodarts Board Manager `/api/state` (official Board / Detection states):
+
+| Field | Role | Remove-darts values |
+|-------|------|---------------------|
+| `status` | Board State | `Takeout`, `Takeout started` (active); `Takeout finished` = complete |
+| `event` | Detection State | `Hand`, `Partial Takeout`, `Takeout` (active); `Empty` when clear |
+| `throws` / `numThrows` | Counted darts | Often still present during active Takeout |
+
+Active remove-darts **pauses** camera scoring. `Takeout finished` means takeout completed — it must **not** leave Pull-darts stuck.
 
 Each poll **syncs AD throw growth onto the current No3 seat first**, then handles takeout/end-turn. That way a 3-dart visit that flips to Takeout in the same poll still maps all 3 darts to one seat (never dart 3 on the next player).
 
 **Takeout with fewer than 3 throws defers end-turn** until dart 3 is mirrored or the board stays empty for several polls after takeout (confirmed early pull). A one-poll `Takeout finished` / clear flicker after dart 2 must not advance the seat.
 
-**Visit seat lock:** while mirroring an open AD visit, the bridge locks No3 `currentPlayerIndex` and sends `expectedPlayerIndex` on `dart` / `correct` / `end-turn`. The server **409**s mismatches so dart 3 cannot land on the next player. If AD re-shows a closed visit after unlock (late dart 3), the bridge refuses that continuation onto the new seat.
+**Visit seat lock:** while mirroring an open AD visit, the bridge locks No3 `currentPlayerIndex` and sends `expectedPlayerIndex` on `dart` / `correct` / `end-turn`. The server **requires** that field while a visit is open and **409**s mismatches. After the visit closes, the server **holds next-seat scoring** until takeout is cleared (health `takeout_cleared`) or patron **Ready**. Late AD throws after a premature close cannot start the next seat’s visit. If AD re-shows a closed visit after unlock (late dart 3), the bridge also refuses that continuation.
 
-The bridge then **freezes** further `POST /api/camera/dart` and `/correct` when the No3 visit is closed (`turnEnded` / end-turn) or AD remains in takeout. Empty-board flickers mid-visit do **not** end-turn. Scoring resumes when `throws` is empty, AD has left takeout, and a takeout handshake or scored close was seen.
+`/play` shows **Pull darts — takeout** with **Ready** (acks via `POST /api/camera/takeout-ready`). Ready clears the stuck banner + handshake (bridge + UI agree) and may probe Board Manager `/api/reset`. Mid-match **between-games recal** stays gated on No3 match boundary.
 
-`/play` shows **Pull darts — takeout** with **Ready for next visit** (acks via `POST /api/camera/takeout-ready`; bridge may probe a board reset but still waits for a clean board).
+### Redeploy on the mini-PC (required after bridge fixes)
+
+Old companion bridge processes keep the previous takeout / seat-lock bugs. After pulling a new kit:
+
+1. Close any open **companion bridge** console windows (or let `start-board.bat` kill them).
+2. Double-click **`start-board.bat`** again (it stops old `python -m companion bridge` PIDs, then starts a fresh bridge).
+3. Confirm the new bridge window shows the Autodarts → No3 banner and is polling `/api/state`.
 
 ## Related docs
 
@@ -140,9 +156,10 @@ The bridge then **freezes** further `POST /api/camera/dart` and `/correct` when 
 
 1. Cams + ring light on; Board Manager calibrated once  
 2. Edit `tools/board-station/config.yaml` (`exe_path`, No3 URL, room)  
-3. Double-click `start-board.bat`  
+3. **Kill any old bridge window**, then double-click `start-board.bat` (redeploy = new kit zip + restart)  
 4. iPad → play URL → start match on that room  
 5. TV shows `/tv` (attract until a match starts)  
 6. Throw; if misread → tap dart on iPad **or** correct in Board Manager (bridge syncs)  
-7. End match on iPad → TV returns to attract  
-8. If cams die → wait for toast + auto-restart; if still dead, relaunch Board Manager manually  
+7. After a visit: Pull darts; if banner stuck → tap **Ready** on `/play`  
+8. End match on iPad → TV returns to attract  
+9. If cams die → wait for toast + auto-restart; if still dead, relaunch Board Manager manually  
