@@ -191,20 +191,39 @@ export function applyDartRaw(state: GameState, dart: DartThrow): ApplyDartResult
   return result;
 }
 
-/** Stash start-of-visit baseline onto turns that were just finalized. */
+/** Mark darts as edited (challenge integrity — uncorrected-only scoring). */
+function markDartsEdited(darts: DartThrow[]): DartThrow[] {
+  return darts.map((d) => (d.edited ? d : { ...d, edited: true }));
+}
+
+/**
+ * Stash start-of-visit baseline onto turns that were just finalized,
+ * and stamp `edited` when the open visit was rewritten.
+ */
 function attachBaselineToNewTurns(
   state: GameState,
   prevTurnCount: number,
   baseline: PlayerGameState[] | null | undefined
 ): void {
-  if (!baseline?.length) return;
+  const visitEdited = Boolean(state.currentVisitEdited);
   for (let i = prevTurnCount; i < state.turns.length; i++) {
-    if (!state.turns[i].baselineStates) {
-      state.turns[i] = {
-        ...state.turns[i],
-        baselineStates: structuredClone(baseline),
-      };
+    const turn = state.turns[i];
+    const edited =
+      visitEdited || Boolean(turn.edited) || turn.darts.some((d) => d.edited);
+    const nextTurn: typeof turn = {
+      ...turn,
+      ...(baseline?.length && !turn.baselineStates
+        ? { baselineStates: structuredClone(baseline) }
+        : {}),
+    };
+    if (edited) {
+      nextTurn.edited = true;
+      nextTurn.darts = markDartsEdited(turn.darts);
     }
+    state.turns[i] = nextTurn;
+  }
+  if (state.turns.length > prevTurnCount) {
+    state.currentVisitEdited = false;
   }
 }
 
@@ -275,13 +294,15 @@ export function correctCurrentTurn(
   next.winnerId = null;
   next.playerStates = structuredClone(baseline);
   next.currentTurnDarts = [];
+  // Any correct/undo rewrite voids challenge credit for this visit.
+  next.currentVisitEdited = true;
   next.updatedAt = Date.now();
 
   const events: ApplyDartResult["events"] = [
     { type: "undo", payload: { correct: true }, timestamp: Date.now() },
   ];
   let callout = "CORRECTED";
-  const limited = darts.slice(0, 3);
+  const limited = markDartsEdited(darts.slice(0, 3));
 
   for (let i = 0; i < limited.length; i++) {
     const isLast = i === limited.length - 1;
@@ -300,6 +321,13 @@ export function correctCurrentTurn(
     }
   }
 
+  // Preserve edited flags on the open visit. If auto-end finalized the turn,
+  // attachBaselineToNewTurns already stamped Turn.edited and cleared the flag —
+  // do not leak currentVisitEdited onto the next thrower's visit.
+  if (next.currentTurnDarts.length > 0) {
+    next.currentTurnDarts = markDartsEdited(next.currentTurnDarts);
+    next.currentVisitEdited = true;
+  }
   next.updatedAt = Date.now();
   return { state: next, events, callout };
 }
@@ -365,6 +393,8 @@ export function editLastTurn(state: GameState): ApplyDartResult {
   // Restore full start-of-visit playerStates when we stored them (Cricket/Killer).
   // Legacy turns without baselineStates fall back to score-only restore.
   next.currentTurnDarts = [];
+  // Reopening a visit always voids challenge credit for the re-finalized turn.
+  next.currentVisitEdited = true;
   if (last.baselineStates?.length) {
     next.playerStates = structuredClone(last.baselineStates);
     next.turnBaseline = structuredClone(last.baselineStates);
@@ -374,13 +404,14 @@ export function editLastTurn(state: GameState): ApplyDartResult {
     next.turnBaseline = structuredClone(next.playerStates);
   }
 
-  // Put darts back without auto-ending
+  // Put darts back without auto-ending (mark edited so credit stays void)
   let working = next;
-  for (const d of last.darts) {
+  for (const d of markDartsEdited(last.darts)) {
     const r = applyDartRaw(working, d);
     working = r.state;
   }
-  // Fix dartsThrown approximation
+  working.currentTurnDarts = markDartsEdited(working.currentTurnDarts);
+  working.currentVisitEdited = true;
   working.updatedAt = Date.now();
   return {
     state: working,

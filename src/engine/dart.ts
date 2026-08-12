@@ -53,7 +53,7 @@ export function segmentLabel(kind: SegmentKind, number: number): string {
 export function createDart(
   kind: SegmentKind,
   number: number,
-  opts?: Partial<Pick<DartThrow, "angle" | "radius" | "source" | "id" | "timestamp">>
+  opts?: Partial<Pick<DartThrow, "angle" | "radius" | "source" | "id" | "timestamp" | "edited">>
 ): DartThrow {
   const value = segmentValue(kind, number);
   return {
@@ -65,6 +65,7 @@ export function createDart(
     angle: opts?.angle,
     radius: opts?.radius,
     source: opts?.source ?? "manual",
+    ...(opts?.edited ? { edited: true } : {}),
   };
 }
 

@@ -112,4 +112,61 @@ export async function ensureSchema(sql: ReturnType<typeof postgres>): Promise<vo
   await sql`CREATE INDEX IF NOT EXISTS tournament_matches_tournament_id_idx ON tournament_matches (tournament_id)`;
   await sql`CREATE INDEX IF NOT EXISTS tournament_matches_status_idx ON tournament_matches (status)`;
   await sql`CREATE INDEX IF NOT EXISTS tournament_matches_lane_idx ON tournament_matches (lane)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenges (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      starts_at timestamptz NOT NULL,
+      ends_at timestamptz NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS challenges_status_idx ON challenges (status)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenges_starts_at_idx ON challenges (starts_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenges_ends_at_idx ON challenges (ends_at)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenge_goals (
+      id text PRIMARY KEY,
+      challenge_id text NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+      rule_type text NOT NULL,
+      params_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      points integer NOT NULL DEFAULT 0,
+      stack text NOT NULL DEFAULT 'every',
+      sort_order integer NOT NULL DEFAULT 0
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS challenge_goals_challenge_id_idx ON challenge_goals (challenge_id)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenge_progress (
+      id text PRIMARY KEY,
+      challenge_id text NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+      player_id text NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      points integer NOT NULL DEFAULT 0,
+      breakdown_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS challenge_progress_challenge_player_uidx ON challenge_progress (challenge_id, player_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenge_progress_challenge_id_idx ON challenge_progress (challenge_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenge_progress_player_id_idx ON challenge_progress (player_id)`;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS challenge_match_credits (
+      id text PRIMARY KEY,
+      match_id text NOT NULL,
+      challenge_id text NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+      player_id text NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      points integer NOT NULL DEFAULT 0,
+      credits_json jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS challenge_match_credits_uidx ON challenge_match_credits (match_id, challenge_id, player_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenge_match_credits_challenge_id_idx ON challenge_match_credits (challenge_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS challenge_match_credits_match_id_idx ON challenge_match_credits (match_id)`;
 }
