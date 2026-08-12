@@ -24,6 +24,11 @@ export interface DartThrow {
   angle?: number;
   radius?: number;
   source?: "manual" | "camera" | "api" | "bot";
+  /**
+   * True when this dart was rewritten via Undo / Correct / Edit visit.
+   * Challenge scoring skips edited darts/visits (uncorrected only).
+   */
+  edited?: boolean;
 }
 
 export type GameModeId =
@@ -205,6 +210,12 @@ export interface Turn {
    * Required for mode-safe Undo on Cricket / Killer (marks, lives, etc.).
    */
   baselineStates?: PlayerGameState[];
+  /**
+   * True when this visit was touched by Undo / Correct / Edit before finalize.
+   * Challenge scoring skips edited visits (ONLY uncorrected visits count).
+   * Preserved through later rewrites of the same visit.
+   */
+  edited?: boolean;
 }
 
 export type GameStatus = "setup" | "playing" | "leg_won" | "match_won" | "paused" | "finished";
@@ -248,6 +259,11 @@ export interface GameState {
    * Used for Autodarts-style mid-turn corrections (rebuild turn from baseline).
    */
   turnBaseline?: PlayerGameState[] | null;
+  /**
+   * True while the open visit has been rewritten (undo / correct / editLast).
+   * Stamped onto the finalized `Turn.edited` (and darts) then cleared.
+   */
+  currentVisitEdited?: boolean;
   /**
    * When set, this live match belongs to a tournament bracket slot.
    * Optional / additive — casual play leaves this undefined.

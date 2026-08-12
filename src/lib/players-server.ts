@@ -3,6 +3,7 @@ import { createId } from "@/engine";
 import { getDb, schema } from "@/db";
 import type { DbPlayer } from "@/db/schema";
 import { hashPin, normalizeNameKey, validateDisplayName, validatePin, verifyPin } from "@/lib/auth/pin";
+import { creditChallengesForMatch } from "@/lib/challenges/server";
 import type { PlayerAggregateStats, StoredMatch } from "@/lib/storage";
 
 const MAX_FAILED = 5;
@@ -258,6 +259,16 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
     where: eq(schema.matches.id, match.id),
   });
   if (existing) {
+    // Match already stored — still attempt challenge credits (idempotent).
+    // Uses full in-memory `match.state.turns`; summaryJson stays thin.
+    try {
+      await creditChallengesForMatch(match);
+    } catch (err) {
+      console.warn(
+        "[no3-darts] challenge credit after existing match failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
     return { ok: true, updatedPlayerIds: [] };
   }
 
@@ -348,11 +359,26 @@ export async function persistFinishedMatch(match: StoredMatch): Promise<{
       return updatedPlayerIds;
     });
 
+    // After successful match insert: score timed challenges from final turns.
+    try {
+      await creditChallengesForMatch(match);
+    } catch (err) {
+      console.warn(
+        "[no3-darts] challenge credit after persist failed:",
+        err instanceof Error ? err.message : err
+      );
+    }
+
     return { ok: true, updatedPlayerIds: updated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     // Concurrent persist of the same match id
     if (msg.includes("duplicate") || msg.includes("unique")) {
+      try {
+        await creditChallengesForMatch(match);
+      } catch {
+        /* ignore */
+      }
       return { ok: true, updatedPlayerIds: [] };
     }
     console.warn("[no3-darts] persistFinishedMatch failed:", msg || err);

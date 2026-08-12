@@ -152,8 +152,100 @@ export const tournamentMatches = pgTable(
   ]
 );
 
+/**
+ * Timed challenge definitions synced from No3Passport (or admin).
+ * Progress is scored in darts at match persist; Passport reads standings.
+ */
+export const challenges = pgTable(
+  "challenges",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    /** active | closed */
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("challenges_status_idx").on(t.status),
+    index("challenges_starts_at_idx").on(t.startsAt),
+    index("challenges_ends_at_idx").on(t.endsAt),
+  ]
+);
+
+export const challengeGoals = pgTable(
+  "challenge_goals",
+  {
+    id: text("id").primaryKey(),
+    challengeId: text("challenge_id")
+      .notNull()
+      .references(() => challenges.id, { onDelete: "cascade" }),
+    ruleType: text("rule_type").notNull(),
+    paramsJson: jsonb("params_json").notNull().default({}),
+    points: integer("points").notNull().default(0),
+    /** once | every */
+    stack: text("stack").notNull().default("every"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [index("challenge_goals_challenge_id_idx").on(t.challengeId)]
+);
+
+/** Cumulative points per registered player for a challenge. */
+export const challengeProgress = pgTable(
+  "challenge_progress",
+  {
+    id: text("id").primaryKey(),
+    challengeId: text("challenge_id")
+      .notNull()
+      .references(() => challenges.id, { onDelete: "cascade" }),
+    playerId: text("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    points: integer("points").notNull().default(0),
+    /** Aggregated credit breakdown JSON */
+    breakdownJson: jsonb("breakdown_json").notNull().default({}),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("challenge_progress_challenge_player_uidx").on(t.challengeId, t.playerId),
+    index("challenge_progress_challenge_id_idx").on(t.challengeId),
+    index("challenge_progress_player_id_idx").on(t.playerId),
+  ]
+);
+
+/**
+ * Idempotency ledger: one credit row per (match, challenge, player).
+ * Prevents double-scoring when persist is retried.
+ */
+export const challengeMatchCredits = pgTable(
+  "challenge_match_credits",
+  {
+    id: text("id").primaryKey(),
+    matchId: text("match_id").notNull(),
+    challengeId: text("challenge_id")
+      .notNull()
+      .references(() => challenges.id, { onDelete: "cascade" }),
+    playerId: text("player_id")
+      .notNull()
+      .references(() => players.id, { onDelete: "cascade" }),
+    points: integer("points").notNull().default(0),
+    creditsJson: jsonb("credits_json").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("challenge_match_credits_uidx").on(t.matchId, t.challengeId, t.playerId),
+    index("challenge_match_credits_challenge_id_idx").on(t.challengeId),
+    index("challenge_match_credits_match_id_idx").on(t.matchId),
+  ]
+);
+
 export type DbPlayer = typeof players.$inferSelect;
 export type NewDbPlayer = typeof players.$inferInsert;
 export type DbTournament = typeof tournaments.$inferSelect;
 export type DbTournamentPlayer = typeof tournamentPlayers.$inferSelect;
 export type DbTournamentMatch = typeof tournamentMatches.$inferSelect;
+export type DbChallenge = typeof challenges.$inferSelect;
+export type DbChallengeGoal = typeof challengeGoals.$inferSelect;
+export type DbChallengeProgress = typeof challengeProgress.$inferSelect;

@@ -30,7 +30,7 @@ Query personal history or future weekly tops via `match_players.player_id` + `ma
 | **`DATABASE_URL`** | **no3-darts** (app) | Postgres connection string. Without it, auth APIs return 503 and guests/localStorage still work. |
 | `SESSION_SECRET` | **no3-darts** (app) | HMAC secret for session cookies. Recommended in production. Falls back to `CAMERA_API_KEY` or `DATABASE_URL` if unset. |
 | `STAFF_PIN` | optional | 4-digit PIN for staff Admin APIs (player PIN reset). Default `1234`. Keep matched with **Admin → Staff PIN** (local `/play` unlock). |
-| `PASSPORT_DARTS_SHARED_SECRET` | **no3-darts** (app) when using No3Passport | Bearer secret for `POST /api/integrations/passport/link-challenge`. Required for that endpoint (401 if missing/wrong). Match the value configured in Passport. |
+| `PASSPORT_DARTS_SHARED_SECRET` | **no3-darts** (app) when using No3Passport | Bearer secret for Passport integration routes (`link-challenge`, timed `challenges` upsert/standings/close). Required for those endpoints (401 if missing/wrong). Match the value configured in Passport. See [`CHALLENGES.md`](./CHALLENGES.md). |
 | `CAMERA_API_KEY` | optional | Unrelated to players; protects camera APIs. |
 
 ### `DATABASE_URL` checklist
@@ -74,6 +74,7 @@ Schema tables are created automatically on first DB use (no separate migrate job
 | POST | `/api/auth/login` | `{ name, pin }` → sets session cookie |
 | POST | `/api/auth/verify` | `{ name, pin }` → no session change |
 | POST | `/api/integrations/passport/link-challenge` | No3Passport only: `Authorization: Bearer $PASSPORT_DARTS_SHARED_SECRET` + `{ name, pin }` → player identity (id, name, stats). Same PIN/lockout semantics as `/api/auth/verify`. **No session cookie.** |
+| PUT/GET | `/api/integrations/passport/challenges*` | Timed challenge defs + standings for Passport. See [`CHALLENGES.md`](./CHALLENGES.md). |
 | POST | `/api/auth/logout` | clears cookie |
 | GET | `/api/auth/me` | current session player |
 | GET | `/api/players` | public names + stats (no hashes) |
