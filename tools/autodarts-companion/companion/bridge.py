@@ -325,24 +325,33 @@ def run_bridge(
             if end_turn_sent:
                 mark_visit_closed(reason)
             return
-        # Hard invariant: never end-turn a different seat than the visit lock
+        # Hard invariant: never POST end-turn without expectedPlayerIndex when
+        # a visit is/was locked. If seat fetch fails, fail closed (no end-turn).
         seat = locked_seat if locked_seat is not None else fetch_no3_seat()
-        if seat is not None:
-            if locked_seat is None:
-                locked_seat = seat
-            live = fetch_no3_seat()
-            if live is not None and not seat_matches_lock(
-                locked_seat=seat, current_seat=live
-            ):
-                console.print(
-                    f"[red]end-turn blocked[/red] ({reason}) - "
-                    f"No3 seat {live} != visit lock {seat}"
-                )
-                mark_visit_closed(f"seat mismatch:{reason}")
-                return
-        payload: dict[str, Any] = {"roomId": room}
-        if seat is not None:
-            payload["expectedPlayerIndex"] = seat
+        if seat is None:
+            console.print(
+                f"[red]end-turn blocked[/red] ({reason}) - "
+                "No3 seat unknown (fail closed; no end-turn without "
+                "expectedPlayerIndex)"
+            )
+            mark_visit_closed(f"seat unknown:{reason}")
+            return
+        if locked_seat is None:
+            locked_seat = seat
+        live = fetch_no3_seat()
+        if live is not None and not seat_matches_lock(
+            locked_seat=seat, current_seat=live
+        ):
+            console.print(
+                f"[red]end-turn blocked[/red] ({reason}) - "
+                f"No3 seat {live} != visit lock {seat}"
+            )
+            mark_visit_closed(f"seat mismatch:{reason}")
+            return
+        payload: dict[str, Any] = {
+            "roomId": room,
+            "expectedPlayerIndex": seat,
+        }
         console.print(f"[cyan]end-turn[/cyan] ({reason})")
         resp = _post_json(end_url, payload, headers, dry_run)
         if resp is None:
@@ -919,68 +928,84 @@ def run_bridge(
             # Takeout / freeze AFTER visit sync so all 3 AD throws map to one seat.
             # Incomplete visit (1-2 throws): latch in_takeout but defer end-turn
             # until dart 3 is mirrored or CLEARED confirms an early pull.
+            # Patron Ready from /play must keep the Pull-darts banner clearable:
+            # do not re-arm takeout health while patron_force_ready is latched
+            # (AD status often sticks on "Removing darts" after Ready).
             if takeout_now and not in_takeout:
-                in_takeout = True
-                if visit_closed:
-                    saw_takeout_after_close = True
+                if patron_force_ready:
                     console.print(
-                        "[bold yellow]takeout[/bold yellow] "
-                        "AD remove-darts - scoring frozen"
+                        "[dim]takeout sticky after Ready - "
+                        "keeping banner cleared until unlock[/dim]"
                     )
-                    post_takeout_health(
-                        status,
-                        active=True,
-                        message="Pull darts - takeout",
-                    )
-                elif should_end_turn_on_takeout(
-                    visit_closed=visit_closed,
-                    throws_count=len(throws),
-                ):
-                    console.print(
-                        "[bold yellow]takeout[/bold yellow] "
-                        "AD remove-darts - scoring frozen"
-                    )
-                    maybe_end_turn(f"status={status}")
-                    mark_visit_closed(f"takeout:{status}")
                     if visit_closed:
                         saw_takeout_after_close = True
-                    post_takeout_health(
-                        status,
-                        active=True,
-                        message="Pull darts - takeout",
-                    )
                 else:
-                    console.print(
-                        "[bold yellow]takeout[/bold yellow] "
-                        f"incomplete visit ({len(throws)}/3) - "
-                        "defer end-turn until dart 3 or clear"
-                    )
+                    in_takeout = True
+                    if visit_closed:
+                        saw_takeout_after_close = True
+                        console.print(
+                            "[bold yellow]takeout[/bold yellow] "
+                            "AD remove-darts - scoring frozen"
+                        )
+                        post_takeout_health(
+                            status,
+                            active=True,
+                            message="Pull darts - takeout",
+                        )
+                    elif should_end_turn_on_takeout(
+                        visit_closed=visit_closed,
+                        throws_count=len(throws),
+                    ):
+                        console.print(
+                            "[bold yellow]takeout[/bold yellow] "
+                            "AD remove-darts - scoring frozen"
+                        )
+                        maybe_end_turn(f"status={status}")
+                        mark_visit_closed(f"takeout:{status}")
+                        if visit_closed:
+                            saw_takeout_after_close = True
+                        post_takeout_health(
+                            status,
+                            active=True,
+                            message="Pull darts - takeout",
+                        )
+                    else:
+                        console.print(
+                            "[bold yellow]takeout[/bold yellow] "
+                            f"incomplete visit ({len(throws)}/3) - "
+                            "defer end-turn until dart 3 or clear"
+                        )
+                        post_takeout_health(
+                            status,
+                            active=True,
+                            message="Pull darts - takeout",
+                        )
+            elif takeout_now and in_takeout:
+                if patron_force_ready:
+                    # Ready already cleared UI; do not re-stick banner
+                    if visit_closed:
+                        saw_takeout_after_close = True
+                else:
+                    if visit_closed:
+                        saw_takeout_after_close = True
+                    elif should_end_turn_on_takeout(
+                        visit_closed=visit_closed,
+                        throws_count=len(throws),
+                    ):
+                        # Deferred: dart 3 arrived while still in takeout
+                        console.print(
+                            "[bold yellow]takeout[/bold yellow] "
+                            "full visit mirrored - end-turn now"
+                        )
+                        maybe_end_turn(f"status={status}")
+                        mark_visit_closed(f"takeout:{status}")
+                        if visit_closed:
+                            saw_takeout_after_close = True
                     post_takeout_health(
                         status,
                         active=True,
                         message="Pull darts - takeout",
                     )
-            elif takeout_now and in_takeout:
-                if visit_closed:
-                    saw_takeout_after_close = True
-                elif should_end_turn_on_takeout(
-                    visit_closed=visit_closed,
-                    throws_count=len(throws),
-                ):
-                    # Deferred: dart 3 arrived while still in takeout
-                    console.print(
-                        "[bold yellow]takeout[/bold yellow] "
-                        "full visit mirrored - end-turn now"
-                    )
-                    maybe_end_turn(f"status={status}")
-                    mark_visit_closed(f"takeout:{status}")
-                    if visit_closed:
-                        saw_takeout_after_close = True
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
             elif should_end_turn_leaving_takeout_empty(
                 visit_closed=visit_closed,
                 throws_empty=not throws,
@@ -1017,11 +1042,13 @@ def run_bridge(
                     )
             elif visit_closed and not takeout_now and throws:
                 # Board left active takeout but darts still listed - keep pause
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
+                # (unless patron Ready already cleared the handshake)
+                if not patron_force_ready:
+                    post_takeout_health(
+                        status,
+                        active=True,
+                        message="Pull darts - takeout",
+                    )
 
             unlock_if_ready(status, throws, takeout=takeout_now)
 

@@ -15,6 +15,7 @@ import {
   applyCameraDart,
   applyCameraEndTurn,
   clearTakeoutHold,
+  getCameraGateSnapshot,
   removeServerMatch,
   requestTakeoutReady,
   setCameraHealth,
@@ -63,12 +64,28 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(banner).toMatch(/Removing darts/);
     expect(banner).toMatch(/"Ready"/);
     expect(banner).toMatch(/onReady/);
+    expect(banner).toMatch(/stuck takeout/i);
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/acknowledgeTakeout/);
+    // Ready must stay reachable even during PIN gate / bot turns
+    expect(screen).toMatch(
+      /useCameraHealth\(state\?\.roomId,\s*Boolean\(state\)\)/
+    );
     const hook = readSrc("src/hooks/useCameraHealth.ts");
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);
+    expect(hook).toMatch(/Optimistic clear/);
+  });
+
+  it("bridge maybe_end_turn fail-closed without expectedPlayerIndex", () => {
+    const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
+    expect(bridge).toMatch(/No3 seat unknown \(fail closed/);
+    expect(bridge).toMatch(/"expectedPlayerIndex": seat/);
+    expect(bridge).not.toMatch(
+      /if seat is not None:\s*\n\s*payload\["expectedPlayerIndex"\]/
+    );
+    expect(bridge).toMatch(/keeping banner cleared until unlock/);
   });
 
   it("ResumeAuthGate pulls /api/matches/active before re-enabling scoring", () => {
@@ -299,6 +316,103 @@ describe("Board1 P0: dart 3 never jumps to next seat", () => {
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold("Board1 Accept Seat");
+    }
+  });
+
+  it("takeout hold requires expectedPlayerIndex (old companion fail-closed)", () => {
+    const state = board1Match("Board1 Accept SeatLock");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Accept SeatLock");
+    try {
+      applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: "Board1 Accept SeatLock",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 5,
+        roomId: "Board1 Accept SeatLock",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 1,
+        roomId: "Board1 Accept SeatLock",
+        expectedPlayerIndex: 0,
+      });
+      expect(
+        getCameraGateSnapshot("Board1 Accept SeatLock").holdUntilTakeoutClear
+      ).toBe(true);
+
+      const missingDart = applyCameraDart({
+        kind: "triple",
+        number: 19,
+        roomId: "Board1 Accept SeatLock",
+      });
+      expect(missingDart.ok).toBe(false);
+      if (!missingDart.ok) {
+        expect(missingDart.error).toMatch(/expectedPlayerIndex required/i);
+      }
+
+      const missingEnd = applyCameraEndTurn({
+        roomId: "Board1 Accept SeatLock",
+      });
+      expect(missingEnd.ok).toBe(false);
+      if (!missingEnd.ok) {
+        expect(missingEnd.error).toMatch(/expectedPlayerIndex required/i);
+      }
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Accept SeatLock");
+    }
+  });
+
+  it("takeout health arms server hold (not companion-only freeze)", () => {
+    const state = board1Match("Board1 Accept HealthHold");
+    upsertServerMatch(state);
+    clearTakeoutHold("Board1 Accept HealthHold");
+    try {
+      setCameraHealth({
+        roomId: "Board1 Accept HealthHold",
+        ok: true,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        reason: "takeout",
+        takeout: true,
+        ts: Date.now(),
+      });
+      expect(
+        getCameraGateSnapshot("Board1 Accept HealthHold").holdUntilTakeoutClear
+      ).toBe(true);
+
+      const blocked = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: "Board1 Accept HealthHold",
+        expectedPlayerIndex: 0,
+      });
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) {
+        expect(blocked.error).toMatch(/Takeout (active|hold)/i);
+      }
+
+      requestTakeoutReady("Board1 Accept HealthHold");
+      expect(
+        getCameraGateSnapshot("Board1 Accept HealthHold").holdUntilTakeoutClear
+      ).toBe(false);
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board1 Accept HealthHold",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board1 Accept HealthHold");
     }
   });
 

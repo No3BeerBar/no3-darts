@@ -28,11 +28,11 @@ export function TakeoutBanner({
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-wide">
-            Removing darts — takeout
+            Removing darts - takeout
           </p>
           <p className="text-xs text-sky-200/90">
             Camera scoring paused. Pull your darts, then tap Ready to reset so
-            the next visit can start.
+            the next visit can start. Ready clears a stuck takeout from /play.
           </p>
         </div>
         <button

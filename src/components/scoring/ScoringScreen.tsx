@@ -219,15 +219,14 @@ function ScoringScreenInner() {
   useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
+  // Takeout Ready must stay reachable from /play even during PIN gate / bot
+  // turns - stuck "Removing darts" must always be clearable.
   const {
     notice: cameraNotice,
     takeout: takeoutActive,
     takeoutBusy,
     acknowledgeTakeout,
-  } = useCameraHealth(
-    state?.roomId,
-    Boolean(state) && seatsOk && !botThrowing
-  );
+  } = useCameraHealth(state?.roomId, Boolean(state));
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
   const showCheckout =
