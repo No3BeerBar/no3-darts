@@ -28,8 +28,9 @@ import {
   invalidateSeatAuthOnPageRestore,
   seedSeatAuthForMatch,
 } from "@/lib/seat-auth";
+import { isHeartbeatMatchStatus } from "@/lib/live-match";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
-import { syncMatchToServer } from "@/lib/sync-server";
+import { clearMatchFromServer, syncMatchToServer } from "@/lib/sync-server";
 import { useSessionStore } from "@/store/session-store";
 
 /** Save history / stats / Postgres only when a PIN account played. Guests are ephemeral. */
@@ -99,12 +100,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     set({ state: active, hydrated: true });
     // Re-publish to server after reload / deploy so TV can reconnect
+    // Re-publish to server after reload / deploy so TV can reconnect.
+    // match_won is a one-shot (no heartbeat) so End game can still clear the room.
     if (
       active &&
-      (active.status === "playing" ||
-        active.status === "paused" ||
-        active.status === "leg_won" ||
-        active.status === "match_won")
+      (isHeartbeatMatchStatus(active.status) || active.status === "match_won")
     ) {
       void syncMatchToServer(active);
     }
@@ -243,7 +243,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state: null, lastCallout: "Saved", lastHighlight: null });
     // Drop server copy so TV returns to attract mode
     if (prevId) {
-      void fetch(`/api/matches/${prevId}`, { method: "DELETE" }).catch(() => {});
+      clearMatchFromServer(prevId, finished);
     }
   },
 
@@ -256,7 +256,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ state: null, lastCallout: null, lastHighlight: null });
     // Drop server copy so TV stops showing the match
     if (prev?.id) {
-      void fetch(`/api/matches/${prev.id}`, { method: "DELETE" }).catch(() => {});
+      clearMatchFromServer(prev.id, prev);
     }
   },
 

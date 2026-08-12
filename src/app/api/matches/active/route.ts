@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveByRoom, listServerMatches } from "@/lib/server-game-store";
+import { isLiveMatchStatus } from "@/lib/live-match";
 
 /**
  * GET /api/matches/active?room=Board%201
@@ -32,13 +33,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const playing = listServerMatches().filter(
-    (m) =>
-      m.status === "playing" ||
-      m.status === "paused" ||
-      m.status === "leg_won" ||
-      m.status === "match_won"
-  );
+  const playing = listServerMatches().filter((m) => isLiveMatchStatus(m.status));
   return NextResponse.json(
     { matches: playing, serverTime: Date.now() },
     {

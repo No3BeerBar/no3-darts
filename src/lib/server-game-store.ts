@@ -19,6 +19,7 @@ import {
   isStaleCameraHealth,
   type CameraHealth,
 } from "@/lib/camera-health";
+import { isLiveMatchStatus } from "@/lib/live-match";
 
 export type { CameraHealth } from "@/lib/camera-health";
 export {
@@ -33,14 +34,82 @@ type Listener = (event: { type: string; data: unknown }) => void;
 const matches = new Map<string, GameState>();
 const byRoom = new Map<string, string>(); // roomId -> matchId
 const listeners = new Set<Listener>();
+/** Match ids dropped by End game / finish — ignore late tablet heartbeats. */
+const removedMatchIds = new Map<string, number>();
+
+/** Ignore resurrecting a cleared match for this long (in-flight POST). */
+export const CLEARED_MATCH_TOMBSTONE_MS = 120_000;
+/** Winner screen may stay "active" briefly, then attract. */
+export const MATCH_WON_ACTIVE_MS = 4_000;
+
+function normalizeRoomId(roomId: string): string {
+  let s = (roomId || "").trim().replace(/\s+/g, " ");
+  if (s.includes("%")) {
+    try {
+      s = decodeURIComponent(s).trim().replace(/\s+/g, " ");
+    } catch {
+      /* keep raw */
+    }
+  }
+  return s;
+}
+
+function isTombstoned(id: string, now = Date.now()): boolean {
+  const t = removedMatchIds.get(id);
+  if (t == null) return false;
+  if (now - t > CLEARED_MATCH_TOMBSTONE_MS) {
+    removedMatchIds.delete(id);
+    return false;
+  }
+  return true;
+}
+
+function pruneInactiveMatches(now = Date.now()): void {
+  for (const m of [...matches.values()]) {
+    if (!isLiveMatchStatus(m.status)) {
+      removeServerMatch(m.id);
+      continue;
+    }
+    if (
+      m.status === "match_won" &&
+      now - (m.updatedAt ?? 0) >= MATCH_WON_ACTIVE_MS
+    ) {
+      removeServerMatch(m.id);
+    }
+  }
+}
+
+function indexRoom(roomId: string, matchId: string): void {
+  const raw = roomId;
+  const norm = normalizeRoomId(roomId);
+  byRoom.set(raw, matchId);
+  byRoom.set(norm, matchId);
+  byRoom.set(norm.toLowerCase(), matchId);
+}
+
+function unindexRoom(roomId: string | undefined, matchId: string): void {
+  if (roomId) {
+    byRoom.delete(roomId);
+    const norm = normalizeRoomId(roomId);
+    byRoom.delete(norm);
+    byRoom.delete(norm.toLowerCase());
+  }
+  for (const [k, v] of [...byRoom.entries()]) {
+    if (v === matchId) byRoom.delete(k);
+  }
+}
 
 /** Latest camera / Board Manager health per room (from companion bridge). */
 const cameraHealthByRoom = new Map<string, CameraHealth>();
 
 export function upsertServerMatch(state: GameState): void {
-  // Finished matches leave the live registry so TV returns to attract.
+  // Finished / setup leave the live registry so TV returns to attract.
   if (state.status === "finished" || state.status === "setup") {
     removeServerMatch(state.id);
+    return;
+  }
+  // End game already cleared this id — do not let a late heartbeat resurrect it.
+  if (isTombstoned(state.id)) {
     return;
   }
 
@@ -59,7 +128,7 @@ export function upsertServerMatch(state: GameState): void {
   }
   const prev = existing;
   matches.set(state.id, state);
-  if (state.roomId) byRoom.set(state.roomId, state.id);
+  if (state.roomId) indexRoom(state.roomId, state.id);
   realignCameraGateFromMatch(prev, state);
   emit({ type: "match_update", data: state });
 }
@@ -75,42 +144,65 @@ export function getServerMatch(id: string): GameState | undefined {
   return matches.get(id);
 }
 
-export function getActiveByRoom(roomId: string): GameState | undefined {
-  // Exact room key
-  const id = byRoom.get(roomId);
-  if (id) {
-    const m = matches.get(id);
-    if (m) return m;
+export function getActiveByRoom(
+  roomId: string,
+  now = Date.now()
+): GameState | undefined {
+  pruneInactiveMatches(now);
+
+  const pickLive = (m: GameState | undefined): GameState | undefined => {
+    if (!m || !isLiveMatchStatus(m.status)) return undefined;
+    if (
+      m.status === "match_won" &&
+      now - (m.updatedAt ?? 0) >= MATCH_WON_ACTIVE_MS
+    ) {
+      return undefined;
+    }
+    return m;
+  };
+
+  const exactId =
+    byRoom.get(roomId) ??
+    byRoom.get(normalizeRoomId(roomId)) ??
+    byRoom.get(normalizeRoomId(roomId).toLowerCase());
+  if (exactId) {
+    const hit = pickLive(matches.get(exactId));
+    if (hit) return hit;
   }
-  // Case-insensitive / trimmed fallback
-  const want = roomId.trim().toLowerCase();
+  // Case-insensitive / trimmed / decoded fallback (Board 1 vs Board%201)
+  const want = normalizeRoomId(roomId).toLowerCase();
   for (const m of matches.values()) {
-    if ((m.roomId || "").trim().toLowerCase() === want) return m;
+    if (normalizeRoomId(m.roomId || "").toLowerCase() === want) {
+      const hit = pickLive(m);
+      if (hit) return hit;
+    }
   }
   // If only one live match exists, return it (helps after room rename mismatch)
-  const live = listServerMatches().filter(
-    (m) =>
-      m.status === "playing" ||
-      m.status === "paused" ||
-      m.status === "leg_won" ||
-      m.status === "match_won"
-  );
+  const live = listServerMatches(now).filter((m) => pickLive(m));
   if (live.length === 1) return live[0];
   return undefined;
 }
 
-export function listServerMatches(): GameState[] {
-  return Array.from(matches.values());
+export function listServerMatches(now = Date.now()): GameState[] {
+  pruneInactiveMatches(now);
+  return Array.from(matches.values()).filter((m) => isLiveMatchStatus(m.status));
 }
 
 export function removeServerMatch(id: string): void {
   const m = matches.get(id);
-  if (m?.roomId) {
-    byRoom.delete(m.roomId);
-    clearTakeoutHold(m.roomId);
-  }
+  const existed = matches.has(id);
   matches.delete(id);
-  emit({ type: "match_removed", data: { id } });
+  unindexRoom(m?.roomId, id);
+  if (m?.roomId) clearTakeoutHold(m.roomId);
+  removedMatchIds.set(id, Date.now());
+  if (existed) emit({ type: "match_removed", data: { id } });
+}
+
+/** Test helper: drop in-memory matches + tombstones. */
+export function resetServerGameStore(): void {
+  matches.clear();
+  byRoom.clear();
+  removedMatchIds.clear();
 }
 
 function resolveMatch(opts: {

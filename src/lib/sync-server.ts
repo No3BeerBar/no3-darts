@@ -3,6 +3,7 @@
  */
 
 import type { GameState } from "@/engine/types";
+import { isHeartbeatMatchStatus } from "@/lib/live-match";
 
 export async function syncMatchToServer(state: GameState): Promise<boolean> {
   try {
@@ -27,6 +28,31 @@ export async function syncMatchToServer(state: GameState): Promise<boolean> {
   }
 }
 
+/** Drop the room's live match so `/tv` returns to attract (finish or abandon). */
+export function clearMatchFromServer(
+  matchId: string,
+  lastState?: GameState | null
+): void {
+  if (lastState) {
+    void syncMatchToServer({
+      ...lastState,
+      status: "finished",
+      updatedAt: Date.now(),
+    });
+  }
+  const del = () =>
+    fetch(`/api/matches/${encodeURIComponent(matchId)}`, {
+      method: "DELETE",
+      cache: "no-store",
+    });
+  void del()
+    .then((r) => {
+      if (!r.ok) return del();
+      return r;
+    })
+    .catch(() => del().catch(() => false));
+}
+
 /** Fire-and-forget keepalive used by the scoring tablet */
 export function startMatchHeartbeat(
   getState: () => GameState | null,
@@ -37,13 +63,7 @@ export function startMatchHeartbeat(
   const tick = () => {
     if (stopped) return;
     const s = getState();
-    if (
-      s &&
-      (s.status === "playing" ||
-        s.status === "paused" ||
-        s.status === "leg_won" ||
-        s.status === "match_won")
-    ) {
+    if (s && isHeartbeatMatchStatus(s.status)) {
       void syncMatchToServer(s);
     }
   };

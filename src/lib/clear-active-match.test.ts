@@ -162,6 +162,10 @@ describe("abandon match / clear paths", () => {
     expect(getActiveGame()).toBeNull();
     expect(getSeatAuth()).toBeNull();
     expect(memory.has("no3_active_game")).toBe(false);
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/matches"))).toBe(
+      true
+    );
   });
 
   it("clearGame is a no-op in displayOnly (TV) so play tablets must unset it", async () => {
