@@ -119,7 +119,14 @@ Ordinary visit takeout while a match is `playing` does **not** run recal (avoids
 
 ### Takeout / remove-darts
 
-While Autodarts status is Takeout*, the bridge **pauses** `POST /api/camera/dart` and `/correct` (end-turn still runs once). `/play` shows **Pull darts — takeout** with **Ready for next visit** (acks via `POST /api/camera/takeout-ready`; bridge may probe a board reset and resume scoring).
+Autodarts `/api/state` signals takeout via `status` / `event` (`Takeout`, `Takeout started`, `Takeout finished`) and may still list the prior visit in `throws` (see companion fixtures).
+
+The bridge **freezes** `POST /api/camera/dart` and `/correct` when either:
+
+1. Autodarts is in takeout/remove-darts, **or**
+2. No3 has already closed the visit (`turnEnded` / end-turn) — even before AD flips to Takeout
+
+Scoring resumes only when `throws` is empty **and** AD has left takeout, so Player 1 residual darts cannot APPEND/REPLACE onto Player 2. `/play` shows **Pull darts — takeout** with **Ready for next visit** (acks via `POST /api/camera/takeout-ready`; bridge may probe a board reset but still waits for a clean board).
 
 ## Related docs
 

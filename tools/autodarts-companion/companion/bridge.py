@@ -8,7 +8,8 @@ Also:
 - Syncs mid-visit corrections (replace/remove throws) via POST /api/camera/correct
 - Watches camera/FPS health, restarts Board Manager when unhealthy, notifies No3
 - Optionally triggers between-games recalibrate when No3 reports a real game boundary
-- Pauses dart posts while Autodarts is in takeout / remove-darts mode
+- Freezes dart/correct posts while Autodarts is in takeout / remove-darts OR after
+  No3 has already closed the visit (prevents P1 darts attaching to P2)
 """
 
 from __future__ import annotations
@@ -37,7 +38,12 @@ from .health import (
     restart_board_manager,
     wait_for_board_manager,
 )
-from .mapping import dart_to_no3, format_segment_label, is_takeout_status
+from .mapping import dart_to_no3, format_segment_label
+from .visit_gate import (
+    is_takeout_state,
+    scoring_frozen,
+    should_unlock_next_visit,
+)
 
 console = Console()
 
@@ -153,12 +159,11 @@ def run_bridge(
       with the full current visit (idempotent replace of open turn).
     - Board status enters Takeout* OR throws list clears after a visit ->
       POST /api/camera/end-turn once (covers early pull of 1-2 darts).
-    - While Autodarts status is takeout, dart/correct posts are paused so
-      phantom hits during remove-darts do not score.
+    - After No3 closes a visit (3rd dart / end-turn) OR AD status is Takeout*,
+      dart/correct posts freeze until throws are empty and AD leaves takeout.
+      This stops P1 residual throws from scoring on P2.
     - Between-games recal only when No3 match is absent or at a leg/match
       boundary (never while status is playing / paused).
-    - No3 already auto-ends the turn after the 3rd dart; end-turn then
-      returns READY and is harmless.
     """
     client = AutodartsClient(host, port)
     no3_url = (no3_url or os.environ.get("NO3_URL") or "http://localhost:3000").rstrip("/")
@@ -176,7 +181,8 @@ def run_bridge(
     last_health_post_at = 0.0
     last_takeout_post_at = 0.0
     in_takeout = False
-    takeout_force_resume = False
+    # No3 visit already ended - freeze AD->No3 until clean next thrower
+    visit_closed = False
     last_recal_gate_at = 0.0
     recal_gate_allows = False
 
@@ -201,15 +207,29 @@ def run_bridge(
     prev_status = ""
     end_turn_sent = False
 
+    def mark_visit_closed(reason: str) -> None:
+        nonlocal visit_closed
+        if visit_closed:
+            return
+        visit_closed = True
+        console.print(
+            f"[bold yellow]visit closed[/bold yellow] ({reason}) - "
+            "scoring frozen until board clear / takeout done"
+        )
+
     def maybe_end_turn(reason: str) -> None:
         nonlocal end_turn_sent
         if not end_turn_on_takeout or end_turn_sent:
+            # Still freeze even if end-turn already sent / disabled
+            if end_turn_sent:
+                mark_visit_closed(reason)
             return
         payload = {"roomId": room}
         console.print(f"[cyan]end-turn[/cyan] ({reason})")
         resp = _post_json(end_url, payload, headers, dry_run)
         if resp is not None:
             end_turn_sent = True
+            mark_visit_closed(reason)
             callout = resp.get("callout") if isinstance(resp, dict) else None
             if callout:
                 console.print(f"[bold green]END OK[/bold green] {callout}")
@@ -237,6 +257,7 @@ def run_bridge(
                 console.print("[bold green]CORRECT OK[/bold green]")
             if resp.get("turnEnded"):
                 end_turn_sent = True
+                mark_visit_closed("correct turnEnded")
 
     def post_health(payload: dict[str, Any], force: bool = False) -> None:
         nonlocal last_health_level, last_health_post_at
@@ -403,13 +424,32 @@ def run_bridge(
                 "use Board Manager UI Calibration between games if cams drift.[/dim]"
             )
 
-    def scoring_paused_for_takeout(status: str) -> bool:
-        if takeout_force_resume:
+    def unlock_if_ready(status: str, throws: list[Any], *, takeout: bool) -> bool:
+        nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
+        if not should_unlock_next_visit(
+            visit_closed=visit_closed,
+            takeout=takeout,
+            throws_empty=not throws,
+        ):
             return False
-        return is_takeout_status(status)
+        visit_closed = False
+        end_turn_sent = False
+        in_takeout = False
+        prev_throws = []
+        console.print(
+            "[bold green]next visit ready[/bold green] "
+            "board clear - scoring resumed for current thrower"
+        )
+        post_takeout_health(
+            status,
+            active=False,
+            message="Ready for next visit",
+        )
+        return True
 
     def handle_takeout_ready_ack(status: str) -> None:
-        nonlocal takeout_force_resume, end_turn_sent, in_takeout
+        """Patron Ready: probe AD reset; do NOT unlock while throws remain."""
+        nonlocal visit_closed
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -420,10 +460,10 @@ def run_bridge(
             return
         console.print(
             "[cyan]takeout-ready[/cyan] patron acknowledged - "
-            "clearing takeout pause / probing board reset"
+            "probing board reset (scoring stays frozen until AD clear)"
         )
         maybe_end_turn("takeout-ready ack")
-        # User-initiated reset (not between-games auto recal)
+        mark_visit_closed("takeout-ready ack")
         result = client.try_recalibrate()
         if result.get("ok"):
             console.print(
@@ -433,15 +473,13 @@ def run_bridge(
         else:
             console.print(
                 "[dim]takeout reset: no Board Manager reset endpoint - "
-                "resume scoring after darts are pulled[/dim]"
+                "wait for empty board / takeout clear[/dim]"
             )
-        takeout_force_resume = True
-        in_takeout = False
-        end_turn_sent = False
+        # Keep banner / freeze until unlock_if_ready sees empty+not takeout
         post_takeout_health(
             status,
-            active=False,
-            message="Ready for next visit",
+            active=True,
+            message="Pull darts - takeout",
         )
 
     try:
@@ -456,9 +494,10 @@ def run_bridge(
 
             if hcfg.enabled:
                 hp = tracker.evaluate(state, ad_ok)
-                # Do not overwrite an active takeout banner with generic "healthy"
-                if not (in_takeout and hp.get("ok") and not hp.get("restarting")):
-                    if not in_takeout:
+                banner_on = in_takeout or visit_closed
+                # Do not overwrite an active takeout / visit-closed banner
+                if not (banner_on and hp.get("ok") and not hp.get("restarting")):
+                    if not banner_on:
                         post_health({**hp, "takeout": False})
                 if not ad_ok or hp.get("level") == "unhealthy":
                     maybe_restart(hp)
@@ -469,59 +508,47 @@ def run_bridge(
             assert state is not None
             throws = extract_throws(state)
             status = extract_status(state)
+            takeout_now = is_takeout_state(state)
 
             # Patron "Ready for next visit" from /play
             handle_takeout_ready_ack(status or prev_status)
 
-            takeout_now = is_takeout_status(status)
-            # After an explicit ack, keep force_resume until AD leaves takeout
-            # (do not immediately re-enter the pause banner).
-            if takeout_now and not in_takeout and not takeout_force_resume:
+            # Enter / hold Autodarts takeout (throws may still be present)
+            if takeout_now and not in_takeout:
                 in_takeout = True
-                takeout_force_resume = False
                 console.print(
-                    "[bold yellow]takeout[/bold yellow] scoring paused - pull darts"
+                    "[bold yellow]takeout[/bold yellow] "
+                    "AD remove-darts - scoring frozen"
                 )
                 maybe_end_turn(f"status={status}")
+                mark_visit_closed(f"takeout:{status}")
                 post_takeout_health(
                     status,
                     active=True,
                     message="Pull darts - takeout",
                 )
-            elif takeout_now and in_takeout and not takeout_force_resume:
+            elif takeout_now and in_takeout:
                 post_takeout_health(
                     status,
                     active=True,
                     message="Pull darts - takeout",
                 )
-            elif not takeout_now and (in_takeout or takeout_force_resume):
-                was_forced = takeout_force_resume
-                in_takeout = False
-                takeout_force_resume = False
-                console.print(
-                    "[bold green]takeout cleared[/bold green] scoring resumed"
+            elif visit_closed and not takeout_now:
+                # Visit closed on No3 but AD not yet Takeout - still show banner
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
                 )
-                if not was_forced:
-                    post_takeout_health(
-                        status,
-                        active=False,
-                        message="Ready for next visit",
-                    )
+
+            # Unlock only when board empty AND AD left takeout
+            unlock_if_ready(status, throws, takeout=takeout_now)
 
             if status and status != prev_status:
                 console.print(
                     f"[cyan]status[/cyan] {prev_status or '-'} -> [bold]{status}[/bold]"
                 )
-                # Entering takeout already handled above (end-turn + banner)
                 maybe_between_games_recal(status, throws)
-                # prev_status updated after visit-clear check so recal can see takeout
-
-            # New visit after empty board - allow end-turn again
-            if throws and not prev_throws:
-                end_turn_sent = False
-                # First dart of a new visit means takeout is over even if status lags
-                if takeout_force_resume or not takeout_now:
-                    takeout_force_resume = False
 
             diff = diff_visit(prev_throws, throws)
             kind = diff["kind"]
@@ -534,17 +561,23 @@ def run_bridge(
             if status and status != prev_status:
                 prev_status = status
 
-            paused = scoring_paused_for_takeout(status)
+            frozen = scoring_frozen(takeout=takeout_now, visit_closed=visit_closed)
 
             if kind == VISIT_APPEND:
-                if paused:
+                if frozen:
                     labels = [format_segment_label(d) for d in diff["appended"]]
                     console.print(
-                        f"[dim]AD takeout - scoring paused, ignoring "
-                        f"{labels or 'dart(s)'}[/dim]"
+                        f"[dim]AD visit frozen - ignoring "
+                        f"{labels or 'dart(s)'} (takeout/visit-closed)[/dim]"
                     )
                 else:
                     for dart in diff["appended"]:
+                        if visit_closed:
+                            console.print(
+                                "[dim]AD visit frozen mid-append - "
+                                "stopping further dart posts[/dim]"
+                            )
+                            break
                         label = format_segment_label(dart)
                         item = _dart_payload(dart)
                         payload = {**item, "roomId": room}
@@ -567,36 +600,36 @@ def run_bridge(
                                 console.print("[bold green]POST OK[/bold green]")
                             if resp.get("turnEnded"):
                                 end_turn_sent = True
+                                mark_visit_closed("dart turnEnded")
+                                post_takeout_health(
+                                    status,
+                                    active=True,
+                                    message="Pull darts - takeout",
+                                )
+                                break
 
             elif kind == VISIT_REPLACE:
-                if paused:
+                if frozen:
                     console.print(
-                        "[dim]AD takeout - scoring paused, "
-                        "ignoring visit replace[/dim]"
-                    )
-                # If No3 already closed this visit (3rd dart / end-turn), do not
-                # apply AD corrections onto the next thrower's open turn.
-                elif end_turn_sent:
-                    console.print(
-                        "[dim]AD visit changed after No3 turn ended - "
-                        "waiting for takeout/clear[/dim]"
+                        "[dim]AD visit frozen - ignoring visit replace "
+                        "(takeout/visit-closed)[/dim]"
                     )
                 else:
                     # Correction / remove / replace prior throws - full visit sync
                     post_correct(diff["throws"], "autodarts_state_diff")
                     if not diff["throws"]:
                         maybe_end_turn("visit emptied via replace")
-                        end_turn_sent = False
 
             elif kind == VISIT_CLEARED:
                 console.print("[dim]AD throws cleared[/dim]")
                 maybe_end_turn("throws cleared")
-                end_turn_sent = False
-                # between-games recal already attempted above when kind == CLEARED
+                # Keep visit_closed until unlock_if_ready (empty + not takeout)
+                unlock_if_ready(status, throws, takeout=takeout_now)
 
             elif kind == VISIT_UNCHANGED:
                 pass
 
+            # Track AD throws even while frozen so CLEARED still detects pull-out
             prev_throws = list(throws)
             time.sleep(max(0.05, poll_ms / 1000.0))
     except KeyboardInterrupt:

@@ -140,7 +140,7 @@ POST /api/camera/end-turn
 { "roomId": "Board 1" }
 ```
 
-While Autodarts status contains **Takeout**, dart/correct posts are **paused** (no phantom scores during remove-darts). The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge consumes it, may probe a board reset, and resumes scoring.
+While Autodarts status/event is **Takeout*** (or No3 has already closed the visit via `turnEnded` / end-turn), dart/correct posts are **frozen** until the board is empty and AD leaves takeout. That stops P1 residual throws from scoring on P2. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
 
 Disable end-turn with `--no-end-turn` if you only want dart posts.
 
