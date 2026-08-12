@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import type { GameState, PlayerRef } from "@/engine/types";
 import { playHref } from "@/lib/play-kiosk";
 import { markSeatVerified, seatsNeedingReauth } from "@/lib/seat-auth";
+import { stopMatchSync } from "@/lib/sync-server";
 import { useGameStore } from "@/store/game-store";
 import { useSessionStore } from "@/store/session-store";
 import { useSettingsStore } from "@/store/settings-store";
@@ -57,7 +58,8 @@ export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAut
   const confirmAbort = () => {
     setAbortConfirmOpen(false);
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    stopMatchSync();
+    void useGameStore.getState().clearGame();
     router.replace(playHref(roomName));
   };
 

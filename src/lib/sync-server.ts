@@ -5,7 +5,28 @@
 import type { GameState } from "@/engine/types";
 import { isHeartbeatMatchStatus } from "@/lib/live-match";
 
-export async function syncMatchToServer(state: GameState): Promise<boolean> {
+/** Bumped on End game so in-flight heartbeat POSTs are dropped. */
+let matchSyncEpoch = 0;
+let heartbeatAbort: AbortController | null = null;
+
+export function getMatchSyncEpoch(): number {
+  return matchSyncEpoch;
+}
+
+/** Abort in-flight tablet heartbeats before DELETE so they cannot revive the match. */
+export function stopMatchSync(): void {
+  matchSyncEpoch += 1;
+  heartbeatAbort?.abort();
+  heartbeatAbort = null;
+}
+
+export async function syncMatchToServer(
+  state: GameState,
+  opts?: { signal?: AbortSignal; epoch?: number; force?: boolean }
+): Promise<boolean> {
+  if (!opts?.force && opts?.epoch != null && opts.epoch !== matchSyncEpoch) {
+    return false;
+  }
   try {
     // Always ensure roomId is present for TV lookup
     const payload = {
@@ -19,9 +40,12 @@ export async function syncMatchToServer(state: GameState): Promise<boolean> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      // avoid browser caching intermediate responses
       cache: "no-store",
+      signal: opts?.signal,
     });
+    if (!opts?.force && opts?.epoch != null && opts.epoch !== matchSyncEpoch) {
+      return false;
+    }
     return r.ok;
   } catch {
     return false;
@@ -29,28 +53,37 @@ export async function syncMatchToServer(state: GameState): Promise<boolean> {
 }
 
 /** Drop the room's live match so `/tv` returns to attract (finish or abandon). */
-export function clearMatchFromServer(
+export async function clearMatchFromServer(
   matchId: string,
   lastState?: GameState | null
-): void {
+): Promise<void> {
+  stopMatchSync();
+  // Finished upsert tombstones immediately (even if DELETE is slow).
   if (lastState) {
-    void syncMatchToServer({
-      ...lastState,
-      status: "finished",
-      updatedAt: Date.now(),
-    });
+    await syncMatchToServer(
+      {
+        ...lastState,
+        status: "finished",
+        updatedAt: Date.now(),
+      },
+      { force: true }
+    );
   }
   const del = () =>
     fetch(`/api/matches/${encodeURIComponent(matchId)}`, {
       method: "DELETE",
       cache: "no-store",
     });
-  void del()
-    .then((r) => {
-      if (!r.ok) return del();
-      return r;
-    })
-    .catch(() => del().catch(() => false));
+  try {
+    const r = await del();
+    if (!r.ok) await del();
+  } catch {
+    try {
+      await del();
+    } catch {
+      /* offline — tombstone from finished POST still applies when it lands */
+    }
+  }
 }
 
 /** Fire-and-forget keepalive used by the scoring tablet */
@@ -63,9 +96,12 @@ export function startMatchHeartbeat(
   const tick = () => {
     if (stopped) return;
     const s = getState();
-    if (s && isHeartbeatMatchStatus(s.status)) {
-      void syncMatchToServer(s);
-    }
+    if (!s || !isHeartbeatMatchStatus(s.status)) return;
+    const epoch = matchSyncEpoch;
+    heartbeatAbort?.abort();
+    heartbeatAbort = new AbortController();
+    const ac = heartbeatAbort;
+    void syncMatchToServer(s, { signal: ac.signal, epoch });
   };
 
   // Immediate push so TV can reconnect right away
@@ -81,6 +117,8 @@ export function startMatchHeartbeat(
 
   return () => {
     stopped = true;
+    heartbeatAbort?.abort();
+    heartbeatAbort = null;
     window.clearInterval(id);
     document.removeEventListener("visibilitychange", onVis);
     window.removeEventListener("online", tick);

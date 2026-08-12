@@ -70,6 +70,23 @@ describe("GET /api/matches/active after finish / abandon", () => {
     expect(getActiveByRoom("Board 1")).toBeUndefined();
   });
 
+  it("refuses a same-room heartbeat with older/equal updatedAt after end", async () => {
+    const state = boardMatch("Board 1");
+    const oldUpdated = state.updatedAt;
+    upsertServerMatch(state);
+    removeServerMatch(state.id);
+    expect((await activeFor("Board 1")).match).toBeNull();
+
+    upsertServerMatch({
+      ...state,
+      id: "revived-clone",
+      status: "playing",
+      updatedAt: oldUpdated - 1,
+    });
+    expect(getActiveByRoom("Board 1")).toBeUndefined();
+    expect((await activeFor("Board 1")).match).toBeNull();
+  });
+
   it("still accepts a new match id on the same room after clear", async () => {
     const first = boardMatch("Board 1");
     upsertServerMatch(first);

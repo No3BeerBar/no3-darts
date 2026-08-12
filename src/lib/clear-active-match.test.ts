@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createGame } from "@/engine";
 import {
   abandonMatchAction,
@@ -156,7 +158,7 @@ describe("abandon match / clear paths", () => {
       lastHighlight: null,
     });
 
-    useGameStore.getState().clearGame();
+    await useGameStore.getState().clearGame();
 
     expect(useGameStore.getState().state).toBeNull();
     expect(getActiveGame()).toBeNull();
@@ -170,6 +172,7 @@ describe("abandon match / clear paths", () => {
     });
     expect(urls.some((u) => u.includes(`/api/matches/${state.id}`))).toBe(true);
     expect(methods).toContain("DELETE");
+    expect(methods).toContain("POST");
   });
 
   it("clearGame is a no-op in displayOnly (TV) so play tablets must unset it", async () => {
@@ -190,8 +193,17 @@ describe("abandon match / clear paths", () => {
     expect(getActiveGame()?.id).toBe(state.id);
 
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    await useGameStore.getState().clearGame();
     expect(useGameStore.getState().state).toBeNull();
     expect(getActiveGame()).toBeNull();
+  });
+
+  it("End game / finish on /play stop heartbeat before clearGame", () => {
+    const scoring = readFileSync(
+      join(process.cwd(), "src/components/scoring/ScoringScreen.tsx"),
+      "utf8"
+    );
+    expect(scoring).toMatch(/stopMatchSync\(\);\s*\n\s*void useGameStore\.getState\(\)\.clearGame\(\)/);
+    expect(scoring).toMatch(/stopMatchSync\(\);\s*\n\s*await useGameStore\.getState\(\)\.finishAndSave\(\)/);
   });
 });

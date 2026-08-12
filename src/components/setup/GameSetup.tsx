@@ -21,6 +21,7 @@ import { TournamentMatchBanner } from "@/components/tournament/TournamentMatchBa
 import { abandonMatchAction } from "@/lib/clear-active-match";
 import { playHref } from "@/lib/play-kiosk";
 import { seatsNeedingReauth } from "@/lib/seat-auth";
+import { stopMatchSync } from "@/lib/sync-server";
 import { isOnTabletSession, isTabletSessionCold } from "@/lib/tablet-session";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/store/game-store";
@@ -388,13 +389,15 @@ export function GameSetup() {
       return;
     }
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    stopMatchSync();
+    void useGameStore.getState().clearGame();
   };
 
   const confirmCancelMatch = () => {
     setCancelConfirmOpen(false);
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    stopMatchSync();
+    void useGameStore.getState().clearGame();
   };
 
   const hasActive =

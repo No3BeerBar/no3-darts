@@ -55,6 +55,7 @@ import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
 import { setupHref, statsHrefFromPlay } from "@/lib/play-kiosk";
+import { stopMatchSync } from "@/lib/sync-server";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -177,7 +178,8 @@ function ScoringScreenInner() {
         const cur = useGameStore.getState().state;
         if (cur?.id !== id || cur.status !== "match_won") return;
         if (cur.tournamentMeta) await reportTournamentWin(cur);
-        useGameStore.getState().finishAndSave();
+        stopMatchSync();
+        await useGameStore.getState().finishAndSave();
       })();
     }, MATCH_WON_AUTOSAVE_MS);
     return () => clearTimeout(t);
@@ -363,13 +365,15 @@ function ScoringScreenInner() {
       return;
     }
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    stopMatchSync();
+    void useGameStore.getState().clearGame();
   };
 
   const confirmEndGame = () => {
     setEndConfirmOpen(false);
     useGameStore.getState().setDisplayOnly(false);
-    useGameStore.getState().clearGame();
+    stopMatchSync();
+    void useGameStore.getState().clearGame();
   };
 
   const submitPad = () => {
