@@ -683,8 +683,10 @@ def run_bridge(
         locked_seat = None
         prev_throws = []
         # Intentional Ready reset: next seat's first dart is legitimate.
-        # Keep closed_visit_throws after auto takeout-unlock so residual
-        # late dart 3 (prefix / singleton) is still refused.
+        # Keep closed_visit_throws after auto takeout-unlock so a residual
+        # full-visit re-show / late dart-3 prefix is still refused. A single
+        # same-segment dart after a completed visit is NOT continuation
+        # (41 / Baseball both aim the same target - that freeze is P0).
         if ready:
             closed_visit_throws = []
         console.print(

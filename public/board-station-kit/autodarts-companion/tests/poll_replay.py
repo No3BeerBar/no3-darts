@@ -67,6 +67,7 @@ def replay(
     locked_seat: Optional[int] = None
     closed_visit_throws: list[dict] = []
     seat = 0
+    visit_darts = 0
     events: list[dict[str, Any]] = []
 
     def mark_closed(
@@ -88,7 +89,7 @@ def replay(
         saw_takeout_after_close = False
 
     def end_turn(reason: str) -> None:
-        nonlocal seat
+        nonlocal seat, visit_darts
         if visit_closed:
             mark_closed()
             return
@@ -106,7 +107,8 @@ def replay(
             mark_closed(throws_snapshot=list(prev_throws))
             return
         events.append({"type": "end-turn", "reason": reason, "seat": seat})
-        seat = 1
+        seat = (int(seat) + 1) % 2
+        visit_darts = 0
         mark_closed()
 
     for poll_i, poll in enumerate(polls):
@@ -167,14 +169,11 @@ def replay(
                             "label": dart["segment"]["name"],
                         }
                     )
-                    darts_on_seat = sum(
-                        1
-                        for e in events
-                        if e["type"] == "dart" and e["seat"] == seat
-                    )
-                    if darts_on_seat >= 3:
+                    visit_darts += 1
+                    if visit_darts >= 3:
                         events.append({"type": "turnEnded", "seat": seat})
-                        seat = 1
+                        seat = (int(seat) + 1) % 2
+                        visit_darts = 0
                         mark_closed(
                             by_scoring=True, throws_snapshot=list(throws)
                         )
@@ -262,6 +261,7 @@ def replay(
             in_takeout = False
             empty_polls_in_takeout = 0
             locked_seat = None
+            visit_darts = 0
             prev_throws = []
             if was_patron:
                 closed_visit_throws = []

@@ -277,6 +277,70 @@ def test_continuation_full_reshow_after_scored_close_refuses_wrong_seat() -> Non
     assert_no_dart3_seat_jump(events)
 
 
+def _visit_polls(darts: list[dict]) -> list[dict]:
+    """One 3-dart visit + takeout + empty unlock (Board 1 handshake)."""
+    polls: list[dict] = []
+    acc: list[dict] = []
+    for d in darts:
+        acc = [*acc, d]
+        polls.append(state("Throw", list(acc)))
+    polls.append(state("Takeout", list(acc), event="Takeout"))
+    polls.append(state("Throw", []))
+    return polls
+
+
+def test_forty_one_same_target_next_seat_scores_after_round_3() -> None:
+    """
+    41 round 3 is ANY DOUBLE - both players throw the same target.
+
+    Old continuation gate treated P2's first dart matching P1's first/last
+    segment as residual dart 3, froze visit_closed, and left the turn stuck
+    on P2 with no scoring. Must keep advancing through round 3+ .
+    """
+    round_20 = [seg("T20", 20, 3), seg("20", 20, 1), seg("D20", 20, 2)]
+    round_19 = [seg("T19", 19, 3), seg("19", 19, 1), seg("D19", 19, 2)]
+    # Any double - identical visits are realistic (both go D20)
+    any_double = [seg("D20", 20, 2), seg("D16", 16, 2), seg("D8", 8, 2)]
+    round_18 = [seg("T18", 18, 3), seg("18", 18, 1), seg("D18", 18, 2)]
+
+    polls: list[dict] = []
+    for visit in (round_20, round_19, any_double, round_18):
+        polls.extend(_visit_polls(visit))  # P1
+        polls.extend(_visit_polls(visit))  # P2 same segments
+
+    events = replay(polls)
+    darts = [e for e in events if e["type"] == "dart"]
+    assert not any(e["type"] == "continuation-refuse" for e in events), events
+    # 4 rounds x 2 players x 3 darts
+    assert len(darts) == 24, [d["label"] for d in darts]
+    seats = [d["seat"] for d in darts]
+    expected = ([0, 0, 0, 1, 1, 1] * 4)
+    assert seats == expected, seats
+    assert_no_dart3_seat_jump(events)
+    assert_no_auto_end_turn_incomplete(events)
+
+
+def test_same_segment_first_dart_after_unlock_is_new_visit() -> None:
+    """Minimal repro: P1 T20/5/D16, unlock, P2 also starts T20 (41 20s)."""
+    t3 = [seg("T20", 20, 3), seg("5", 5, 1), seg("D16", 16, 2)]
+    events = replay(
+        [
+            state("Throw", t3[:1]),
+            state("Throw", t3[:2]),
+            state("Throw", t3),
+            state("Takeout", t3, event="Takeout"),
+            state("Throw", []),
+            state("Throw", [seg("T20", 20, 3)]),  # P2 same first dart
+            state("Throw", [seg("T20", 20, 3), seg("D20", 20, 2)]),
+        ]
+    )
+    darts = [e for e in events if e["type"] == "dart"]
+    assert not any(e["type"] == "continuation-refuse" for e in events), events
+    assert [d["seat"] for d in darts] == [0, 0, 0, 1, 1]
+    assert darts[3]["label"] == "T20"
+    assert_no_dart3_seat_jump(events)
+
+
 def test_visit_seat_lock_blocks_dart_on_advanced_seat() -> None:
     assert seat_matches_lock(locked_seat=0, current_seat=0) is True
     assert seat_matches_lock(locked_seat=0, current_seat=1) is False

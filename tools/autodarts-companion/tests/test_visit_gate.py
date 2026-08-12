@@ -230,8 +230,18 @@ def test_seat_lock_and_continuation_helpers() -> None:
     # Brand-new visit after a completed 3-dart close is not continuation
     done = closed + [_seg("D16", 16, 2)]
     assert is_ad_visit_continuation(done, [_seg("T19", 19, 3)]) is False
-    # Residual last dart of a full visit alone still counts as continuation
-    assert is_ad_visit_continuation(done, [_seg("D16", 16, 2)]) is True
+    # Same-target next seat (41 / Baseball): first dart matching P1's first
+    # or last label is a new visit, not residual dart 3
+    assert is_ad_visit_continuation(done, [_seg("T20", 20, 3)]) is False
+    assert is_ad_visit_continuation(done, [_seg("D16", 16, 2)]) is False
+    # Residual last dart alone still counts when coords prove same physical tip
+    residual = dict(_seg("D16", 16, 2))
+    residual["x"] = 0.41
+    residual["y"] = 0.12
+    last_same = dict(done[-1])
+    last_same["x"] = 0.41
+    last_same["y"] = 0.12
+    assert is_ad_visit_continuation(done[:-1] + [last_same], [residual]) is True
 
 
 def test_unlock_requires_takeout_handshake_or_patron_ready() -> None:

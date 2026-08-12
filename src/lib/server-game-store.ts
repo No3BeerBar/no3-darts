@@ -503,6 +503,24 @@ export function applyCameraDart(
   const beforePlayer = state.currentPlayerIndex;
   const beforeTurnLen = state.currentTurnDarts.length;
 
+  // Visit already complete but not finalized (3-dart correct with autoEnd
+  // off, or a stuck "Turn full" visit). Finalize so the next seat can throw
+  // instead of silently dropping every later dart.
+  if (beforeTurnLen >= 3) {
+    const fin = endTurn(state);
+    matches.set(fin.state.id, fin.state);
+    markVisitClosedForTakeout(fin.state);
+    emit({
+      type: "dart_detected",
+      data: {
+        state: fin.state,
+        callout: fin.callout ?? "NEXT",
+        turnEnded: true,
+      },
+    });
+    return { ok: true, state: fin.state, callout: fin.callout, turnEnded: true };
+  }
+
   const dart = createDart(event.kind, event.number, {
     angle: event.angle,
     radius: event.radius,
@@ -650,13 +668,18 @@ export function applyCameraCorrect(opts: {
     if (takeoutErr) return { ok: false, error: takeoutErr };
   }
 
-  // Empty list = clear open visit (undo all current-turn darts) without advancing
-  const result = correctCurrentTurn(state, darts, { autoEnd: false });
+  // Empty list = clear open visit (undo all current-turn darts) without advancing.
+  // A full 3-dart rewrite is a completed visit — auto-end like applyDart so
+  // 41 / Baseball cannot sit on "Turn full" and freeze the thrower.
+  const result = correctCurrentTurn(state, darts, {
+    autoEnd: darts.length >= 3,
+  });
   matches.set(result.state.id, result.state);
 
   const turnEnded =
     result.state.currentPlayerIndex !== beforePlayer ||
-    result.state.status !== "playing";
+    result.state.status !== "playing" ||
+    (darts.length >= 3 && result.state.currentTurnDarts.length === 0);
 
   if (state.status === "playing") {
     if (turnEnded) {
