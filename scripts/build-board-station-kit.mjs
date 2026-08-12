@@ -47,6 +47,9 @@ const START_HERE = `No. 3 Board Station - Board 1 (mini-PC kit)
 Preferred: on the mini-PC, download and double-click (single file - no extra .ps1):
   https://no3-darts-production.up.railway.app/Board1-Setup.bat
 
+Something wrong later? Double-click Board1-FixMe.bat in this folder
+(or download https://no3-darts-production.up.railway.app/Board1-FixMe.bat).
+
 Manual (if you already unzipped this kit):
 1. Install Python 3 if needed (https://www.python.org/downloads/ - check "Add to PATH")
 2. Edit board-station\\config.yaml -> set autodarts.exe_path for THIS PC
@@ -276,6 +279,14 @@ function main() {
   assertAsciiString("CONFIG_YAML", CONFIG_YAML);
   writeFileSync(join(OUT_DIR, "START-HERE.txt"), START_HERE, "ascii");
   writeFileSync(join(OUT_DIR, "board-station", "config.yaml"), CONFIG_YAML, "ascii");
+
+  // Ship Fix Me at kit root so the mini-PC keeps a local double-click recovery.
+  const fixMeSrc = join(ROOT, "public", "Board1-FixMe.bat");
+  if (!existsSync(fixMeSrc)) {
+    console.error("Missing public/Board1-FixMe.bat (required in board-station kit)");
+    process.exit(1);
+  }
+  cpSync(fixMeSrc, join(OUT_DIR, "Board1-FixMe.bat"));
 
   assertAsciiKitText(OUT_DIR);
 

@@ -7,8 +7,9 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `src/lib/board1-acceptance.
 
 1. Cams + ring light on.
 2. If needed: download/run `Board1-Setup.bat` once, or double-click `start-board.bat` from the kit / `tools/board-station`.
-3. Confirm Autodarts Board Manager is detecting (`http://127.0.0.1:3180`).
-4. Companion bridge window should stay open (`python -m companion bridge`).
+3. If the board is stuck (bridge dead, takeout wedged, TV blank): double-click `Board1-FixMe.bat` from `/board-setup` or `C:\No3Darts\Board1\` — same one-file recovery as Setup, without wiping `exe_path`.
+4. Confirm Autodarts Board Manager is detecting (`http://127.0.0.1:3180`).
+5. Companion bridge window should stay open (`python -m companion bridge`).
 
 ## iPad + TV
 
