@@ -2,7 +2,10 @@ node_modules
 .next
 .git
 .gitignore
+# Keep tools/**/*.md in the image — board-station kit packages them at build time
 *.md
+!tools/**/*.md
+!scripts/**/*.md
 .env*
 .DS_Store
 npm-debug.log*

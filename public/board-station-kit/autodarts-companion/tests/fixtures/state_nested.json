@@ -1,0 +1,14 @@
+{
+  "board": {
+    "Status": "Throw",
+    "Throws": [
+      {
+        "Segment": {
+          "Name": "S11",
+          "Number": 11,
+          "Multiplier": 1
+        }
+      }
+    ]
+  }
+}

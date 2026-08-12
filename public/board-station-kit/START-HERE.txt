@@ -1,0 +1,16 @@
+No. 3 Board Station — Board 1 (mini-PC kit)
+=============================================
+
+1. Unzip to C:\No3Darts\
+2. Install Python 3 if needed (https://www.python.org/downloads/ — check "Add to PATH")
+3. Edit board-station\config.yaml → set autodarts.exe_path for THIS PC
+   Examples:
+     "C:\\Program Files\\Autodarts\\Autodarts.exe"
+     "C:\\Users\\Public\\Desktop\\Autodarts.lnk"
+4. Double-click board-station\start-board.bat
+5. iPad: https://no3-darts-production.up.railway.app/play?room=Board%201
+
+TV (HDMI on this PC opens automatically): https://no3-darts-production.up.railway.app/tv
+Staff PIN (default): 1234
+
+Phone setup page: https://no3-darts-production.up.railway.app/board-setup
