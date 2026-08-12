@@ -5,33 +5,50 @@ color 0C
 
 echo.
 echo ============================================================
-echo  No.3 Darts — Board 1 Setup
+echo  No.3 Darts - Board 1 Setup
 echo  Single-file bootstrap for the mini-PC
 echo ============================================================
 echo.
 
-REM Production host — bat usually runs from Downloads, not the website folder
+REM Production host - bat usually runs from Downloads, not the website folder
 set "NO3_URL=https://no3-darts-production.up.railway.app"
 set "ZIP_URL=%NO3_URL%/board-station-board1.zip"
 set "KIT_ROOT=C:\No3Darts\Board1"
 set "EXITCODE=0"
 
 REM ---------------------------------------------------------------------------
-REM Single-file: extract PowerShell below ___NO3_BOARD1_PS1___ into TEMP and run.
-REM Edge only needs this .bat — no separate Board1-Setup.ps1 download.
+REM Single-file ASCII bootstrap:
+REM   1) Extract PowerShell below ___NO3_BOARD1_PS1___ into a TEMP .ps1 (ASCII)
+REM   2) Pre-parse with PS 5.1; on ParserError -> zip-only fallback (exit 99)
+REM   3) Otherwise run setup (downloads kit zip only - no separate .ps1 fetch)
 REM ---------------------------------------------------------------------------
 echo  Running embedded setup (zip download + config + start-board)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
   "try {" ^
-  "  $all = Get-Content -LiteralPath '%~f0' -Encoding UTF8;" ^
-  "  $idx = 0; for (; $idx -lt $all.Count; $idx++) { if ($all[$idx] -eq '___NO3_BOARD1_PS1___') { break } }" ^
-  "  if ($idx -ge ($all.Count - 1)) { throw 'Embedded setup marker ___NO3_BOARD1_PS1___ not found in Board1-Setup.bat' };" ^
-  "  $script = ($all[($idx+1)..($all.Count-1)]) -join [Environment]::NewLine;" ^
+  "  $bytes = [IO.File]::ReadAllBytes('%~f0');" ^
+  "  $lines = [Text.Encoding]::ASCII.GetString($bytes) -split [char]10;" ^
+  "  $lines = @($lines | ForEach-Object { $_.TrimEnd([char]13) });" ^
+  "  $idx = 0; for (; $idx -lt $lines.Count; $idx++) { if ($lines[$idx] -eq '___NO3_BOARD1_PS1___') { break } }" ^
+  "  if ($idx -ge ($lines.Count - 1)) { throw 'Embedded setup marker ___NO3_BOARD1_PS1___ not found in Board1-Setup.bat' };" ^
+  "  $script = [string]::Join([char]10, $lines[($idx+1)..($lines.Count-1)]);" ^
   "  $tmp = Join-Path $env:TEMP ('No3-Board1-Setup-' + [guid]::NewGuid().ToString() + '.ps1');" ^
-  "  Set-Content -LiteralPath $tmp -Value $script -Encoding UTF8;" ^
-  "  try { & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp; exit $LASTEXITCODE }" ^
-  "  finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }" ^
+  "  [IO.File]::WriteAllText($tmp, $script, [Text.Encoding]::ASCII);" ^
+  "  $tokens = $null; $errs = $null;" ^
+  "  [void][System.Management.Automation.Language.Parser]::ParseFile($tmp, [ref]$tokens, [ref]$errs);" ^
+  "  if ($errs -and $errs.Count -gt 0) {" ^
+  "    Write-Host '';" ^
+  "    Write-Host ('ERROR: Embedded setup ParserError: ' + $errs[0].ToString()) -ForegroundColor Red;" ^
+  "    Write-Host 'Falling back to zip-only bootstrap...';" ^
+  "    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue;" ^
+  "    exit 99" ^
+  "  };" ^
+  "  try {" ^
+  "    & powershell -NoProfile -ExecutionPolicy Bypass -File $tmp;" ^
+  "    exit $LASTEXITCODE" ^
+  "  } finally {" ^
+  "    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue" ^
+  "  }" ^
   "} catch {" ^
   "  Write-Host '';" ^
   "  Write-Host ('ERROR: Could not run embedded setup: ' + $_.Exception.Message) -ForegroundColor Red;" ^
@@ -44,8 +61,8 @@ if "%EXITCODE%"=="0" goto :Finish
 if not "%EXITCODE%"=="99" goto :FailMessage
 
 REM ---------------------------------------------------------------------------
-REM Zip-only fallback (exit 99 = embedded extract/launch failed — not Python/etc.)
-REM Downloads kit, writes a minimal config.yaml, runs start-board.bat.
+REM Zip-only fallback (ASCII inline PowerShell).
+REM Downloads kit, writes config.yaml, runs start-board.bat.
 REM ---------------------------------------------------------------------------
 echo.
 echo  [fallback] Downloading kit zip...
@@ -70,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  exit 1" ^
   "};" ^
   "$lines = @(" ^
-  "  '# Board station config — Board 1 (production)'," ^
+  "  '# Board station config - Board 1 (production)'," ^
   "  '# Written by Board1-Setup zip-only fallback'," ^
   "  ''," ^
   "  'autodarts:'," ^
@@ -110,8 +127,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  '  restart_cooldown_seconds: 60.0'," ^
   "  '  between_games_recal: true'" ^
   ");" ^
-  "Set-Content -LiteralPath $CfgPath -Value $lines -Encoding UTF8;" ^
-  "Write-Host '[fallback] Wrote config.yaml (exe_path empty — set Autodarts path if needed).';" ^
+  "[IO.File]::WriteAllLines($CfgPath, $lines, [Text.Encoding]::ASCII);" ^
+  "Write-Host '[fallback] Wrote config.yaml (exe_path empty - set Autodarts path if needed).';" ^
   "Write-Host '[fallback] Launching start-board.bat...';" ^
   "Push-Location (Join-Path $KitRoot 'board-station');" ^
   "try { & cmd.exe /c ('\"' + $StartBat + '\"'); $c=$LASTEXITCODE; if ($null -eq $c) { $c=0 }; if ($c -ne 0) { Write-Host ('ERROR: start-board.bat failed with exit code ' + $c) -ForegroundColor Red }; exit $c }" ^
@@ -123,9 +140,9 @@ if "%EXITCODE%"=="0" goto :Finish
 echo.
 echo  Setup finished with exit code %EXITCODE%.
 echo  Common causes:
-echo    - Python 3 missing from PATH  ^(install + "Add to PATH", re-open terminal^)
+echo    - Python 3 missing from PATH  (install + "Add to PATH", re-open terminal)
 echo    - Kit zip download / unzip failed
-echo    - start-board.bat failed ^(see messages above^)
+echo    - start-board.bat failed (see messages above)
 echo  Manual kit: %ZIP_URL%
 echo  Extract to: %KIT_ROOT%
 echo  Then run:  %KIT_ROOT%\board-station\start-board.bat
@@ -139,17 +156,10 @@ endlocal & exit /b %EXITCODE%
 
 ___NO3_BOARD1_PS1___
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-  No.3 Board 1 bootstrap for the Windows mini-PC (embedded in Board1-Setup.bat).
-
-.DESCRIPTION
-  Downloads the Board 1 kit zip from Railway, extracts to C:\No3Darts\Board1\,
-  writes config.yaml (Board 1 / production), best-effort Autodarts.exe detect,
-  then launches board-station\start-board.bat.
-
-  Prefer double-clicking Board1-Setup.bat only — no separate .ps1 download.
-#>
+# No.3 Board 1 bootstrap for the Windows mini-PC (embedded in Board1-Setup.bat).
+# ASCII-only so Windows PowerShell 5.1 never hits UTF-8 / smart-quote parse errors.
+# Downloads board-station-board1.zip, extracts to C:\No3Darts\Board1\,
+# writes config.yaml, finds Autodarts if possible, launches start-board.bat.
 
 $ErrorActionPreference = "Stop"
 
@@ -217,13 +227,13 @@ function Write-Board1Config([string]$Path, [string]$ExePath) {
     $exeYaml = $ExePath.Replace('\', '\\')
   }
   $yaml = @"
-# Board station config — Board 1 (production)
+# Board station config - Board 1 (production)
 # Written by Board1-Setup
 
 autodarts:
   host: "127.0.0.1"
   port: 3180
-  # Set autodarts.exe_path if empty — path to Autodarts.exe or .lnk on THIS PC
+  # Set autodarts.exe_path if empty - path to Autodarts.exe or .lnk on THIS PC
   exe_path: "$exeYaml"
   process_names:
     - "Autodarts"
@@ -262,10 +272,10 @@ health:
   if (-not (Test-Path -LiteralPath $dir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
   }
-  Set-Content -LiteralPath $Path -Value $yaml -Encoding UTF8
+  [IO.File]::WriteAllText($Path, $yaml, [Text.Encoding]::ASCII)
 }
 
-Write-Banner "No.3 Darts — Board 1 Setup"
+Write-Banner "No.3 Darts - Board 1 Setup"
 
 Write-Host "[1/5] Checking Python..."
 if (-not (Test-Python)) {
@@ -275,7 +285,7 @@ if (-not (Test-Python)) {
   Write-Host ""
   Write-Host "Fix:"
   Write-Host "  1. Install from https://www.python.org/downloads/"
-  Write-Host "  2. Check `"Add python.exe to PATH`" during setup"
+  Write-Host "  2. Check 'Add python.exe to PATH' during setup"
   Write-Host "  3. Close this window, open a NEW one, re-run Board1-Setup.bat"
   Write-Host "Optional (ask staff first): winget install Python.Python.3.12"
   Write-Host ""

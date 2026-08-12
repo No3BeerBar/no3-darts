@@ -1,15 +1,8 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-  No.3 Board 1 bootstrap for the Windows mini-PC (embedded in Board1-Setup.bat).
-
-.DESCRIPTION
-  Downloads the Board 1 kit zip from Railway, extracts to C:\No3Darts\Board1\,
-  writes config.yaml (Board 1 / production), best-effort Autodarts.exe detect,
-  then launches board-station\start-board.bat.
-
-  Prefer double-clicking Board1-Setup.bat only — no separate .ps1 download.
-#>
+# No.3 Board 1 bootstrap for the Windows mini-PC (embedded in Board1-Setup.bat).
+# ASCII-only so Windows PowerShell 5.1 never hits UTF-8 / smart-quote parse errors.
+# Downloads board-station-board1.zip, extracts to C:\No3Darts\Board1\,
+# writes config.yaml, finds Autodarts if possible, launches start-board.bat.
 
 $ErrorActionPreference = "Stop"
 
@@ -77,13 +70,13 @@ function Write-Board1Config([string]$Path, [string]$ExePath) {
     $exeYaml = $ExePath.Replace('\', '\\')
   }
   $yaml = @"
-# Board station config — Board 1 (production)
+# Board station config - Board 1 (production)
 # Written by Board1-Setup
 
 autodarts:
   host: "127.0.0.1"
   port: 3180
-  # Set autodarts.exe_path if empty — path to Autodarts.exe or .lnk on THIS PC
+  # Set autodarts.exe_path if empty - path to Autodarts.exe or .lnk on THIS PC
   exe_path: "$exeYaml"
   process_names:
     - "Autodarts"
@@ -122,10 +115,10 @@ health:
   if (-not (Test-Path -LiteralPath $dir)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
   }
-  Set-Content -LiteralPath $Path -Value $yaml -Encoding UTF8
+  [IO.File]::WriteAllText($Path, $yaml, [Text.Encoding]::ASCII)
 }
 
-Write-Banner "No.3 Darts — Board 1 Setup"
+Write-Banner "No.3 Darts - Board 1 Setup"
 
 Write-Host "[1/5] Checking Python..."
 if (-not (Test-Python)) {
@@ -135,7 +128,7 @@ if (-not (Test-Python)) {
   Write-Host ""
   Write-Host "Fix:"
   Write-Host "  1. Install from https://www.python.org/downloads/"
-  Write-Host "  2. Check `"Add python.exe to PATH`" during setup"
+  Write-Host "  2. Check 'Add python.exe to PATH' during setup"
   Write-Host "  3. Close this window, open a NEW one, re-run Board1-Setup.bat"
   Write-Host "Optional (ask staff first): winget install Python.Python.3.12"
   Write-Host ""
