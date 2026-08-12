@@ -1,7 +1,7 @@
 No. 3 Board Station — Board 1 (mini-PC kit)
 =============================================
 
-Preferred: on the mini-PC, download and double-click:
+Preferred: on the mini-PC, download and double-click (single file — no extra .ps1):
   https://no3-darts-production.up.railway.app/Board1-Setup.bat
 
 Manual (if you already unzipped this kit):
