@@ -42,6 +42,7 @@ from .mapping import dart_to_no3, format_segment_label
 from .visit_gate import (
     is_takeout_state,
     scoring_frozen,
+    should_end_turn_on_clear,
     should_unlock_next_visit,
 )
 
@@ -159,9 +160,10 @@ def run_bridge(
       with the full current visit (idempotent replace of open turn).
     - Board status enters Takeout* OR throws list clears after a visit ->
       POST /api/camera/end-turn once (covers early pull of 1-2 darts).
+    - Poll order (P0): apply APPEND/REPLACE for the current seat *before*
+      takeout/end-turn, so a 3-dart AD visit never loses dart 3 to the next seat.
     - After No3 closes a visit (3rd dart / end-turn) OR AD status is Takeout*,
       dart/correct posts freeze until throws are empty and AD leaves takeout.
-      This stops P1 residual throws from scoring on P2.
     - Between-games recal only when No3 match is absent or at a leg/match
       boundary (never while status is playing / paused).
     """
@@ -183,6 +185,8 @@ def run_bridge(
     in_takeout = False
     # No3 visit already ended - freeze AD->No3 until clean next thrower
     visit_closed = False
+    closed_by_scoring = False
+    saw_takeout_after_close = False
     last_recal_gate_at = 0.0
     recal_gate_allows = False
 
@@ -207,11 +211,14 @@ def run_bridge(
     prev_status = ""
     end_turn_sent = False
 
-    def mark_visit_closed(reason: str) -> None:
-        nonlocal visit_closed
+    def mark_visit_closed(reason: str, *, by_scoring: bool = False) -> None:
+        nonlocal visit_closed, closed_by_scoring, saw_takeout_after_close
+        if by_scoring:
+            closed_by_scoring = True
         if visit_closed:
             return
         visit_closed = True
+        saw_takeout_after_close = False
         console.print(
             f"[bold yellow]visit closed[/bold yellow] ({reason}) - "
             "scoring frozen until board clear / takeout done"
@@ -257,7 +264,7 @@ def run_bridge(
                 console.print("[bold green]CORRECT OK[/bold green]")
             if resp.get("turnEnded"):
                 end_turn_sent = True
-                mark_visit_closed("correct turnEnded")
+                mark_visit_closed("correct turnEnded", by_scoring=True)
 
     def post_health(payload: dict[str, Any], force: bool = False) -> None:
         nonlocal last_health_level, last_health_post_at
@@ -426,15 +433,20 @@ def run_bridge(
 
     def unlock_if_ready(status: str, throws: list[Any], *, takeout: bool) -> bool:
         nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
+        nonlocal closed_by_scoring, saw_takeout_after_close
         if not should_unlock_next_visit(
             visit_closed=visit_closed,
             takeout=takeout,
             throws_empty=not throws,
+            saw_takeout_after_close=saw_takeout_after_close,
+            closed_by_scoring=closed_by_scoring,
         ):
             return False
         visit_closed = False
         end_turn_sent = False
         in_takeout = False
+        closed_by_scoring = False
+        saw_takeout_after_close = False
         prev_throws = []
         console.print(
             "[bold green]next visit ready[/bold green] "
@@ -449,7 +461,7 @@ def run_bridge(
 
     def handle_takeout_ready_ack(status: str) -> None:
         """Patron Ready: probe AD reset; do NOT unlock while throws remain."""
-        nonlocal visit_closed
+        nonlocal visit_closed, saw_takeout_after_close
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -464,6 +476,8 @@ def run_bridge(
         )
         maybe_end_turn("takeout-ready ack")
         mark_visit_closed("takeout-ready ack")
+        # Ack counts as takeout handshake so empty board can unlock
+        saw_takeout_after_close = True
         result = client.try_recalibrate()
         if result.get("ok"):
             console.print(
@@ -475,12 +489,47 @@ def run_bridge(
                 "[dim]takeout reset: no Board Manager reset endpoint - "
                 "wait for empty board / takeout clear[/dim]"
             )
-        # Keep banner / freeze until unlock_if_ready sees empty+not takeout
         post_takeout_health(
             status,
             active=True,
             message="Pull darts - takeout",
         )
+
+    def post_appended_darts(
+        appended: list[dict[str, Any]], status: str
+    ) -> None:
+        """Post new AD throws to the current No3 seat; stop if visit ends."""
+        nonlocal end_turn_sent
+        for dart in appended:
+            if visit_closed:
+                console.print(
+                    "[dim]AD visit frozen mid-append - "
+                    "stopping further dart posts[/dim]"
+                )
+                break
+            label = format_segment_label(dart)
+            item = _dart_payload(dart)
+            payload = {**item, "roomId": room}
+            console.print(
+                f"[green]AD[/green] {label} -> No3 "
+                f"{item['kind']} {item['number']}"
+            )
+            resp = _post_json(dart_url, payload, headers, dry_run)
+            if resp is not None:
+                callout = resp.get("callout") if isinstance(resp, dict) else None
+                if callout:
+                    console.print(f"[bold green]POST OK[/bold green] {callout}")
+                else:
+                    console.print("[bold green]POST OK[/bold green]")
+                if resp.get("turnEnded"):
+                    end_turn_sent = True
+                    mark_visit_closed("dart turnEnded", by_scoring=True)
+                    post_takeout_health(
+                        status,
+                        active=True,
+                        message="Pull darts - takeout",
+                    )
+                    break
 
     try:
         while True:
@@ -513,37 +562,6 @@ def run_bridge(
             # Patron "Ready for next visit" from /play
             handle_takeout_ready_ack(status or prev_status)
 
-            # Enter / hold Autodarts takeout (throws may still be present)
-            if takeout_now and not in_takeout:
-                in_takeout = True
-                console.print(
-                    "[bold yellow]takeout[/bold yellow] "
-                    "AD remove-darts - scoring frozen"
-                )
-                maybe_end_turn(f"status={status}")
-                mark_visit_closed(f"takeout:{status}")
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
-            elif takeout_now and in_takeout:
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
-            elif visit_closed and not takeout_now:
-                # Visit closed on No3 but AD not yet Takeout - still show banner
-                post_takeout_health(
-                    status,
-                    active=True,
-                    message="Pull darts - takeout",
-                )
-
-            # Unlock only when board empty AND AD left takeout
-            unlock_if_ready(status, throws, takeout=takeout_now)
-
             if status and status != prev_status:
                 console.print(
                     f"[cyan]status[/cyan] {prev_status or '-'} -> [bold]{status}[/bold]"
@@ -561,76 +579,90 @@ def run_bridge(
             if status and status != prev_status:
                 prev_status = status
 
-            frozen = scoring_frozen(takeout=takeout_now, visit_closed=visit_closed)
+            # P0: sync AD throw growth onto the *current* seat before end-turn.
+            # Takeout alone must NOT block this poll - fixture state_three_darts
+            # is Takeout + 3 throws together. Only a prior visit_closed freezes.
+            # (After sync, takeout handling below closes/freezes the visit.)
+            # Mid-visit AD clear flicker: keep prev_throws so dart 1/2 are not
+            # re-posted when the list reappears with dart 3.
+            retain_prev_throws = False
 
             if kind == VISIT_APPEND:
-                if frozen:
+                if visit_closed:
                     labels = [format_segment_label(d) for d in diff["appended"]]
                     console.print(
-                        f"[dim]AD visit frozen - ignoring "
-                        f"{labels or 'dart(s)'} (takeout/visit-closed)[/dim]"
+                        f"[dim]AD visit closed - ignoring "
+                        f"{labels or 'dart(s)'}[/dim]"
                     )
                 else:
-                    for dart in diff["appended"]:
-                        if visit_closed:
-                            console.print(
-                                "[dim]AD visit frozen mid-append - "
-                                "stopping further dart posts[/dim]"
-                            )
-                            break
-                        label = format_segment_label(dart)
-                        item = _dart_payload(dart)
-                        payload = {**item, "roomId": room}
-                        console.print(
-                            f"[green]AD[/green] {label} -> No3 "
-                            f"{item['kind']} {item['number']}"
-                        )
-                        resp = _post_json(dart_url, payload, headers, dry_run)
-                        if resp is not None:
-                            callout = (
-                                resp.get("callout")
-                                if isinstance(resp, dict)
-                                else None
-                            )
-                            if callout:
-                                console.print(
-                                    f"[bold green]POST OK[/bold green] {callout}"
-                                )
-                            else:
-                                console.print("[bold green]POST OK[/bold green]")
-                            if resp.get("turnEnded"):
-                                end_turn_sent = True
-                                mark_visit_closed("dart turnEnded")
-                                post_takeout_health(
-                                    status,
-                                    active=True,
-                                    message="Pull darts - takeout",
-                                )
-                                break
+                    post_appended_darts(diff["appended"], status)
 
             elif kind == VISIT_REPLACE:
-                if frozen:
+                if visit_closed:
                     console.print(
-                        "[dim]AD visit frozen - ignoring visit replace "
-                        "(takeout/visit-closed)[/dim]"
+                        "[dim]AD visit closed - ignoring visit replace[/dim]"
                     )
                 else:
-                    # Correction / remove / replace prior throws - full visit sync
                     post_correct(diff["throws"], "autodarts_state_diff")
                     if not diff["throws"]:
                         maybe_end_turn("visit emptied via replace")
 
             elif kind == VISIT_CLEARED:
                 console.print("[dim]AD throws cleared[/dim]")
-                maybe_end_turn("throws cleared")
-                # Keep visit_closed until unlock_if_ready (empty + not takeout)
-                unlock_if_ready(status, throws, takeout=takeout_now)
+                if should_end_turn_on_clear(
+                    takeout=takeout_now,
+                    in_takeout=in_takeout,
+                    visit_closed=visit_closed,
+                ):
+                    maybe_end_turn("throws cleared")
+                else:
+                    console.print(
+                        "[dim]AD clear while still throwing - "
+                        "no end-turn (wait for dart 3 / takeout)[/dim]"
+                    )
+                    retain_prev_throws = True
 
             elif kind == VISIT_UNCHANGED:
                 pass
 
+            # Takeout / freeze AFTER visit sync so all 3 AD throws map to one seat
+            if takeout_now and not in_takeout:
+                in_takeout = True
+                if visit_closed:
+                    saw_takeout_after_close = True
+                console.print(
+                    "[bold yellow]takeout[/bold yellow] "
+                    "AD remove-darts - scoring frozen"
+                )
+                maybe_end_turn(f"status={status}")
+                mark_visit_closed(f"takeout:{status}")
+                if visit_closed:
+                    saw_takeout_after_close = True
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                )
+            elif takeout_now and in_takeout:
+                if visit_closed:
+                    saw_takeout_after_close = True
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                )
+            elif visit_closed and not takeout_now:
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                )
+
+            unlock_if_ready(status, throws, takeout=takeout_now)
+
             # Track AD throws even while frozen so CLEARED still detects pull-out
-            prev_throws = list(throws)
+            if not retain_prev_throws:
+                prev_throws = list(throws)
             time.sleep(max(0.05, poll_ms / 1000.0))
     except KeyboardInterrupt:
         console.print("Bridge stopped.")

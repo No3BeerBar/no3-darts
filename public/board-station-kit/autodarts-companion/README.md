@@ -140,7 +140,7 @@ POST /api/camera/end-turn
 { "roomId": "Board 1" }
 ```
 
-While Autodarts status/event is **Takeout*** (or No3 has already closed the visit via `turnEnded` / end-turn), dart/correct posts are **frozen** until the board is empty and AD leaves takeout. That stops P1 residual throws from scoring on P2. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
+Poll order: mirror AD throw appends/replaces onto the **current** No3 seat first, then end-turn on Takeout. A 3-dart visit that becomes Takeout in the same poll still scores all 3 on one seat. After the visit closes, further dart/correct posts freeze until the board is empty and AD leaves takeout (empty flickers mid-visit do not advance the seat). That stops dart 3 / residual P1 throws from landing on P2. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
 
 Disable end-turn with `--no-end-turn` if you only want dart posts.
 
