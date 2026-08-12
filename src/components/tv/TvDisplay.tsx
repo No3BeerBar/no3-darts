@@ -49,7 +49,7 @@ export function TvDisplay() {
   }, [settings]);
 
   const room = settings.roomName || "Board 1";
-  const { state, idle, connected, statusText, callout, cameraNotice, lastSyncAt } =
+  const { state, idle, connected, statusText, cameraNotice, lastSyncAt } =
     useTvMatchFeed(hydrated ? room : "");
 
   useEffect(() => {
@@ -461,18 +461,6 @@ export function TvDisplay() {
           </div>
         </div>
       </div>
-
-      {/* Callout burst */}
-      {callout && (
-        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />
-          <div className="relative animate-[modalPop_0.25s_ease-out] rounded-3xl border border-[var(--brand-red)] bg-black/85 px-16 py-8 shadow-[0_0_80px_rgb(225_6_0/0.4)]">
-            <div className="font-logo text-6xl text-[var(--brand-red-bright)] lg:text-8xl">
-              {callout}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Match / leg win */}
       {(state.status === "leg_won" || state.status === "match_won") && (

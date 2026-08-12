@@ -64,7 +64,7 @@ export function TurnDarts({
         );
       })}
       <div className="ml-1 min-w-[2.5rem] text-center">
-        <div className="font-display text-[9px] tracking-wider text-zinc-600">Σ</div>
+        <div className="font-display text-[9px] tracking-wider text-zinc-600">TURN</div>
         <div
           className={cn(
             "text-xl font-black tabular-nums",

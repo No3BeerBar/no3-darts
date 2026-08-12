@@ -62,7 +62,6 @@ import { CameraHealthToast } from "./CameraHealthToast";
 import { CheckoutBanner } from "./CheckoutBanner";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
-import { CalloutToast } from "./CalloutToast";
 import { KillerBanner } from "./KillerBanner";
 import { NumberPad } from "./NumberPad";
 import { PlayAdminPinModal } from "./PlayAdminPinModal";
@@ -75,7 +74,6 @@ import { VisitHistory } from "./VisitHistory";
 function ScoringScreenInner() {
   const {
     state,
-    lastCallout,
     hydrate,
     throwDart,
     correctDartAt,
@@ -421,7 +419,6 @@ function ScoringScreenInner() {
 
   return (
     <div className="play-match flex flex-col">
-      <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
       <TakeoutBanner
         active={takeoutActive}
@@ -520,7 +517,6 @@ function ScoringScreenInner() {
             <div className="truncate text-xs text-zinc-500">
               {statusLine} · Leg {state.legNumber}
               {botThrowing ? " · Bot visit" : ""}
-              {lastCallout ? ` · ${lastCallout}` : ""}
               {isAdmin ? " · Staff" : ""}
             </div>
           </div>

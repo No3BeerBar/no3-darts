@@ -57,22 +57,13 @@ export function useTvMatchFeed(room: string) {
   const [connected, setConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("Connecting…");
-  const [callout, setCallout] = useState<string | null>(null);
   const [cameraNotice, setCameraNotice] = useState<string | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
-  const calloutTimer = useRef<number | null>(null);
   const healthTimer = useRef<number | null>(null);
   const idleTimer = useRef<number | null>(null);
   const matchWonTimer = useRef<number | null>(null);
   const lastSeenLiveAt = useRef<number | null>(null);
-
-  const flashCallout = useCallback((text?: string) => {
-    if (!text) return;
-    setCallout(text);
-    if (calloutTimer.current) window.clearTimeout(calloutTimer.current);
-    calloutTimer.current = window.setTimeout(() => setCallout(null), 2200);
-  }, []);
 
   const goIdle = useCallback((reason: string) => {
     if (idleTimer.current) {
@@ -240,10 +231,8 @@ export function useTvMatchFeed(room: string) {
         try {
           const data = JSON.parse((ev as MessageEvent).data) as {
             state?: GameState;
-            callout?: string;
           };
           if (data.state) apply(data.state, "sse");
-          if (data.callout) flashCallout(data.callout);
         } catch {
           /* */
         }
@@ -339,7 +328,7 @@ export function useTvMatchFeed(room: string) {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("online", fetchActive);
     };
-  }, [room, apply, flashCallout, goIdle, scheduleIdle]);
+  }, [room, apply, goIdle, scheduleIdle]);
 
   return {
     state,
@@ -348,7 +337,6 @@ export function useTvMatchFeed(room: string) {
     connected,
     lastSyncAt,
     statusText,
-    callout,
     cameraNotice,
     apply,
   };
