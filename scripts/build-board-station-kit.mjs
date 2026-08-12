@@ -110,12 +110,30 @@ function shouldSkip(name) {
   return false;
 }
 
-/** Windows PowerShell 5.1 / cmd.exe choke on UTF-8 punctuation in .ps1/.bat. */
-function assertAsciiScripts(dir) {
+/**
+ * Windows PowerShell 5.1 / cmd.exe choke on UTF-8 punctuation in .ps1/.bat.
+ * Also keep README/yaml/py kit text ASCII so nothing reintroduces smart punctuation.
+ */
+const ASCII_KIT_EXT = new Set([
+  ".ps1",
+  ".bat",
+  ".cmd",
+  ".txt",
+  ".md",
+  ".yaml",
+  ".yml",
+  ".py",
+  ".json",
+]);
+
+function assertAsciiKitText(dir) {
   const bad = [];
   for (const file of listFiles(dir)) {
     const lower = file.name.toLowerCase();
-    if (!lower.endsWith(".ps1") && !lower.endsWith(".bat") && !lower.endsWith(".cmd")) {
+    const dot = lower.lastIndexOf(".");
+    const ext = dot >= 0 ? lower.slice(dot) : "";
+    const base = lower.split("/").pop() || lower;
+    if (!ASCII_KIT_EXT.has(ext) && base !== "start-here.txt") {
       continue;
     }
     const data = readFileSync(file.abs);
@@ -128,7 +146,7 @@ function assertAsciiScripts(dir) {
   }
   if (bad.length) {
     console.error(
-      "Non-ASCII bytes in board-station kit scripts (breaks Windows PowerShell 5.1):",
+      "Non-ASCII bytes in board-station kit text (PS 5.1 / reintroduction risk):",
     );
     for (const name of bad) console.error(`  - ${name}`);
     process.exit(1);
@@ -257,7 +275,7 @@ function main() {
   writeFileSync(join(OUT_DIR, "START-HERE.txt"), START_HERE, "ascii");
   writeFileSync(join(OUT_DIR, "board-station", "config.yaml"), CONFIG_YAML, "ascii");
 
-  assertAsciiScripts(OUT_DIR);
+  assertAsciiKitText(OUT_DIR);
 
   const files = listFiles(OUT_DIR);
   if (files.length === 0) {

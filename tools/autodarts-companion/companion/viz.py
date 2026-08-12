@@ -34,7 +34,7 @@ def _draw_board(size: int = 700) -> np.ndarray:
         cv2.circle(img, (c, c), int(R * frac), col, 2)
     for i, num in enumerate(BOARD_ORDER):
         a = math.radians(i * 18)
-        # wire at ±9°
+        # wire at +/-9 deg
         for da in (-9, 9):
             ang = math.radians(i * 18 + da)
             x = int(c + R * math.sin(ang))
@@ -98,7 +98,7 @@ def run_viz(host: str, port: int, poll_ms: int = 300) -> None:
     R = size * 0.42
     pins: List[Tuple[int, int, str]] = []
     last_sig = ""
-    console.print(f"Viz connected to http://{host}:{port} — throw darts. Q to quit.")
+    console.print(f"Viz connected to http://{host}:{port} - throw darts. Q to quit.")
 
     while True:
         try:

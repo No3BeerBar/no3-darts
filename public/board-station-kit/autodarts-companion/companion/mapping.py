@@ -1,9 +1,9 @@
 """
-Map Autodarts Board Manager segments → No3 camera {kind, number}.
+Map Autodarts Board Manager segments -> No3 camera {kind, number}.
 
 Autodarts state JSON varies by Board Manager version. Prefer
 segment.number + segment.multiplier when present; fall back to segment.name
-/ flat string labels (T20, S5, Bull, 25, Miss, …).
+/ flat string labels (T20, S5, Bull, 25, Miss, ...).
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ def dart_to_no3(dart: Any) -> No3Dart:
     """
     Convert one Autodarts throw object (or string label) to No3 (kind, number).
 
-    Prefer numeric segment fields — they are stable across Board Manager versions.
+    Prefer numeric segment fields - they are stable across Board Manager versions.
     """
     if dart is None:
         return KIND_MISS, 0

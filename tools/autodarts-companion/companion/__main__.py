@@ -24,7 +24,7 @@ def _load_cfg(path: str | None) -> dict:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Autodarts Board Manager companion — spy, compare, or bridge "
+            "Autodarts Board Manager companion - spy, compare, or bridge "
             "throws into No3 (Autodarts detects; No3 scores)."
         )
     )
@@ -59,8 +59,8 @@ def main(argv: list[str] | None = None) -> None:
         help="Use Autodarts as detector: POST throws into No3 game UI",
         description=(
             "Poll Autodarts Board Manager and mirror each new dart into No3 "
-            "via POST /api/camera/dart. Game modes (X01, Cricket, Killer, …) "
-            "stay in No3 — Autodarts only detects."
+            "via POST /api/camera/dart. Game modes (X01, Cricket, Killer, ...) "
+            "stay in No3 - Autodarts only detects."
         ),
     )
     p_br.add_argument(

@@ -1,12 +1,12 @@
-# Autodarts → No3 companion
+# Autodarts -> No3 companion
 
-**Recommended bar path:** Autodarts Board Manager **detects** throws; No3 runs **game modes and scoring UI** (X01, Cricket, Killer, …). A small local bridge on the board PC polls Autodarts and POSTs darts into No3.
+**Recommended bar path:** Autodarts Board Manager **detects** throws; No3 runs **game modes and scoring UI** (X01, Cricket, Killer, ...). A small local bridge on the board PC polls Autodarts and POSTs darts into No3.
 
 ```
-[Autodarts cams] → Board Manager :3180 → companion bridge → POST /api/camera/dart|correct|end-turn|health → No3 (tablet / TV)
+[Autodarts cams] -> Board Manager :3180 -> companion bridge -> POST /api/camera/dart|correct|end-turn|health -> No3 (tablet / TV)
 ```
 
-**Bar one-script start** (Board Manager + bridge + TV kiosk URL): [`tools/board-station/`](../board-station/) — see [`docs/BOARD-STATION.md`](../../docs/BOARD-STATION.md).
+**Bar one-script start** (Board Manager + bridge + TV kiosk URL): [`tools/board-station/`](../board-station/) - see [`docs/BOARD-STATION.md`](../../docs/BOARD-STATION.md).
 
 Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no need to play the match inside Autodarts).
 
@@ -16,7 +16,7 @@ Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no
 |-----------|-------------------|
 | Talk to Autodarts **Board Manager** on your LAN (`localhost:3180`) | Reverse-engineer proprietary binary CV code |
 | Poll `GET /api/state` and mirror throws into No3 | Require playing the game inside Autodarts |
-| Map segments (`T20`, `S5`, bull, miss…) → No3 `{kind,number}` | Guarantee raw per-camera tip pixels |
+| Map segments (`T20`, `S5`, bull, miss...) -> No3 `{kind,number}` | Guarantee raw per-camera tip pixels |
 | Call No3 `end-turn` on Autodarts takeout | Steal Autodarts detection models |
 | Sync mid-visit **corrections** via `/api/camera/correct` | Ignore Autodarts throw edits |
 | Watch FPS/cam health, restart Board Manager, toast No3 | Reverse-engineer Autodarts CV |
@@ -40,7 +40,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy config.example.yaml config.yaml
-# edit config.yaml → no3.url, room_id, camera_api_key
+# edit config.yaml -> no3.url, room_id, camera_api_key
 python -m companion bridge
 ```
 
@@ -68,17 +68,17 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 
 ### Match flow
 
-1. On the tablet: start any No3 game (X01 / Cricket / Killer / …) on room **Board 1**.  
+1. On the tablet: start any No3 game (X01 / Cricket / Killer / ...) on room **Board 1**.  
 2. On the board PC: Autodarts Board Manager **Start** (detecting).  
-3. Run `bridge` — each new Autodarts dart is POSTed to No3.  
-4. When Autodarts signals **Takeout** (or clears throws), bridge calls `POST /api/camera/end-turn` so early 1–2 dart visits advance correctly. After a full 3-dart visit No3 usually auto-ends the turn already; the extra call is harmless.
-5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit — no double-scoring.
-6. Players can also fix on the iPad: tap the dart → pick the right segment.
-7. Health: FPS / disconnect → notify No3 + restart Board Manager (needs `exe_path` in config).
+3. Run `bridge` - each new Autodarts dart is POSTed to No3.  
+4. When Autodarts signals **Takeout** (or clears throws), bridge calls `POST /api/camera/end-turn` so early 1-2 dart visits advance correctly. After a full 3-dart visit No3 usually auto-ends the turn already; the extra call is harmless.
+5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit - no double-scoring.
+6. Players can also fix on the iPad: tap the dart -> pick the right segment.
+7. Health: FPS / disconnect -> notify No3 + restart Board Manager (needs `exe_path` in config).
 
 ## Commands
 
-### `bridge` — Autodarts detects → No3 scores (recommended)
+### `bridge` - Autodarts detects -> No3 scores (recommended)
 
 ```powershell
 python -m companion bridge
@@ -87,7 +87,7 @@ python -m companion bridge --no-end-turn
 python -m companion bridge --no-health
 ```
 
-### `spy` — watch Autodarts live
+### `spy` - watch Autodarts live
 
 ```powershell
 python -m companion spy
@@ -95,37 +95,37 @@ python -m companion spy --host 127.0.0.1 --port 3180 --dump
 ```
 
 - Polls `GET /api/state` every ~0.3s  
-- Prints new darts (`T20`, `S5`, bull, miss…)  
+- Prints new darts (`T20`, `S5`, bull, miss...)  
 - With `--dump`, appends every unique state to `logs/session-*.jsonl`  
 
-### `probe` — discover API endpoints
+### `probe` - discover API endpoints
 
 ```powershell
 python -m companion probe
 ```
 
-### `compare` — Autodarts vs No3 side-by-side
+### `compare` - Autodarts vs No3 side-by-side
 
 ```powershell
-python -m companion compare --no3-url https://… --room "Board 1"
+python -m companion compare --no3-url https://... --room "Board 1"
 ```
 
-### `viz` — live board diagram from Autodarts throws
+### `viz` - live board diagram from Autodarts throws
 
 ```powershell
 python -m companion viz
 ```
 
-## Segment mapping → No3
+## Segment mapping -> No3
 
 | Autodarts | No3 `kind` | `number` |
 |-----------|------------|----------|
-| S1–S20 / singles `1`–`20` | `single` | 1–20 |
-| D1–D20 | `double` | 1–20 |
-| T1–T20 | `triple` | 1–20 |
+| S1-S20 / singles `1`-`20` | `single` | 1-20 |
+| D1-D20 | `double` | 1-20 |
+| T1-T20 | `triple` | 1-20 |
 | `25` / outer bull | `outer_bull` | 25 |
 | Bull / D25 / 50 | `bull` | 50 |
-| Miss / `0` / M… | `miss` | 0 |
+| Miss / `0` / M... | `miss` | 0 |
 
 Parsing prefers `segment.number` + `segment.multiplier` (stable across Board Manager versions) and falls back to `segment.name`.
 
@@ -144,7 +144,7 @@ Disable with `--no-end-turn` if you only want dart posts.
 
 ## Corrections
 
-Append-only polls still use `/api/camera/dart`. When the throw list **diverges** (e.g. T20→T19) or **shrinks** mid-visit, the bridge posts:
+Append-only polls still use `/api/camera/dart`. When the throw list **diverges** (e.g. T20->T19) or **shrinks** mid-visit, the bridge posts:
 
 ```http
 POST /api/camera/correct
@@ -193,11 +193,11 @@ python -m pytest -q
 
 ## Typical Autodarts geometry (public knowledge)
 
-- 3 USB cams around the board (~120°)  
+- 3 USB cams around the board (~120 deg)  
 - Even **ring light** (critical)  
 - Calibrate in Board Manager  
 
-We only use the **local HTTP API** outputs — not Autodarts CV internals.
+We only use the **local HTTP API** outputs - not Autodarts CV internals.
 
 ## Privacy
 

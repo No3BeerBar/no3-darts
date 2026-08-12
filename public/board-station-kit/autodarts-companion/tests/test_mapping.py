@@ -1,4 +1,4 @@
-"""Fixture-based tests for Autodarts segment → No3 mapping."""
+"""Fixture-based tests for Autodarts segment -> No3 mapping."""
 
 from __future__ import annotations
 

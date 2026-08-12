@@ -36,7 +36,7 @@ PROBE_PATHS = (
 )
 
 # Best-effort Board Manager reset / recalibrate hooks (POST then GET).
-# Not all versions expose these — bridge documents manual fallback.
+# Not all versions expose these - bridge documents manual fallback.
 RECAL_PATHS = (
     "/api/reset",
     "/api/board/reset",
@@ -231,18 +231,18 @@ def extract_throws(state: dict[str, Any]) -> list[dict[str, Any]]:
                 if key in sub and isinstance(sub.get(key), list):
                     return from_list(sub.get(key))
 
-    # numThrows without throws — nothing to score
+    # numThrows without throws - nothing to score
     return []
 
 
 def extract_status(state: dict[str, Any]) -> str:
-    """Board status string (Throw / Takeout / …)."""
+    """Board status string (Throw / Takeout / ...)."""
     if not isinstance(state, dict):
         return ""
     for key in _STATUS_KEYS:
         val = state.get(key)
         if isinstance(val, str) and val.strip():
-            # Prefer dedicated status over event when both exist — caller can
+            # Prefer dedicated status over event when both exist - caller can
             # pass the full state; we check status/Status first in the tuple.
             if key.lower() in ("status", "boardstatus", "board_status"):
                 return val.strip()
@@ -315,7 +315,7 @@ def new_throws_since(
     """
     Return only newly appended throws since `previous`.
 
-    Idempotent for polling: same state → empty list.
+    Idempotent for polling: same state -> empty list.
     If the visit list shrinks or diverges (takeout / reset), returns [].
     Caller should treat shrink / correction via `diff_visit` separately.
     """
@@ -327,11 +327,11 @@ def new_throws_since(
     prev_ids = [throw_identity(d) for d in previous]
     curr_ids = [throw_identity(d) for d in current]
 
-    # Prefix match → append-only growth
+    # Prefix match -> append-only growth
     if len(curr_ids) >= len(prev_ids) and curr_ids[: len(prev_ids)] == prev_ids:
         return list(current[len(previous) :])
 
-    # Same length, identical → nothing new
+    # Same length, identical -> nothing new
     if curr_ids == prev_ids:
         return []
 
@@ -382,7 +382,7 @@ def diff_visit(
             "throws": list(current),
         }
 
-    # Prefix growth → pure append (idempotent; no double-score)
+    # Prefix growth -> pure append (idempotent; no double-score)
     if (
         current
         and len(curr_ids) >= len(prev_ids)
@@ -407,7 +407,7 @@ def extract_camera_health(state: dict[str, Any]) -> dict[str, Any]:
     """
     Best-effort FPS / camera connectivity from Board Manager `/api/state`.
 
-    Field names vary by Autodarts version — we probe common shapes only.
+    Field names vary by Autodarts version - we probe common shapes only.
     """
     if not isinstance(state, dict):
         return {

@@ -51,7 +51,7 @@ def test_first_poll_posts_all() -> None:
 
 
 def test_same_signature_idempotent_across_polls() -> None:
-    """Simulate three identical polls — only first batch is 'new'."""
+    """Simulate three identical polls - only first batch is 'new'."""
     state = _load("state_three_darts.json")
     throws = extract_throws(state)
     seen: list[dict] = []
@@ -78,7 +78,7 @@ def test_visit_cleared_on_takeout() -> None:
 
 def test_diverged_list_not_treated_as_append() -> None:
     prev = [_seg("T20", 20, 3), _seg("5", 5, 1)]
-    # Correction of first dart — do not re-post as "new"
+    # Correction of first dart - do not re-post as "new"
     curr = [_seg("T19", 19, 3), _seg("5", 5, 1)]
     assert new_throws_since(prev, curr) == []
 
