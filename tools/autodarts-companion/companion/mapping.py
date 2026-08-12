@@ -208,7 +208,7 @@ def is_takeout_status(status: str) -> bool:
     }:
         return True
     norm = s.replace("_", " ")
-    # Be resilient to "Board: Takeout" / "Removing darts…" style strings
+    # Be resilient to "Board: Takeout" / "Removing darts..." style strings
     if "takeout" in norm:
         return True
     if "removing dart" in norm or "remove dart" in norm:

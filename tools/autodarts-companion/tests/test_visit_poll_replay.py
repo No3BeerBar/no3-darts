@@ -452,7 +452,7 @@ def test_still_broken_multi_empty_after_takeout_blip_late_dart3() -> None:
 
 
 def test_lagging_dart3_after_long_takeout_empty_stays_on_seat0() -> None:
-    """John P0: dart 3 lags every visit — never becomes seat 1 dart 1."""
+    """John P0: dart 3 lags every visit - never becomes seat 1 dart 1."""
     t1 = [_seg("T20", 20, 3)]
     t2 = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     t3 = [
@@ -515,7 +515,7 @@ def test_continuation_full_reshow_after_scored_close_refuses_wrong_seat() -> Non
             _state("Throw", t3),  # turnEnded / scored close on seat 0
             _state("Takeout", t3, event="Takeout"),
             _state("Throw", []),  # unlock after takeout handshake + empty
-            _state("Throw", t3),  # residual re-show — refuse
+            _state("Throw", t3),  # residual re-show - refuse
         ]
     )
     darts = [e for e in events if e["type"] == "dart"]
