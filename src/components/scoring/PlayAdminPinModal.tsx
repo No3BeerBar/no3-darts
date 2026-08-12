@@ -8,7 +8,7 @@ export function PlayAdminPinModal({
   onClose,
   tryPin,
   title = "Staff unlock",
-  description = "Enter staff PIN for Undo / Edit / pad",
+  description = "Enter staff PIN for Edit / End turn / pad",
 }: {
   tryPin: (pin: string) => boolean;
   onSuccess: () => void;

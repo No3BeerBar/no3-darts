@@ -27,7 +27,7 @@ On secondary screens opened from play (e.g. Stats):
 
 Optional **Admin → Kiosk mode** hides site-wide nav on every route.
 
-**Tournament match ready** does **not** appear on cold patron `/play` or `/`. Staff must unlock the tablet first (same PIN as Undo/Edit). See [TOURNAMENT.md](./TOURNAMENT.md).
+**Tournament match ready** does **not** appear on cold patron `/play` or `/`. Staff must unlock the tablet first (same PIN as Edit / End turn). See [TOURNAMENT.md](./TOURNAMENT.md).
 
 ## X01 outshots
 
@@ -179,13 +179,14 @@ Clean bar / kiosk UI for players:
 - **How to play** for the active mode (modal — see above)
 - X01 outshot suggestions when finishing
 - Current visit with **tap-to-correct** (Autodarts misreads)
+- **Undo** — big kiosk control; each press steps back one dart (through the open visit, then prior visits as far as the engine allows). Works for camera and manual scores.
 - Recent visits (mode-correct Σ — Baseball does **not** sum raw bull values)
 - Dartboard for manual entry if needed
 - End of match: auto-save → idle (no Save button)
 
 **Static board:** the dartboard sits in a reserved stage. Visit history, seat lists, and banners scroll in the chrome column/band — they do **not** shove the board when a round is scored. Landscape uses chrome | board; portrait uses a fixed board band between scrollable seats and visits. Dense Cricket / many seats stay readable via scrolling.
 
-Hidden from patrons: Undo, Edit last, End turn, Pause, Setup, Keys/Pad tabs.
+Hidden from patrons: Edit last, End turn, Pause, Setup, Keys/Pad tabs.
 
 ## Staff (admin)
 
@@ -200,7 +201,7 @@ Unlock on the same screen:
 
 Staff PIN is set under **Admin → Staff PIN** (default `1234`). The same default (or Railway `STAFF_PIN`) authorizes **Reset player PIN** on `/admin`.
 
-When unlocked, staff get Undo / Edit / End turn / Pause / Setup + Keys/Pad tabs. **End game** is always available (patrons and staff) — same clear path for a stuck match.
+When unlocked, staff get Edit / End turn / Pause / Setup + Keys/Pad tabs. **Undo** and **End game** are always available (patrons and staff).
 
 Full bar settings remain on **`/admin`**.
 

@@ -71,7 +71,7 @@ export interface AppSettings {
   roomName: string;
   /**
    * 4-digit PIN to unlock staff chrome on `/play`
-   * (Undo / Edit / End / Pause / Cancel / Keys / Pad).
+   * (Edit / End / Pause / Cancel / Keys / Pad).
    * Empty → default `1234` (see usePlayAdmin).
    */
   staffPin: string;

@@ -105,7 +105,7 @@ export default function AdminPage() {
             is a clean scoring UI (scores, thrower, board, tap-to-correct). Staff tools are hidden.
           </li>
           <li>
-            <strong className="text-white">Staff on play</strong> — unlock Undo / Edit / End /
+            <strong className="text-white">Staff on play</strong> — unlock Edit / End /
             Pause / Cancel / Keys / Pad via long-press logo + PIN, Admin link, or{" "}
             <a className="text-[var(--brand-red-bright)] underline" href="/play?admin=1">
               /play?admin=1
@@ -227,7 +227,7 @@ export default function AdminPage() {
             POST /api/camera/dart
           </li>
           <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
-            POST /api/camera/end-turn · POST /api/camera/takeout-ready
+            POST /api/camera/end-turn · undo · takeout-ready
           </li>
           <li className="rounded-lg border border-[var(--panel-border)] bg-black px-3 py-2">
             GET /api/camera/stream (SSE)

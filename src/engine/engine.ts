@@ -389,64 +389,63 @@ export function endTurn(state: GameState): ApplyDartResult {
   return result;
 }
 
-/** Undo last dart in current turn, or last completed turn if turn empty */
-export function undo(state: GameState): ApplyDartResult {
-  const next = cloneState(state);
+/** True when Undo can step backward at least one dart / visit. */
+export function canUndo(state: GameState): boolean {
+  if (
+    state.status !== "playing" &&
+    state.status !== "leg_won" &&
+    state.status !== "match_won"
+  ) {
+    return false;
+  }
+  if (state.currentTurnDarts.length > 0) return true;
+  return state.turns.length > 0;
+}
 
-  if (next.currentTurnDarts.length > 0) {
-    next.currentTurnDarts.pop();
-    // Approximate dartsThrown undo
-    const ps = next.playerStates[next.currentPlayerIndex];
-    if (ps.dartsThrown > 0) ps.dartsThrown -= 1;
-    next.updatedAt = Date.now();
+/**
+ * Undo last applied dart (camera or manual), one step per call.
+ *
+ * - Mid-visit: rebuild from turnBaseline without the last dart (mode-safe).
+ * - Empty visit: reopen the previous completed visit, then drop its last dart
+ *   so repeated Undo walks backward dart-by-dart through recent throws.
+ */
+export function undo(state: GameState): ApplyDartResult {
+  if (!canUndo(state)) {
+    return { state, events: [], callout: "Nothing to undo" };
+  }
+
+  // Mid-visit: correctCurrentTurn replays from baseline (scores / marks / lives)
+  if (state.currentTurnDarts.length > 0) {
+    const remaining = state.currentTurnDarts.slice(0, -1);
+    const result = correctCurrentTurn(state, remaining, { autoEnd: false });
     return {
-      state: next,
-      events: [{ type: "undo", timestamp: Date.now() }],
+      state: result.state,
+      events: [
+        { type: "undo", timestamp: Date.now() },
+        ...result.events.filter((e) => e.type !== "undo"),
+      ],
       callout: "UNDO",
     };
   }
 
-  // Restore previous turn – simplified: re-hydrate from turn log
-  if (next.turns.length === 0) {
-    return { state: next, events: [], callout: "Nothing to undo" };
+  // Visit already closed (3rd dart / end-turn / bust) — reopen then drop last dart
+  const reopened = editLastTurn(state);
+  if (reopened.state.currentTurnDarts.length === 0) {
+    return {
+      state: reopened.state,
+      events: reopened.events,
+      callout: reopened.callout === "Nothing to edit" ? "Nothing to undo" : "UNDO",
+    };
   }
-
-  // Full turn undo is complex across modes; store snapshot stack preferred.
-  // Here we pop last turn and reverse score delta for X01-like modes.
-  const last = next.turns.pop()!;
-  const pIdx = next.players.findIndex((p) => p.id === last.playerId);
-  if (pIdx >= 0) {
-    next.currentPlayerIndex = pIdx;
-    const ps = next.playerStates[pIdx];
-    if (last.checkout && next.status === "leg_won") {
-      next.status = "playing";
-      next.legWinnerId = null;
-      ps.legsWon = Math.max(0, ps.legsWon - 1);
-    }
-    if (next.winnerId) {
-      next.winnerId = null;
-      next.status = "playing";
-      ps.setsWon = Math.max(0, ps.setsWon - (last.checkout ? 0 : 0));
-    }
-    // Restore score to start of that turn
-    ps.score = last.startScore;
-    ps.dartsThrown = Math.max(0, ps.dartsThrown - last.darts.length);
-    if (last.checkout) {
-      ps.checkoutsHit = Math.max(0, ps.checkoutsHit - 1);
-    }
-    // Put darts back so user can undo dart-by-dart
-    next.currentTurnDarts = [...last.darts];
-    // Pop one dart so undo feels like undoing the last action
-    if (next.currentTurnDarts.length > 0) {
-      next.currentTurnDarts.pop();
-      if (ps.dartsThrown > 0) ps.dartsThrown -= 1;
-    }
-  }
-
-  next.updatedAt = Date.now();
+  const remaining = reopened.state.currentTurnDarts.slice(0, -1);
+  const result = correctCurrentTurn(reopened.state, remaining, { autoEnd: false });
   return {
-    state: next,
-    events: [{ type: "undo", timestamp: Date.now() }],
+    state: result.state,
+    events: [
+      { type: "undo", timestamp: Date.now() },
+      ...reopened.events,
+      ...result.events.filter((e) => e.type !== "undo"),
+    ],
     callout: "UNDO",
   };
 }

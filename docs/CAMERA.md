@@ -15,7 +15,8 @@ An experimental DIY OpenCV stack still lives under [`detection/`](../detection/R
 5. On mid-visit correction (changed / removed throw), call `POST /api/camera/correct` with the full visit.
 6. Optional: `POST /api/camera/health` so iPad/TV can toast FPS / restart / takeout notices (`takeout: true` / `level: "takeout"`).
 7. Optional: patron ack `POST /api/camera/takeout-ready` → bridge `GET …?consume=1` to reset/resume after remove-darts.
-8. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
+8. Optional: `POST /api/camera/undo` steps the server match back one dart (same engine as `/play` Undo).
+9. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
 
 Bar mini-PC wiring + one-script start: [`docs/BOARD-STATION.md`](./BOARD-STATION.md).
 
@@ -96,6 +97,17 @@ GET /api/camera/takeout-ready?room=Board%201&consume=1
 ```
 
 Used when Autodarts is stuck in remove-darts / takeout and the player confirms the board is clear (**Ready for next visit** on `/play`).
+
+## Undo one dart
+
+```http
+POST /api/camera/undo
+Content-Type: application/json
+
+{ "roomId": "Board 1" }
+```
+
+Reverses the last applied dart on the server match (camera or manual). Call repeatedly to walk backward through the open visit, then prior visits. `/play` Undo uses the same engine locally and syncs match state; this endpoint is for bridge/tools that need an immediate server-side step.
 
 ## Correct visit (Autodarts-style)
 

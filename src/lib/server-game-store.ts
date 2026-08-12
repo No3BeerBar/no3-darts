@@ -7,9 +7,11 @@
 import type { DartDetectedEvent, GameState, SegmentKind } from "@/engine/types";
 import {
   applyDart,
+  canUndo,
   correctCurrentTurn,
   createDart,
   endTurn,
+  undo,
 } from "@/engine";
 import type { CameraHealth } from "@/lib/camera-health";
 
@@ -258,6 +260,44 @@ export function applyCameraCorrect(opts: {
     callout: result.callout,
     turnEnded,
   };
+}
+
+/**
+ * Step backward one dart (same engine undo as /play).
+ * Reverses camera or manual scores already applied on the server match.
+ */
+export function applyCameraUndo(opts: {
+  matchId?: string;
+  roomId?: string;
+}):
+  | { ok: true; state: GameState; callout?: string }
+  | { ok: false; error: string } {
+  const state = resolveMatch({ matchId: opts.matchId, roomId: opts.roomId });
+  if (!state) return { ok: false, error: "No active match found" };
+  if (
+    state.status !== "playing" &&
+    state.status !== "leg_won" &&
+    state.status !== "match_won"
+  ) {
+    return { ok: false, error: `Match status is ${state.status}` };
+  }
+  if (!canUndo(state)) {
+    return { ok: false, error: "Nothing to undo" };
+  }
+
+  const result = undo(state);
+  matches.set(result.state.id, result.state);
+  emit({
+    type: "dart_detected",
+    data: {
+      state: result.state,
+      callout: result.callout ?? "UNDO",
+      turnEnded: false,
+      undone: true,
+    },
+  });
+  emit({ type: "match_update", data: result.state });
+  return { ok: true, state: result.state, callout: result.callout };
 }
 
 export function setCameraHealth(health: CameraHealth): CameraHealth {
