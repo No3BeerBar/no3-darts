@@ -1,6 +1,10 @@
 "use client";
 
 import { create } from "zustand";
+import {
+  clearPlayEntrySessionCookie,
+  gatePlayDocumentEntry,
+} from "@/lib/play-entry-gate";
 import { invalidateSeat } from "@/lib/seat-auth";
 import type { PlayerAggregateStats } from "@/lib/storage";
 import {
@@ -17,6 +21,15 @@ export type SessionPlayer = {
   stats: PlayerAggregateStats;
 };
 
+export type SessionHydrateOpts = {
+  /**
+   * Fresh mount of `/play` or setup `/`. Once per document load, clears sticky
+   * cookie + tablet roster + seat scoring trust so the board link never looks
+   * signed in without PIN. SPA re-hydrates after PIN omit this (or pass false).
+   */
+  playEntry?: boolean;
+};
+
 interface SessionStore {
   player: SessionPlayer | null;
   /** PIN-verified on this tablet until Sign out / idle logout */
@@ -25,7 +38,7 @@ interface SessionStore {
   dbAvailable: boolean;
   hydrated: boolean;
   loading: boolean;
-  hydrate: () => Promise<void>;
+  hydrate: (opts?: SessionHydrateOpts) => Promise<void>;
   setPlayer: (player: SessionPlayer | null) => void;
   rememberTabletPlayer: (player: { id: string; name: string }) => void;
   logout: () => Promise<void>;
@@ -39,10 +52,41 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   hydrated: false,
   loading: false,
 
-  hydrate: async () => {
+  hydrate: async (opts) => {
     if (get().loading) return;
     set({ loading: true });
     try {
+      // Board bookmark / app restart: fail-closed cold tablet before trusting cookie.
+      if (opts?.playEntry) {
+        const { gated } = gatePlayDocumentEntry();
+        if (gated) {
+          await clearPlayEntrySessionCookie();
+          clearTabletSessionPlayers();
+          let dbConfigured = false;
+          let dbAvailable = false;
+          try {
+            const listRes = await fetch("/api/players", { credentials: "include" });
+            const list = (await listRes.json()) as {
+              dbConfigured?: boolean;
+              dbAvailable?: boolean;
+            };
+            dbConfigured = Boolean(list.dbConfigured);
+            dbAvailable = Boolean(list.dbAvailable);
+          } catch {
+            /* offline */
+          }
+          set({
+            player: null,
+            tabletPlayers: [],
+            dbConfigured,
+            dbAvailable,
+            hydrated: true,
+            loading: false,
+          });
+          return;
+        }
+      }
+
       const meRes = await fetch("/api/auth/me", { credentials: "include" });
       const me = (await meRes.json()) as {
         ok: boolean;

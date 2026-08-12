@@ -115,7 +115,8 @@ export function GameSetup() {
     hydrateGame();
     playersStore.hydrate();
     settings.hydrate();
-    void hydrateSession();
+    // Fresh document load of setup `/`: same board-entry PIN gate as /play.
+    void hydrateSession({ playEntry: true });
   }, [hydrateGame, playersStore, settings, hydrateSession]);
 
   const openAuth = (mode: AuthMode, name = "", selectAfter = true) => {

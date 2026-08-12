@@ -93,7 +93,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const active = getActiveGame();
     // App kill / fresh browser load restores the match blob, but must not
     // silently restore scoring trust — registered seats re-PIN via ResumeAuthGate.
-    // Sticky stay-signed-in between matches (cookie + tablet roster) is untouched.
+    // Sticky session chrome is cleared separately by play-entry session hydrate.
     if (active) {
       invalidateSeatAuthOnPageRestore(active.id);
     }
