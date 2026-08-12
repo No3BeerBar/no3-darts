@@ -300,3 +300,24 @@ describe("Board1 P0: dart 3 never jumps to next seat", () => {
     expect(src).not.toMatch(/\blet state\b/);
   });
 });
+
+describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
+  it("ships ASCII Fix Me bat + board-setup link", () => {
+    const bat = readSrc("public/Board1-FixMe.bat");
+    expect(bat).toContain("___NO3_BOARD1_FIXME_PS1___");
+    expect(bat).toContain("C:\\No3Darts\\Board1");
+    expect(bat).toContain("start-board.bat");
+    expect(bat).toContain("takeout-ready");
+    expect(bat).toContain("PHOTO THIS WINDOW");
+    expect(bat).toContain("board-station\\config.yaml");
+    expect(bat).toMatch(/Leave the bridge window open/i);
+    for (let i = 0; i < bat.length; i++) {
+      expect(bat.charCodeAt(i)).toBeLessThanOrEqual(127);
+    }
+
+    const page = readSrc("src/app/board-setup/page.tsx");
+    expect(page).toContain("/Board1-FixMe.bat");
+    expect(page).toMatch(/Something wrong\?/i);
+    expect(page).toMatch(/Fix Me/i);
+  });
+});

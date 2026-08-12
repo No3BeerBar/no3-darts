@@ -61,6 +61,7 @@ def test_board1_p0_patron_ready_can_unlock_sticky_takeout() -> None:
 
 def test_board1_p0_incomplete_never_auto_end_turn() -> None:
     """Dart 3 lag must not end-turn via empty / takeout-finished polls."""
+    assert should_end_turn_on_takeout(visit_closed=False, throws_count=1) is False
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=2) is False
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=3) is True
     assert (

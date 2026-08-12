@@ -4,6 +4,8 @@ Bar ops guide for **No. 3 Craft Beer Bar**: Autodarts detects throws; No3 scores
 
 **Mini-PC bootstrap:** download [`Board1-Setup.bat`](https://no3-darts-production.up.railway.app/Board1-Setup.bat) → double-click. **Single file** — Edge only needs the `.bat` (setup PowerShell is embedded; no separate `.ps1` fetch). It pulls the kit zip, writes Board 1 `config.yaml`, finds Autodarts if possible, and runs `start-board.bat`. Kit zip: [`/board-station-board1.zip`](https://no3-darts-production.up.railway.app/board-station-board1.zip).
 
+**Something wrong?** Download [`Board1-FixMe.bat`](https://no3-darts-production.up.railway.app/Board1-FixMe.bat) (or double-click `C:\No3Darts\Board1\Board1-FixMe.bat` if already installed) — kills leftover bridge/start-board processes, refreshes the kit zip only if stale (keeps `config.yaml` / `exe_path`), starts Autodarts if `:3180` is down, clears stuck takeout state best-effort, and re-runs `start-board.bat`. Loud errors say **PHOTO THIS WINDOW**.
+
 > DIY OpenCV under `detection/` is experimental — **not** the bar path. Prefer Autodarts Board Manager + companion bridge.
 
 ## Wiring
