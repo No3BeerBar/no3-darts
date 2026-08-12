@@ -271,12 +271,20 @@ describe("camera correct bleed guard", () => {
         expect(lateThird.error).toMatch(/Seat mismatch|Takeout hold/i);
       }
 
-      const badEnd = applyCameraEndTurn({
+      const missingEnd = applyCameraEndTurn({
+        roomId: "Board SeatLock",
+      });
+      expect(missingEnd.ok).toBe(false);
+      if (!missingEnd.ok) {
+        expect(missingEnd.error).toMatch(/expectedPlayerIndex required/i);
+      }
+
+      const ackEnd = applyCameraEndTurn({
         roomId: "Board SeatLock",
         expectedPlayerIndex: 0,
       });
-      // Empty visit after end-turn returns READY (hold kept)
-      expect(badEnd.ok).toBe(true);
+      // Empty visit after end-turn returns READY when seat is provided
+      expect(ackEnd.ok).toBe(true);
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold("Board SeatLock");

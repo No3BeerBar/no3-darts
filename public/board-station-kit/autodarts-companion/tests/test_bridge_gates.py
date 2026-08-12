@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from companion.bridge import fetch_no3_match_allows_recal
+from companion.bridge import build_end_turn_payload, fetch_no3_match_allows_recal
 from companion.health import no3_match_allows_between_games_recal
 from companion.mapping import is_takeout_status
 
@@ -38,3 +38,18 @@ def test_match_gate_table() -> None:
     ]
     for match, expected in cases:
         assert no3_match_allows_between_games_recal(match) is expected
+
+
+def test_end_turn_payload_never_omits_expected_player_index() -> None:
+    """maybe_end_turn must fail closed when seat is unknown."""
+    assert build_end_turn_payload("Board 1", None) is None
+    assert build_end_turn_payload("Board 1", 0) == {
+        "roomId": "Board 1",
+        "expectedPlayerIndex": 0,
+    }
+    assert build_end_turn_payload("Board 1", 1) == {
+        "roomId": "Board 1",
+        "expectedPlayerIndex": 1,
+    }
+    # Invalid seat values refuse the post entirely
+    assert build_end_turn_payload("Board 1", "x") is None  # type: ignore[arg-type]

@@ -172,7 +172,7 @@ export function getCameraGateSnapshot(roomId: string): RoomCameraGate {
 function seatLockRejected(
   state: GameState,
   expectedPlayerIndex: number | undefined,
-  opts?: { allowEmptyVisit?: boolean }
+  opts?: { allowEmptyVisit?: boolean; requireExpected?: boolean }
 ): string | null {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
@@ -181,7 +181,7 @@ function seatLockRejected(
   // Fail closed for old companions: while any visit seat lock / takeout hold is
   // active, dart/correct/end-turn must carry expectedPlayerIndex.
   const seatLockActive =
-    visitOpen || gate.holdUntilTakeoutClear;
+    visitOpen || gate.holdUntilTakeoutClear || Boolean(opts?.requireExpected);
 
   if (
     seatLockActive &&
@@ -208,12 +208,17 @@ function seatLockRejected(
   if (visitOpen) {
     const want = Math.trunc(expectedPlayerIndex as number);
     const locked = gate.openVisitSeat ?? state.currentPlayerIndex;
-    if (want !== state.currentPlayerIndex || want !== locked) {
+    if (want !== state.currentPlayerIndex) {
+      return `Seat mismatch - expected player ${want}, current is ${state.currentPlayerIndex}`;
+    }
+    if (gate.openVisitSeat != null && want !== locked) {
       return `Seat mismatch - expected player ${want}, current is ${state.currentPlayerIndex}`;
     }
     return null;
   }
 
+  // New empty visit (no lock yet): optional expectedPlayerIndex, but if sent
+  // it must match the current thrower.
   if (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex)) {
     return null;
   }
@@ -273,11 +278,17 @@ function realignCameraGateFromMatch(
  * start a visit. Late dart 3 used to land here as "first dart" for the next
  * player after a premature end-turn. Incomplete visits (1-2 darts already on
  * the open turn) still accept APPEND so dart 3 can finish the same seat.
+ *
+ * Also honors the server takeout hold latch (set on visit close) so a missing
+ * health heartbeat cannot open the next seat.
  */
 function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null {
   if (state.currentTurnDarts.length > 0) return null;
-  const room = (roomId || state.roomId || "").trim();
-  if (!room) return null;
+  const room = normRoom(roomId || state.roomId || "Board 1");
+  const gate = getCameraGate(room);
+  if (gate.holdUntilTakeoutClear) {
+    return "Takeout hold - pull darts before next visit scores";
+  }
   const health = getCameraHealth(room);
   if (health?.takeout || health?.level === "takeout" || health?.reason === "takeout") {
     return "Takeout active - scoring paused until reset";
@@ -359,6 +370,7 @@ export function applyCameraEndTurn(opts: {
   if (state.currentTurnDarts.length === 0) {
     const seatErr = seatLockRejected(state, opts.expectedPlayerIndex, {
       allowEmptyVisit: true,
+      requireExpected: true,
     });
     if (seatErr) return { ok: false, error: seatErr };
     markVisitClosedForTakeout(state);
@@ -366,7 +378,9 @@ export function applyCameraEndTurn(opts: {
     return { ok: true, state, callout: "READY" };
   }
 
-  const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
+  const seatErr = seatLockRejected(state, opts.expectedPlayerIndex, {
+    requireExpected: true,
+  });
   if (seatErr) return { ok: false, error: seatErr };
 
   const result = endTurn(state);

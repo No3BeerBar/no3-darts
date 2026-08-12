@@ -206,6 +206,74 @@ describe("camera routes: 409 seat lock", () => {
   });
 });
 
+describe("camera routes: fail-closed expectedPlayerIndex", () => {
+  it("POST /end-turn 409 when expectedPlayerIndex missing on open visit", async () => {
+    const state = board("Board1 Route Seat");
+    upsertServerMatch(state);
+    clearRoom("Board1 Route Seat");
+    try {
+      expect(
+        (
+          await postDart(
+            req("http://local/api/camera/dart", {
+              kind: "triple",
+              number: 20,
+              roomId: "Board1 Route Seat",
+              expectedPlayerIndex: 0,
+            })
+          )
+        ).status
+      ).toBe(200);
+      const missing = await postEndTurn(
+        req("http://local/api/camera/end-turn", {
+          roomId: "Board1 Route Seat",
+        })
+      );
+      expect(missing.status).toBe(409);
+      expect(((await missing.json()) as { error?: string }).error).toMatch(
+        /expectedPlayerIndex required/i
+      );
+    } finally {
+      removeServerMatch(state.id);
+      clearRoom("Board1 Route Seat");
+    }
+  });
+
+  it("POST /end-turn 409 when expectedPlayerIndex missing after auto turnEnded", async () => {
+    const state = board("Board1 Route Seat");
+    upsertServerMatch(state);
+    clearRoom("Board1 Route Seat");
+    try {
+      for (const n of [20, 5, 1]) {
+        expect(
+          (
+            await postDart(
+              req("http://local/api/camera/dart", {
+                kind: "single",
+                number: n,
+                roomId: "Board1 Route Seat",
+                expectedPlayerIndex: 0,
+              })
+            )
+          ).status
+        ).toBe(200);
+      }
+      const missing = await postEndTurn(
+        req("http://local/api/camera/end-turn", {
+          roomId: "Board1 Route Seat",
+        })
+      );
+      expect(missing.status).toBe(409);
+      expect(((await missing.json()) as { error?: string }).error).toMatch(
+        /expectedPlayerIndex required/i
+      );
+    } finally {
+      removeServerMatch(state.id);
+      clearRoom("Board1 Route Seat");
+    }
+  });
+});
+
 describe("camera routes: takeout reject", () => {
   it("POST /dart refuses new-visit dart while takeout health / hold active", async () => {
     const state = board("Board1 Route Takeout");

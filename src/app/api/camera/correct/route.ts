@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     const status =
-      /seat mismatch|expectedPlayerIndex|takeout hold|no open visit/i.test(
+      /seat mismatch|expectedPlayerIndex|takeout hold|takeout active|no open visit/i.test(
         result.error
       )
         ? 409
