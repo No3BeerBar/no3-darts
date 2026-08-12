@@ -71,7 +71,7 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 1. On the tablet: start any No3 game (X01 / Cricket / Killer / ...) on room **Board 1**.  
 2. On the board PC: Autodarts Board Manager **Start** (detecting).  
 3. Run `bridge` - each new Autodarts dart is POSTed to No3.  
-4. When Autodarts signals **Takeout** with a full 3-dart visit (or confirms an early pull via clear / takeout finished), bridge calls `POST /api/camera/end-turn`. Takeout while only 1-2 throws are visible **defers** end-turn so dart 3 cannot seat-jump onto the next player. After a full 3-dart visit No3 usually auto-ends already; the extra call is harmless.
+4. When Autodarts signals **Takeout** with a full 3-dart visit (or confirms an early pull via sustained empty polls), bridge calls `POST /api/camera/end-turn`. Takeout while only 1-2 throws are visible **defers** end-turn; a one-poll Takeout-finished flicker must not seat-jump dart 3. While mirroring a visit the bridge **locks the No3 seat** (`expectedPlayerIndex`). After a full 3-dart visit No3 usually auto-ends already; the extra end-turn is harmless.
 5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit - no double-scoring.
 6. Players can also fix on the iPad: tap the dart -> pick the right segment.
 7. Health: FPS / disconnect -> notify No3 + restart Board Manager (needs `exe_path` in config).
@@ -140,7 +140,7 @@ POST /api/camera/end-turn
 { "roomId": "Board 1" }
 ```
 
-Poll order: mirror AD throw appends/replaces onto the **current** No3 seat first, then end-turn on Takeout. A 3-dart visit that becomes Takeout in the same poll still scores all 3 on one seat. After the visit closes, further dart/correct posts freeze until the board is empty and AD leaves takeout (empty flickers mid-visit do not advance the seat). That stops dart 3 / residual P1 throws from landing on P2. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
+Poll order: mirror AD throw appends/replaces onto the **current** No3 seat first, then end-turn on Takeout. A 3-dart visit that becomes Takeout in the same poll still scores all 3 on one seat. Incomplete visits need sustained empty polls before early-pull end-turn (not a single Takeout-finished clear). The bridge locks `currentPlayerIndex` for the open visit and sends `expectedPlayerIndex` (server 409 on mismatch). If AD re-shows a closed visit after unlock, that continuation is refused. After the visit closes, further dart/correct posts freeze until the board is empty and AD leaves takeout. The bridge reports `takeout: true` on `/api/camera/health` so `/play` can show **Pull darts - takeout**. Patron **Ready for next visit** hits `/api/camera/takeout-ready`; the bridge may probe a board reset but still waits for a clean AD board before accepting the next visit.
 
 Disable end-turn with `--no-end-turn` if you only want dart posts.
 

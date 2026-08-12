@@ -117,6 +117,21 @@ function currentThrowerIsBot(state: GameState): boolean {
   return Boolean(p?.isBot || p?.botDifficulty != null);
 }
 
+/** Hard seat lock: refuse camera posts meant for a different thrower. */
+function seatLockRejected(
+  state: GameState,
+  expectedPlayerIndex: number | undefined
+): string | null {
+  if (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex)) {
+    return null;
+  }
+  const want = Math.trunc(expectedPlayerIndex);
+  if (want !== state.currentPlayerIndex) {
+    return `Seat mismatch — expected player ${want}, current is ${state.currentPlayerIndex}`;
+  }
+  return null;
+}
+
 export function applyCameraDart(
   event: DartDetectedEvent
 ): { ok: true; state: GameState; callout?: string; turnEnded: boolean } | { ok: false; error: string } {
@@ -128,6 +143,8 @@ export function applyCameraDart(
   if (currentThrowerIsBot(state)) {
     return { ok: false, error: "Bot thrower — camera scoring paused" };
   }
+  const seatErr = seatLockRejected(state, event.expectedPlayerIndex);
+  if (seatErr) return { ok: false, error: seatErr };
 
   const beforePlayer = state.currentPlayerIndex;
   const beforeTurnLen = state.currentTurnDarts.length;
@@ -164,6 +181,7 @@ export function applyCameraDart(
 export function applyCameraEndTurn(opts: {
   matchId?: string;
   roomId?: string;
+  expectedPlayerIndex?: number;
 }): { ok: true; state: GameState; callout?: string } | { ok: false; error: string } {
   const state = resolveMatch(opts);
   if (!state) return { ok: false, error: "No active match found" };
@@ -173,6 +191,8 @@ export function applyCameraEndTurn(opts: {
   if (currentThrowerIsBot(state)) {
     return { ok: false, error: "Bot thrower — camera scoring paused" };
   }
+  const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
+  if (seatErr) return { ok: false, error: seatErr };
 
   // Visit already empty (3rd dart auto-ended) — just re-broadcast state
   if (state.currentTurnDarts.length === 0) {
@@ -212,6 +232,7 @@ export function applyCameraCorrect(opts: {
   roomId?: string;
   darts: CameraCorrectDart[];
   reason?: string;
+  expectedPlayerIndex?: number;
 }):
   | { ok: true; state: GameState; callout?: string; turnEnded: boolean }
   | { ok: false; error: string } {
@@ -222,6 +243,10 @@ export function applyCameraCorrect(opts: {
   }
   if (state.status === "playing" && currentThrowerIsBot(state)) {
     return { ok: false, error: "Bot thrower — camera scoring paused" };
+  }
+  if (state.status === "playing") {
+    const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
+    if (seatErr) return { ok: false, error: seatErr };
   }
 
   const beforePlayer = state.currentPlayerIndex;

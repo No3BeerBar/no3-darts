@@ -40,7 +40,9 @@ from .health import (
 )
 from .mapping import dart_to_no3, format_segment_label, is_takeout_finished_status
 from .visit_gate import (
+    is_ad_visit_continuation,
     is_takeout_state,
+    seat_matches_lock,
     should_clear_stale_takeout,
     should_end_turn_on_clear,
     should_end_turn_on_empty_takeout_finished,
@@ -77,6 +79,19 @@ def _post_json(
         return None
     if r.status_code >= 400:
         console.print(f"[red]No3 HTTP {r.status_code}: {r.text[:240]}[/red]")
+        # Preserve seat-mismatch (409) so callers can freeze the visit lock
+        err_txt = ""
+        try:
+            err_txt = str((r.json() or {}).get("error") or "")
+        except Exception:
+            err_txt = r.text[:240]
+        if r.status_code == 409 or "seat mismatch" in err_txt.lower():
+            return {
+                "ok": False,
+                "error": err_txt or "seat mismatch",
+                "seatMismatch": True,
+                "status_code": r.status_code,
+            }
         return None
     try:
         return r.json()
@@ -167,8 +182,14 @@ def run_bridge(
       takeout/end-turn, so a 3-dart AD visit never loses dart 3 to the next seat.
     - Takeout with fewer than 3 throws defers end-turn (wait for dart 3 or CLEARED)
       so a premature Takeout cannot seat-jump dart 3 onto the next player.
+    - Incomplete-visit early pull needs sustained empty polls (not a one-poll
+      Takeout-finished flicker) before end-turn.
+    - While mirroring an open AD visit, lock the No3 seat and send
+      expectedPlayerIndex on dart/correct/end-turn; refuse wrong-seat posts.
     - After No3 closes a visit (3rd dart / end-turn) OR AD status is Takeout*,
       dart/correct posts freeze until throws are empty and AD leaves takeout.
+    - If AD re-shows the closed visit after unlock (late dart 3), refuse to
+      post onto the next seat (continuation guard).
     - Between-games recal only when No3 match is absent or at a leg/match
       boundary (never while status is playing / paused).
     """
@@ -194,6 +215,10 @@ def run_bridge(
     saw_takeout_after_close = False
     # Consecutive empty polls while in_takeout (early-pull confirm)
     empty_polls_in_takeout = 0
+    # Hard seat lock for the open AD visit (No3 currentPlayerIndex)
+    locked_seat: Optional[int] = None
+    # Throws mirrored/closed for this AD visit - continuation bleed guard
+    closed_visit_throws: list[dict[str, Any]] = []
     last_recal_gate_at = 0.0
     recal_gate_allows = False
 
@@ -218,10 +243,59 @@ def run_bridge(
     prev_status = ""
     end_turn_sent = False
 
-    def mark_visit_closed(reason: str, *, by_scoring: bool = False) -> None:
+    def fetch_no3_seat() -> Optional[int]:
+        """Best-effort No3 currentPlayerIndex for the room (seat lock)."""
+        if dry_run:
+            return locked_seat if locked_seat is not None else 0
+        data = _get_json(
+            active_match_url,
+            headers,
+            dry_run=False,
+            params={"room": room},
+        )
+        if not data:
+            return None
+        match = data.get("match")
+        if not isinstance(match, dict):
+            return None
+        idx = match.get("currentPlayerIndex")
+        try:
+            return int(idx) if idx is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def ensure_visit_seat_lock() -> Optional[int]:
+        """Lock No3 seat for the open AD visit; None if unknown (fail closed)."""
+        nonlocal locked_seat
+        if locked_seat is not None:
+            return locked_seat
+        seat = fetch_no3_seat()
+        if seat is None:
+            console.print(
+                "[yellow]seat lock[/yellow] could not read No3 "
+                "currentPlayerIndex - refusing score until known"
+            )
+            return None
+        locked_seat = seat
+        console.print(
+            f"[cyan]seat lock[/cyan] visit locked to No3 player index {seat}"
+        )
+        return locked_seat
+
+    def mark_visit_closed(
+        reason: str,
+        *,
+        by_scoring: bool = False,
+        throws_snapshot: Optional[list[dict[str, Any]]] = None,
+    ) -> None:
         nonlocal visit_closed, closed_by_scoring, saw_takeout_after_close
+        nonlocal closed_visit_throws
         if by_scoring:
             closed_by_scoring = True
+        if throws_snapshot is not None:
+            closed_visit_throws = list(throws_snapshot)
+        elif prev_throws and not closed_visit_throws:
+            closed_visit_throws = list(prev_throws)
         if visit_closed:
             return
         visit_closed = True
@@ -232,46 +306,98 @@ def run_bridge(
         )
 
     def maybe_end_turn(reason: str) -> None:
-        nonlocal end_turn_sent
+        nonlocal end_turn_sent, locked_seat
         if not end_turn_on_takeout or end_turn_sent:
             # Still freeze even if end-turn already sent / disabled
             if end_turn_sent:
                 mark_visit_closed(reason)
             return
-        payload = {"roomId": room}
+        # Hard invariant: never end-turn a different seat than the visit lock
+        seat = locked_seat if locked_seat is not None else fetch_no3_seat()
+        if seat is not None:
+            if locked_seat is None:
+                locked_seat = seat
+            live = fetch_no3_seat()
+            if live is not None and not seat_matches_lock(
+                locked_seat=seat, current_seat=live
+            ):
+                console.print(
+                    f"[red]end-turn blocked[/red] ({reason}) - "
+                    f"No3 seat {live} != visit lock {seat}"
+                )
+                mark_visit_closed(f"seat mismatch:{reason}")
+                return
+        payload: dict[str, Any] = {"roomId": room}
+        if seat is not None:
+            payload["expectedPlayerIndex"] = seat
         console.print(f"[cyan]end-turn[/cyan] ({reason})")
         resp = _post_json(end_url, payload, headers, dry_run)
-        if resp is not None:
-            end_turn_sent = True
-            mark_visit_closed(reason)
-            callout = resp.get("callout") if isinstance(resp, dict) else None
-            if callout:
-                console.print(f"[bold green]END OK[/bold green] {callout}")
-            else:
-                console.print("[bold green]END OK[/bold green]")
+        if resp is None:
+            return
+        if resp.get("seatMismatch") or resp.get("ok") is False:
+            console.print(
+                f"[red]end-turn refused[/red] ({reason}) - seat mismatch"
+            )
+            mark_visit_closed(f"end-turn seat mismatch:{reason}")
+            return
+        end_turn_sent = True
+        mark_visit_closed(reason)
+        callout = resp.get("callout") if isinstance(resp, dict) else None
+        if callout:
+            console.print(f"[bold green]END OK[/bold green] {callout}")
+        else:
+            console.print("[bold green]END OK[/bold green]")
 
     def post_correct(throws: list[dict[str, Any]], reason: str) -> None:
         nonlocal end_turn_sent
+        seat = ensure_visit_seat_lock()
+        if seat is None:
+            return
+        live = fetch_no3_seat()
+        if live is not None and not seat_matches_lock(
+            locked_seat=seat, current_seat=live
+        ):
+            console.print(
+                f"[red]correct blocked[/red] ({reason}) - "
+                f"No3 seat {live} != visit lock {seat}"
+            )
+            mark_visit_closed("correct seat mismatch")
+            return
         darts = [_dart_payload(d) for d in throws]
         labels = [format_segment_label(d) for d in throws]
         payload: dict[str, Any] = {
             "roomId": room,
             "darts": darts,
             "reason": reason,
+            "expectedPlayerIndex": seat,
         }
         console.print(
             f"[magenta]correct[/magenta] ({reason}) -> {labels or '[]'}"
         )
         resp = _post_json(correct_url, payload, headers, dry_run)
-        if resp is not None:
-            callout = resp.get("callout") if isinstance(resp, dict) else None
-            if callout:
-                console.print(f"[bold green]CORRECT OK[/bold green] {callout}")
-            else:
-                console.print("[bold green]CORRECT OK[/bold green]")
-            if resp.get("turnEnded"):
-                end_turn_sent = True
-                mark_visit_closed("correct turnEnded", by_scoring=True)
+        if resp is None:
+            return
+        if resp.get("seatMismatch") or resp.get("ok") is False:
+            console.print(
+                f"[red]correct refused[/red] ({reason}) - seat mismatch"
+            )
+            mark_visit_closed(
+                "correct seat mismatch",
+                throws_snapshot=throws,
+            )
+            return
+        callout = resp.get("callout") if isinstance(resp, dict) else None
+        if callout:
+            console.print(f"[bold green]CORRECT OK[/bold green] {callout}")
+        else:
+            console.print("[bold green]CORRECT OK[/bold green]")
+        if resp.get("turnEnded"):
+            end_turn_sent = True
+            mark_visit_closed(
+                "correct turnEnded",
+                by_scoring=True,
+                throws_snapshot=throws,
+            )
 
     def post_health(payload: dict[str, Any], force: bool = False) -> None:
         nonlocal last_health_level, last_health_post_at
@@ -441,6 +567,7 @@ def run_bridge(
     def unlock_if_ready(status: str, throws: list[Any], *, takeout: bool) -> bool:
         nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
         nonlocal closed_by_scoring, saw_takeout_after_close, empty_polls_in_takeout
+        nonlocal locked_seat
         if not should_unlock_next_visit(
             visit_closed=visit_closed,
             takeout=takeout,
@@ -455,6 +582,7 @@ def run_bridge(
         closed_by_scoring = False
         saw_takeout_after_close = False
         empty_polls_in_takeout = 0
+        locked_seat = None
         prev_throws = []
         console.print(
             "[bold green]next visit ready[/bold green] "
@@ -504,10 +632,16 @@ def run_bridge(
         )
 
     def post_appended_darts(
-        appended: list[dict[str, Any]], status: str
+        appended: list[dict[str, Any]],
+        status: str,
+        *,
+        full_throws: list[dict[str, Any]],
     ) -> None:
-        """Post new AD throws to the current No3 seat; stop if visit ends."""
+        """Post new AD throws to the locked No3 seat; stop if visit ends."""
         nonlocal end_turn_sent
+        seat = ensure_visit_seat_lock()
+        if seat is None:
+            return
         for dart in appended:
             if visit_closed:
                 console.print(
@@ -515,29 +649,62 @@ def run_bridge(
                     "stopping further dart posts[/dim]"
                 )
                 break
+            live = fetch_no3_seat()
+            if live is not None and not seat_matches_lock(
+                locked_seat=seat, current_seat=live
+            ):
+                console.print(
+                    f"[red]dart blocked[/red] No3 seat {live} != "
+                    f"visit lock {seat} - refusing wrong-seat score"
+                )
+                mark_visit_closed(
+                    "dart seat mismatch",
+                    throws_snapshot=full_throws,
+                )
+                break
             label = format_segment_label(dart)
             item = _dart_payload(dart)
-            payload = {**item, "roomId": room}
+            payload = {
+                **item,
+                "roomId": room,
+                "expectedPlayerIndex": seat,
+            }
             console.print(
                 f"[green]AD[/green] {label} -> No3 "
-                f"{item['kind']} {item['number']}"
+                f"{item['kind']} {item['number']} (seat {seat})"
             )
             resp = _post_json(dart_url, payload, headers, dry_run)
-            if resp is not None:
-                callout = resp.get("callout") if isinstance(resp, dict) else None
-                if callout:
-                    console.print(f"[bold green]POST OK[/bold green] {callout}")
-                else:
-                    console.print("[bold green]POST OK[/bold green]")
-                if resp.get("turnEnded"):
-                    end_turn_sent = True
-                    mark_visit_closed("dart turnEnded", by_scoring=True)
-                    post_takeout_health(
-                        status,
-                        active=True,
-                        message="Pull darts - takeout",
-                    )
-                    break
+            if resp is None:
+                # Transient network / 5xx - retry next poll; do not advance seat
+                break
+            if resp.get("seatMismatch") or resp.get("ok") is False:
+                console.print(
+                    "[red]dart refused[/red] seat mismatch - "
+                    "freeze visit (will not post onto next player)"
+                )
+                mark_visit_closed(
+                    "dart seat mismatch",
+                    throws_snapshot=full_throws,
+                )
+                break
+            callout = resp.get("callout") if isinstance(resp, dict) else None
+            if callout:
+                console.print(f"[bold green]POST OK[/bold green] {callout}")
+            else:
+                console.print("[bold green]POST OK[/bold green]")
+            if resp.get("turnEnded"):
+                end_turn_sent = True
+                mark_visit_closed(
+                    "dart turnEnded",
+                    by_scoring=True,
+                    throws_snapshot=full_throws,
+                )
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                )
+                break
 
     try:
         while True:
@@ -600,6 +767,29 @@ def run_bridge(
             # re-posted when the list reappears with dart 3.
             retain_prev_throws = False
 
+            # After premature end-turn + unlock, AD may re-show the same visit
+            # with late dart 3. Never post that onto the next seat.
+            if (
+                not visit_closed
+                and throws
+                and closed_visit_throws
+                and is_ad_visit_continuation(closed_visit_throws, throws)
+            ):
+                console.print(
+                    "[bold red]visit continuation[/bold red] AD re-showed "
+                    "a closed visit (late dart 3?) - refusing wrong-seat post"
+                )
+                mark_visit_closed(
+                    "ad visit continuation after unlock",
+                    throws_snapshot=list(throws),
+                )
+                saw_takeout_after_close = True
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                )
+
             if kind == VISIT_APPEND:
                 if visit_closed:
                     labels = [format_segment_label(d) for d in diff["appended"]]
@@ -608,7 +798,13 @@ def run_bridge(
                         f"{labels or 'dart(s)'}[/dim]"
                     )
                 else:
-                    post_appended_darts(diff["appended"], status)
+                    # Fresh visit (not a re-show of the one we closed)
+                    closed_visit_throws = []
+                    post_appended_darts(
+                        diff["appended"],
+                        status,
+                        full_throws=list(throws),
+                    )
 
             elif kind == VISIT_REPLACE:
                 if visit_closed:
@@ -616,6 +812,7 @@ def run_bridge(
                         "[dim]AD visit closed - ignoring visit replace[/dim]"
                     )
                 else:
+                    closed_visit_throws = []
                     post_correct(diff["throws"], "autodarts_state_diff")
                     if not diff["throws"]:
                         maybe_end_turn("visit emptied via replace")
@@ -633,19 +830,20 @@ def run_bridge(
                 else:
                     console.print(
                         "[dim]AD clear while still throwing - "
-                        "no end-turn (wait for dart 3 / takeout finished)[/dim]"
+                        "no end-turn (wait for dart 3 / sustained empty)[/dim]"
                     )
                     retain_prev_throws = True
 
             elif kind == VISIT_UNCHANGED:
                 pass
 
-            # Early pull confirmed after a prior clear flicker left prev empty
+            # Early pull: sustained empty + takeout finished (not one-poll flicker)
             if should_end_turn_on_empty_takeout_finished(
                 visit_closed=visit_closed,
                 throws_empty=not throws,
                 in_takeout=in_takeout,
                 status=status or "",
+                empty_polls=empty_polls_in_takeout,
             ):
                 maybe_end_turn("takeout finished empty")
 

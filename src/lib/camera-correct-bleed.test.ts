@@ -172,4 +172,60 @@ describe("camera correct bleed guard", () => {
       removeServerMatch(state.id);
     }
   });
+
+  it("expectedPlayerIndex seat lock refuses dart/end-turn on the next seat", () => {
+    const state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board SeatLock",
+    });
+    upsertServerMatch(state);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: "Board SeatLock",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board SeatLock",
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+
+      // Premature end-turn advances to Bob
+      expect(applyCameraEndTurn({ roomId: "Board SeatLock" }).ok).toBe(true);
+
+      const lateThird = applyCameraDart({
+        kind: "double",
+        number: 16,
+        roomId: "Board SeatLock",
+        expectedPlayerIndex: 0, // still locked to Alice's visit
+      });
+      expect(lateThird.ok).toBe(false);
+      if (!lateThird.ok) {
+        expect(lateThird.error).toMatch(/Seat mismatch/i);
+      }
+
+      const badEnd = applyCameraEndTurn({
+        roomId: "Board SeatLock",
+        expectedPlayerIndex: 0,
+      });
+      expect(badEnd.ok).toBe(false);
+      if (!badEnd.ok) {
+        expect(badEnd.error).toMatch(/Seat mismatch/i);
+      }
+    } finally {
+      removeServerMatch(state.id);
+    }
+  });
 });
