@@ -419,6 +419,37 @@ if ($DryRunBridge) { $bridgeArgs += "--dry-run" }
 
 $bridgeEnabled = if ($null -ne $bridge.enabled) { [bool]$bridge.enabled } else { $true }
 if ($bridgeEnabled) {
+  # Kill any old companion bridge windows so dart3/takeout fixes actually load.
+  # Stale bridges keep posting with the previous seat-lock / takeout logic.
+  Set-Step "kill-old-bridge"
+  Write-Host "Stopping any old companion bridge processes..."
+  $killed = 0
+  try {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+      Where-Object {
+        $_.Name -match '^(python|pythonw)\.exe$' -and
+        $_.CommandLine -and
+        $_.CommandLine -match 'companion' -and
+        $_.CommandLine -match 'bridge'
+      } |
+      ForEach-Object {
+        try {
+          Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+          $killed++
+          Write-Host ("  stopped pid {0}" -f $_.ProcessId)
+        } catch {
+          Write-Host ("  could not stop pid {0}: {1}" -f $_.ProcessId, $_.Exception.Message) -ForegroundColor Yellow
+        }
+      }
+  } catch {
+    Write-Host "  (skip kill-old-bridge: $($_.Exception.Message))" -ForegroundColor Yellow
+  }
+  if ($killed -eq 0) {
+    Write-Host "  no old bridge process found"
+  } else {
+    Start-Sleep -Seconds 1
+  }
+
   Write-Host "Starting bridge (new window)..."
   Start-Process -FilePath $venvPy -ArgumentList $bridgeArgs -WorkingDirectory $CompanionDir
 } else {

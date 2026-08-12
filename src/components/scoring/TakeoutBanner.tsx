@@ -28,7 +28,7 @@ export function TakeoutBanner({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-wide">Pull darts — takeout</p>
           <p className="text-xs text-sky-200/90">
-            Camera scoring paused until the board is clear.
+            Camera scoring paused. Pull darts, then tap Ready if stuck.
           </p>
         </div>
         <button
@@ -40,7 +40,7 @@ export function TakeoutBanner({
             "hover:bg-sky-300 disabled:opacity-60"
           )}
         >
-          {busy ? "Resetting…" : "Ready for next visit"}
+          {busy ? "Resetting…" : "Ready"}
         </button>
       </div>
     </div>

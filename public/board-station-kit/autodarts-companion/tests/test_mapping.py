@@ -105,8 +105,11 @@ def test_fixture_three_darts() -> None:
         ("Throw detected", False),
         ("Takeout", True),
         ("Takeout started", True),
-        ("Takeout finished", True),
+        # Finished = takeout complete - must NOT keep scoring frozen
+        ("Takeout finished", False),
         ("takeout", True),
+        ("Hand", True),  # Detection State
+        ("Partial Takeout", True),  # Detection State
         ("", False),
     ],
 )

@@ -41,7 +41,12 @@ def test_fixture_takeout_keeps_throws() -> None:
 
 def test_event_only_takeout_detected() -> None:
     assert is_takeout_state({"status": "Throw", "event": "Takeout"}) is True
+    assert is_takeout_state({"status": "Throw", "event": "Hand"}) is True
+    assert is_takeout_state({"status": "Throw", "event": "Partial Takeout"}) is True
     assert is_takeout_state({"status": "Throw detected", "event": "Dart"}) is False
+    # Board State "Takeout finished" is complete - not active freeze
+    assert is_takeout_state({"status": "Takeout finished", "event": "Empty"}) is False
+    assert is_takeout_state({"status": "Takeout finished", "throws": []}) is False
 
 
 def test_visit_closed_freezes_without_takeout_status() -> None:
@@ -241,6 +246,18 @@ def test_unlock_requires_takeout_handshake_or_scored_close() -> None:
         )
         is False
     )
+    # Patron Ready clears stuck handshake when board empty
+    assert (
+        should_unlock_next_visit(
+            visit_closed=True,
+            takeout=True,
+            throws_empty=True,
+            saw_takeout_after_close=False,
+            closed_by_scoring=False,
+            patron_ready=True,
+        )
+        is True
+    )
 
 
 def test_three_dart_growth_is_append_not_new_visit() -> None:
@@ -287,3 +304,17 @@ def test_throw_fixture_not_takeout() -> None:
     state = _load("state_throw.json")
     assert is_takeout_state(state) is False
     assert extract_throws(state) == []
+
+
+def test_official_ad_takeout_finished_and_hand_fixtures() -> None:
+    """Real Board/Detection states from Autodarts docs."""
+    finished = _load("state_takeout_finished.json")
+    assert finished["status"] == "Takeout finished"
+    assert is_takeout_state(finished) is False
+    assert extract_throws(finished) == []
+
+    hand = _load("state_takeout_hand.json")
+    assert hand["status"] == "Takeout started"
+    assert hand["event"] == "Hand"
+    assert is_takeout_state(hand) is True
+    assert len(extract_throws(hand)) == 3

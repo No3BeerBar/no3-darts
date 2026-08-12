@@ -564,7 +564,13 @@ def run_bridge(
                 "use Board Manager UI Calibration between games if cams drift.[/dim]"
             )
 
-    def unlock_if_ready(status: str, throws: list[Any], *, takeout: bool) -> bool:
+    def unlock_if_ready(
+        status: str,
+        throws: list[Any],
+        *,
+        takeout: bool,
+        patron_ready: bool = False,
+    ) -> bool:
         nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
         nonlocal closed_by_scoring, saw_takeout_after_close, empty_polls_in_takeout
         nonlocal locked_seat
@@ -574,6 +580,7 @@ def run_bridge(
             throws_empty=not throws,
             saw_takeout_after_close=saw_takeout_after_close,
             closed_by_scoring=closed_by_scoring,
+            patron_ready=patron_ready,
         ):
             return False
         visit_closed = False
@@ -595,9 +602,16 @@ def run_bridge(
         )
         return True
 
-    def handle_takeout_ready_ack(status: str) -> None:
-        """Patron Ready: probe AD reset; do NOT unlock while throws remain."""
-        nonlocal visit_closed, saw_takeout_after_close
+    def handle_takeout_ready_ack(status: str, throws: list[Any]) -> None:
+        """
+        Patron Ready on /play: clear stuck takeout handshake (bridge + UI).
+
+        - Clears Pull-darts health immediately (no re-post takeout:true).
+        - Probes Board Manager /api/reset (stuck takeout) - NOT between-games recal.
+        - Unlocks next-visit scoring when throws are empty.
+        - Does not end-turn an incomplete visit (avoids dart-3 seat jump).
+        """
+        nonlocal visit_closed, saw_takeout_after_close, in_takeout
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -607,13 +621,17 @@ def run_bridge(
         if not data or not data.get("pending"):
             return
         console.print(
-            "[cyan]takeout-ready[/cyan] patron acknowledged - "
-            "probing board reset (scoring stays frozen until AD clear)"
+            "[cyan]takeout-ready[/cyan] patron Ready - "
+            "clearing takeout handshake"
         )
-        maybe_end_turn("takeout-ready ack")
-        mark_visit_closed("takeout-ready ack")
-        # Ack counts as takeout handshake so empty board can unlock
+        # Handshake so empty board can unlock; leave incomplete visits open
         saw_takeout_after_close = True
+        in_takeout = False
+        # Only end-turn a fully mirrored visit - never close mid-visit from Ready
+        if (not visit_closed) and len(throws) >= 3:
+            maybe_end_turn("takeout-ready ack full visit")
+        # Local Board Manager reset only (stuck remove-darts). Mid-match
+        # between-games recal stays gated separately via refresh_recal_gate.
         result = client.try_recalibrate()
         if result.get("ok"):
             console.print(
@@ -623,13 +641,21 @@ def run_bridge(
         else:
             console.print(
                 "[dim]takeout reset: no Board Manager reset endpoint - "
-                "wait for empty board / takeout clear[/dim]"
+                "UI cleared; unlock when board empty[/dim]"
             )
+        # Agree with /play: clear Pull darts banner immediately
         post_takeout_health(
             status,
-            active=True,
-            message="Pull darts - takeout",
+            active=False,
+            message="Ready for next visit",
         )
+        if visit_closed and not throws:
+            unlock_if_ready(
+                status,
+                throws,
+                takeout=False,
+                patron_ready=True,
+            )
 
     def post_appended_darts(
         appended: list[dict[str, Any]],
@@ -739,8 +765,8 @@ def run_bridge(
             else:
                 empty_polls_in_takeout = 0
 
-            # Patron "Ready for next visit" from /play
-            handle_takeout_ready_ack(status or prev_status)
+            # Patron "Ready for next visit" from /play (clears stuck handshake)
+            handle_takeout_ready_ack(status or prev_status, throws)
 
             if status and status != prev_status:
                 console.print(
@@ -939,7 +965,15 @@ def run_bridge(
                     "[dim]takeout cleared mid-visit - "
                     "continue scoring current seat[/dim]"
                 )
-            elif visit_closed and not takeout_now:
+                # Clear sticky Pull-darts banner (was missing - left UI stuck)
+                if not visit_closed:
+                    post_takeout_health(
+                        status,
+                        active=False,
+                        message="Ready for next visit",
+                    )
+            elif visit_closed and not takeout_now and throws:
+                # Board left active takeout but darts still listed - keep pause
                 post_takeout_health(
                     status,
                     active=True,

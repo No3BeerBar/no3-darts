@@ -1,9 +1,16 @@
 """
 Visit / takeout gating for the Autodarts -> No3 bridge.
 
-Autodarts Board Manager exposes takeout on `/api/state` as status/event
-strings (fixtures: "Takeout", "Takeout started", "Takeout finished") while
-`throws` may still hold the prior visit.
+Autodarts Board Manager `/api/state` (real fields from Autodarts docs +
+local integrations such as ioBroker/HA):
+  - status: Board State - "Throw", "Throw detected", "Takeout",
+    "Takeout started", "Takeout finished"
+  - event: Detection State - "Wait", "Stable", "Empty", "Dart", "Hand",
+    "Partial Takeout", "Takeout"
+  - throws / numThrows: counted darts (often still present during Takeout)
+
+Active remove-darts = Takeout / Takeout started / Hand / Partial Takeout.
+"Takeout finished" means takeout completed - must NOT keep scoring frozen.
 
 Critical ordering (bar P0):
   1. Mirror AD throw growth into No3 for the *current* seat first.
@@ -16,7 +23,7 @@ Critical ordering (bar P0):
   after an empty-board unlock flicker.
 
 After No3 closes a visit, freeze dart/correct posts until the board is empty
-and AD has left takeout (or a scored close + empty board).
+and AD has left active takeout (or patron Ready clears a stuck handshake).
 """
 
 from __future__ import annotations
@@ -33,14 +40,17 @@ INCOMPLETE_VISIT_MIN_EMPTY_POLLS = 4
 
 def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
     """
-    True when Autodarts signals remove-darts / takeout.
+    True when Autodarts signals *active* remove-darts / takeout.
 
-    Checks dedicated status first, then event (some Board Manager builds put
-    Takeout only on event while status lags).
+    Prefers Board State (`status`), then Detection State (`event`).
+    "Takeout finished" is not active - unlock / Ready may proceed.
     """
     if not isinstance(state, dict):
         return False
     status = extract_status(state)
+    # Finished board state wins over a lagging detection event
+    if is_takeout_finished_status(status):
+        return False
     if is_takeout_status(status):
         return True
     for key in ("event", "Event"):
@@ -52,7 +62,11 @@ def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
         if isinstance(sub, dict):
             for key in ("status", "Status", "event", "Event"):
                 val = sub.get(key)
-                if isinstance(val, str) and is_takeout_status(val):
+                if not isinstance(val, str):
+                    continue
+                if key.lower() in ("status",) and is_takeout_finished_status(val):
+                    return False
+                if is_takeout_status(val):
                     return True
     return False
 
@@ -188,16 +202,22 @@ def should_unlock_next_visit(
     throws_empty: bool,
     saw_takeout_after_close: bool = False,
     closed_by_scoring: bool = False,
+    patron_ready: bool = False,
 ) -> bool:
     """
     Next thrower may score only after a closed visit sees a clean board.
 
-    Require empty throws and Autodarts not in takeout, plus either:
-    - we observed AD takeout after the close (normal remove-darts path), or
-    - the visit was closed by scoring (turnEnded / 3 darts / bust) so an empty
-      board without a Takeout string is enough.
+    Require empty throws, plus either:
+    - Autodarts not in *active* takeout AND (takeout handshake or scored close), or
+    - patron Ready on /play cleared a stuck takeout handshake (board empty).
+
+    "Takeout finished" is not active takeout - callers pass takeout=False then.
     """
-    if not visit_closed or not throws_empty or takeout:
+    if not visit_closed or not throws_empty:
+        return False
+    if patron_ready:
+        return True
+    if takeout:
         return False
     return bool(saw_takeout_after_close or closed_by_scoring)
 
