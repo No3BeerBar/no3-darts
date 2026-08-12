@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo.
-echo  No. 3 Board Station — starting stack…
+echo  No. 3 Board Station - starting stack...
 echo.
 
 REM Prefer PowerShell 5+ (Windows mini-PC). Extra args forwarded.

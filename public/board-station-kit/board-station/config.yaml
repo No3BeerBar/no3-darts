@@ -1,4 +1,4 @@
-# Board station config — Board 1 (production)
+# Board station config - Board 1 (production)
 # Double-click start-board.bat to bring up the stack.
 
 # Autodarts Board Manager (detector)
@@ -22,7 +22,7 @@ no3:
   room_id: "Board 1"
   camera_api_key: ""
 
-# Companion bridge (sibling folder — do not move without updating this)
+# Companion bridge (sibling folder - do not move without updating this)
 bridge:
   enabled: true
   companion_dir: "../autodarts-companion"

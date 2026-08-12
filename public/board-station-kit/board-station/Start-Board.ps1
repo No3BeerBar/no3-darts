@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Reads config.yaml (copy from config.example.yaml). Starts Board Manager if missing,
-  launches the Autodarts → No3 bridge, optionally opens Edge/Chrome kiosk for the TV
+  launches the Autodarts -> No3 bridge, optionally opens Edge/Chrome kiosk for the TV
   match view, and prints the iPad play URL (iPad is a separate device).
 
 .NOTES
@@ -55,7 +55,7 @@ function Find-Browser([string]$Name) {
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
   if (Test-Path -LiteralPath $Example) {
     Copy-Item -LiteralPath $Example -Destination $ConfigPath
-    Write-Host "Created $ConfigPath from example — edit exe_path / no3.url / room_id before relying on it." -ForegroundColor Yellow
+    Write-Host "Created $ConfigPath from example - edit exe_path / no3.url / room_id before relying on it." -ForegroundColor Yellow
   } else {
     throw "Missing config.yaml and config.example.yaml in $Here"
   }
@@ -68,7 +68,7 @@ $venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
 function Ensure-CompanionVenv([string]$Dir) {
   $py = Join-Path $Dir ".venv\Scripts\python.exe"
   if (Test-Path -LiteralPath $py) { return $py }
-  Write-Host "Creating companion venv in $Dir …"
+  Write-Host "Creating companion venv in $Dir ..."
   Push-Location $Dir
   try {
     python -m venv .venv
@@ -85,7 +85,7 @@ function Ensure-CompanionVenv([string]$Dir) {
 
 $venvPy = Ensure-CompanionVenv $CompanionDirGuess
 
-# Reliable YAML → JSON via PyYAML (shipped with companion requirements)
+# Reliable YAML -> JSON via PyYAML (shipped with companion requirements)
 $cfgJson = & $venvPy $LoadConfigPy $ConfigPath
 if ($LASTEXITCODE -ne 0 -or -not $cfgJson) {
   throw "Failed to load config.yaml (need PyYAML in companion venv)"
@@ -140,7 +140,7 @@ if ($ready) {
   Write-Host "Board Manager already responding on :$AdPort" -ForegroundColor Green
 } elseif ($StartIfMissing) {
   if (-not $ExePath) {
-    Write-Host "exe_path is empty in config.yaml — start Autodarts Board Manager manually," -ForegroundColor Yellow
+    Write-Host "exe_path is empty in config.yaml - start Autodarts Board Manager manually," -ForegroundColor Yellow
     Write-Host "then re-run, or set autodarts.exe_path to the .exe / .lnk on this PC." -ForegroundColor Yellow
   } elseif (-not (Test-Path -LiteralPath $ExePath)) {
     Write-Host "exe_path not found: $ExePath" -ForegroundColor Red
@@ -157,10 +157,10 @@ if ($ready) {
   if ($ready) {
     Write-Host "Board Manager ready." -ForegroundColor Green
   } else {
-    Write-Host "Board Manager not ready after ${ReadyTimeout}s — bridge will retry." -ForegroundColor Yellow
+    Write-Host "Board Manager not ready after ${ReadyTimeout}s - bridge will retry." -ForegroundColor Yellow
   }
 } else {
-  Write-Host "start_if_missing=false and Board Manager not up — continuing anyway." -ForegroundColor Yellow
+  Write-Host "start_if_missing=false and Board Manager not up - continuing anyway." -ForegroundColor Yellow
 }
 
 # --- 2) Companion bridge ---
@@ -201,7 +201,7 @@ health:
 
 logs_dir: "./logs"
 "@
-Set-Content -LiteralPath $companionCfg -Value $yaml -Encoding UTF8
+Set-Content -LiteralPath $companionCfg -Value $yaml -Encoding Ascii
 Write-Host "Wrote $companionCfg"
 
 $bridgeArgs = @("-m", "companion", "bridge")
@@ -209,10 +209,10 @@ if ($DryRunBridge) { $bridgeArgs += "--dry-run" }
 
 $bridgeEnabled = if ($null -ne $bridge.enabled) { [bool]$bridge.enabled } else { $true }
 if ($bridgeEnabled) {
-  Write-Host "Starting bridge (new window)…"
+  Write-Host "Starting bridge (new window)..."
   Start-Process -FilePath $venvPy -ArgumentList $bridgeArgs -WorkingDirectory $CompanionDir
 } else {
-  Write-Host "bridge.enabled=false — skip" -ForegroundColor Yellow
+  Write-Host "bridge.enabled=false - skip" -ForegroundColor Yellow
 }
 
 # --- 3) Kiosk / URLs ---
@@ -221,10 +221,10 @@ $tvUrl = Expand-UrlTemplate $(if ($kiosk.tv_url) { [string]$kiosk.tv_url } else 
 $playUrl = Expand-UrlTemplate $(if ($kiosk.play_url) { [string]$kiosk.play_url } else { "{no3.url}/play" }) $No3Url
 
 Write-Host ""
-Write-Host "iPad (players) — open No3 play UI on the tablet:" -ForegroundColor Green
+Write-Host "iPad (players) - open No3 play UI on the tablet:" -ForegroundColor Green
 Write-Host "  $playUrl" -ForegroundColor White
 Write-Host "  Room must match: $Room"
-Write-Host "  (Script cannot launch the iPad app — bookmark or scan QR below.)"
+Write-Host "  (Script cannot launch the iPad app - bookmark or scan QR below.)"
 Write-Host ""
 Write-Host "TV match view URL:" -ForegroundColor Green
 Write-Host "  $tvUrl"
@@ -264,14 +264,14 @@ if ($kioskOn -and $browser -ne "none") {
       Start-Process -FilePath $browserExe -ArgumentList @($playUrl)
     }
   } else {
-    Write-Host "Browser '$browser' not found — open TV URL manually: $tvUrl" -ForegroundColor Yellow
+    Write-Host "Browser '$browser' not found - open TV URL manually: $tvUrl" -ForegroundColor Yellow
   }
 } else {
-  Write-Host "Kiosk disabled — open TV URL manually if needed."
+  Write-Host "Kiosk disabled - open TV URL manually if needed."
 }
 
 Write-Banner "Board stack launched"
 Write-Host "Keep the bridge window open while playing."
-Write-Host "Fix misreads on the iPad (tap dart → pick segment) or in Autodarts Board Manager."
+Write-Host "Fix misreads on the iPad (tap dart -> pick segment) or in Autodarts Board Manager."
 Write-Host "Docs: docs/BOARD-STATION.md"
 Write-Host ""

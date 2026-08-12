@@ -1,12 +1,12 @@
-No. 3 Board Station — Board 1 (mini-PC kit)
+No. 3 Board Station - Board 1 (mini-PC kit)
 =============================================
 
-Preferred: on the mini-PC, download and double-click (single file — no extra .ps1):
+Preferred: on the mini-PC, download and double-click (single file - no extra .ps1):
   https://no3-darts-production.up.railway.app/Board1-Setup.bat
 
 Manual (if you already unzipped this kit):
-1. Install Python 3 if needed (https://www.python.org/downloads/ — check "Add to PATH")
-2. Edit board-station\config.yaml → set autodarts.exe_path for THIS PC
+1. Install Python 3 if needed (https://www.python.org/downloads/ - check "Add to PATH")
+2. Edit board-station\config.yaml -> set autodarts.exe_path for THIS PC
 3. Double-click board-station\start-board.bat
 4. iPad: https://no3-darts-production.up.railway.app/play?room=Board%201
 
