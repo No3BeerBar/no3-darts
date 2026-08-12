@@ -603,7 +603,7 @@ def run_bridge(
         post_takeout_health(
             status,
             active=False,
-            message="Takeout reset — ready for next visit",
+            message="Takeout reset - ready for next visit",
         )
         return True
 
@@ -645,7 +645,7 @@ def run_bridge(
         post_takeout_health(
             status,
             active=True,
-            message="Resetting takeout — clear the board, then next visit",
+            message="Resetting takeout - clear the board, then next visit",
         )
 
     def post_appended_darts(
@@ -936,7 +936,7 @@ def run_bridge(
                 takeout=takeout_now,
                 empty_polls=empty_polls_in_takeout,
             ):
-                # Disabled for incomplete visits (always False) — kept for gate API
+                # Disabled for incomplete visits (always False) - kept for gate API
                 maybe_end_turn("left takeout empty")
                 mark_visit_closed("left takeout empty")
                 if visit_closed:

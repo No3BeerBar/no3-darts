@@ -112,7 +112,7 @@ def test_clear_does_not_end_turn_mid_throw() -> None:
 
 
 def test_takeout_finished_empty_never_auto_ends_incomplete() -> None:
-    """P0: dart 3 lag > empty flicker — no auto early-pull end-turn."""
+    """P0: dart 3 lag > empty flicker - no auto early-pull end-turn."""
     assert (
         should_end_turn_on_empty_takeout_finished(
             visit_closed=False,

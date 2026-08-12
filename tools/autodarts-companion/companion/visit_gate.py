@@ -8,12 +8,12 @@ sometimes "Removing darts") while `throws` may still hold the prior visit.
 Critical ordering (bar P0):
   1. Mirror AD throw growth into No3 for the *current* seat first.
   2. Only then end-turn / freeze on takeout.
-  3. Never auto end-turn an incomplete (1-2 dart) visit — dart 3 often lags
+  3. Never auto end-turn an incomplete (1-2 dart) visit - dart 3 often lags
      several seconds after a Takeout/empty flicker. Incomplete early pull is
      confirmed only by the patron Ready / reset control on /play.
   4. While mirroring an open AD visit, lock the No3 seat; refuse dart/end-turn
      that would apply to a different seat than the visit started on.
-  5. After a visit closes, do not unlock on scored-close alone — require an AD
+  5. After a visit closes, do not unlock on scored-close alone - require an AD
      takeout handshake or patron Ready so residual dart 3 cannot start the
      next seat.
 """
@@ -143,7 +143,7 @@ def should_end_turn_on_empty_takeout_finished(
     """
     P0: never auto end-turn on Takeout-finished + empty while visit still open.
 
-    Dart 3 routinely lags >1–2s after AD flickers empty/takeout-finished.
+    Dart 3 routinely lags >1-2s after AD flickers empty/takeout-finished.
     Auto early-pull was seat-jumping every visit. Incomplete visits end only
     via patron Ready (`handle_takeout_ready_ack` -> maybe_end_turn).
     """
@@ -197,7 +197,7 @@ def should_unlock_next_visit(
 
     Patron Ready may unlock even if AD takeout status is sticky.
     Otherwise require empty throws, not in takeout, and a real takeout
-    handshake after close. Scored-close alone is NOT enough — that unlocked
+    handshake after close. Scored-close alone is NOT enough - that unlocked
     too early for residual / late dart 3 after an empty flicker.
     """
     _ = closed_by_scoring
@@ -242,7 +242,7 @@ def is_ad_visit_continuation(
     True when current AD throws continue a visit we already closed/ended.
 
     After a premature end-turn + empty unlock, AD often re-shows the same
-    prefix plus late dart 3 — sometimes with new tip coords. Posting that
+    prefix plus late dart 3 - sometimes with new tip coords. Posting that
     onto the next seat is the P0 bleed.
     """
     if not closed_throws or not current_throws:
@@ -255,7 +255,7 @@ def is_ad_visit_continuation(
     if len(last_ids) >= len(curr_ids) and last_ids[: len(curr_ids)] == curr_ids:
         return True
 
-    # Coords often change on re-detect — match segment labels only
+    # Coords often change on re-detect - match segment labels only
     last_labels = _label_list(closed_throws)
     curr_labels = _label_list(current_throws)
     if (
