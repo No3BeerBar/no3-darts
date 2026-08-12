@@ -2,7 +2,7 @@
 /**
  * Package Board Station kit into public/ for download from the live app.
  *
- * Layout (siblings — matches companion_dir: "../autodarts-companion"):
+ * Layout (siblings - matches companion_dir: "../autodarts-companion"):
  *   START-HERE.txt
  *   board-station/   (scripts + ready config.yaml for Board 1)
  *   autodarts-companion/
@@ -40,15 +40,15 @@ const SKIP_NAMES = new Set([
   "config.yaml", // we write a ready Board 1 config
 ]);
 
-const START_HERE = `No. 3 Board Station — Board 1 (mini-PC kit)
+const START_HERE = `No. 3 Board Station - Board 1 (mini-PC kit)
 =============================================
 
-Preferred: on the mini-PC, download and double-click (single file — no extra .ps1):
+Preferred: on the mini-PC, download and double-click (single file - no extra .ps1):
   https://no3-darts-production.up.railway.app/Board1-Setup.bat
 
 Manual (if you already unzipped this kit):
-1. Install Python 3 if needed (https://www.python.org/downloads/ — check "Add to PATH")
-2. Edit board-station\\config.yaml → set autodarts.exe_path for THIS PC
+1. Install Python 3 if needed (https://www.python.org/downloads/ - check "Add to PATH")
+2. Edit board-station\\config.yaml -> set autodarts.exe_path for THIS PC
 3. Double-click board-station\\start-board.bat
 4. iPad: https://no3-darts-production.up.railway.app/play?room=Board%201
 
@@ -56,7 +56,7 @@ TV: https://no3-darts-production.up.railway.app/tv
 Staff PIN (default): 1234
 `;
 
-const CONFIG_YAML = `# Board station config — Board 1 (production)
+const CONFIG_YAML = `# Board station config - Board 1 (production)
 # Double-click start-board.bat to bring up the stack.
 
 # Autodarts Board Manager (detector)
@@ -80,7 +80,7 @@ no3:
   room_id: "Board 1"
   camera_api_key: ""
 
-# Companion bridge (sibling folder — do not move without updating this)
+# Companion bridge (sibling folder - do not move without updating this)
 bridge:
   enabled: true
   companion_dir: "../autodarts-companion"
@@ -108,6 +108,40 @@ function shouldSkip(name) {
   if (SKIP_NAMES.has(name)) return true;
   if (name.endsWith(".pyc")) return true;
   return false;
+}
+
+/** Windows PowerShell 5.1 / cmd.exe choke on UTF-8 punctuation in .ps1/.bat. */
+function assertAsciiScripts(dir) {
+  const bad = [];
+  for (const file of listFiles(dir)) {
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".ps1") && !lower.endsWith(".bat") && !lower.endsWith(".cmd")) {
+      continue;
+    }
+    const data = readFileSync(file.abs);
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] > 127) {
+        bad.push(file.name);
+        break;
+      }
+    }
+  }
+  if (bad.length) {
+    console.error(
+      "Non-ASCII bytes in board-station kit scripts (breaks Windows PowerShell 5.1):",
+    );
+    for (const name of bad) console.error(`  - ${name}`);
+    process.exit(1);
+  }
+}
+
+function assertAsciiString(label, text) {
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) > 127) {
+      console.error(`Non-ASCII in ${label} at index ${i}: U+${text.charCodeAt(i).toString(16)}`);
+      process.exit(1);
+    }
+  }
 }
 
 function copyTree(src, dest) {
@@ -140,7 +174,7 @@ function listFiles(dir, base = dir) {
   return out;
 }
 
-/** Minimal ZIP (deflate) writer — no external deps (works in Alpine Docker). */
+/** Minimal ZIP (deflate) writer - no external deps (works in Alpine Docker). */
 function writeZip(zipPath, files) {
   const chunks = [];
   const central = [];
@@ -218,12 +252,16 @@ function main() {
   copyTree(BOARD_SRC, join(OUT_DIR, "board-station"));
   copyTree(COMPANION_SRC, join(OUT_DIR, "autodarts-companion"));
 
-  writeFileSync(join(OUT_DIR, "START-HERE.txt"), START_HERE, "utf8");
-  writeFileSync(join(OUT_DIR, "board-station", "config.yaml"), CONFIG_YAML, "utf8");
+  assertAsciiString("START_HERE", START_HERE);
+  assertAsciiString("CONFIG_YAML", CONFIG_YAML);
+  writeFileSync(join(OUT_DIR, "START-HERE.txt"), START_HERE, "ascii");
+  writeFileSync(join(OUT_DIR, "board-station", "config.yaml"), CONFIG_YAML, "ascii");
+
+  assertAsciiScripts(OUT_DIR);
 
   const files = listFiles(OUT_DIR);
   if (files.length === 0) {
-    console.error("Kit is empty — aborting");
+    console.error("Kit is empty - aborting");
     process.exit(1);
   }
 
@@ -231,7 +269,7 @@ function main() {
   writeZip(ZIP_PATH, files);
 
   const zipKb = Math.round(statSync(ZIP_PATH).size / 1024);
-  console.log(`Board Station kit: ${files.length} files → ${OUT_DIR}`);
+  console.log(`Board Station kit: ${files.length} files -> ${OUT_DIR}`);
   console.log(`Zip: ${ZIP_PATH} (${zipKb} KB)`);
 }
 
