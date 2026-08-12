@@ -46,7 +46,10 @@ export async function POST(request: Request) {
   });
 
   if (!result.ok) {
-    const status = /seat mismatch/i.test(result.error) ? 409 : 404;
+    const status =
+      /seat mismatch|expectedPlayerIndex|takeout hold/i.test(result.error)
+        ? 409
+        : 404;
     return NextResponse.json({ error: result.error }, { status });
   }
 

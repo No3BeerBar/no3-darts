@@ -10,7 +10,10 @@ from companion.mapping import is_takeout_status
 def test_takeout_status_pauses_scoring_signals() -> None:
     assert is_takeout_status("Takeout")
     assert is_takeout_status("Takeout started")
-    assert is_takeout_status("Takeout finished")
+    assert is_takeout_status("Hand")
+    assert is_takeout_status("Partial Takeout")
+    # Finished means board clear - not active remove-darts
+    assert not is_takeout_status("Takeout finished")
     assert not is_takeout_status("Throw")
     assert not is_takeout_status("Throw detected")
 

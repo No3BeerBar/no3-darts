@@ -45,7 +45,11 @@ type DartDetectedEvent = {
   radius?: number;     // 0–1 from center
   confidence?: number; // 0–1
   timestamp?: number;
-  /** When set, server refuses (409) if currentPlayerIndex differs. */
+  /**
+   * Required while a visit is open for seat N (bridge always sends it).
+   * Server 409s on mismatch / missing field during an open visit.
+   * After turn end, next-seat scoring is held until takeout clear / Ready.
+   */
   expectedPlayerIndex?: number;
 };
 ```
@@ -78,10 +82,10 @@ If unset, endpoints are open (convenient for LAN-only installs).
 POST /api/camera/end-turn
 Content-Type: application/json
 
-{ "roomId": "Board 1" }
+{ "roomId": "Board 1", "expectedPlayerIndex": 0 }
 ```
 
-Call this when the player pulls darts early (1–2 darts) or when the detector signals takeout. After a full 3-dart visit No3 usually auto-ends the turn; a redundant end-turn is safe (returns `READY`).
+Call this when the player pulls darts early (1–2 darts) or when the detector signals takeout. After a full 3-dart visit No3 usually auto-ends the turn; a redundant end-turn is safe (returns `READY`). While a visit is open, include `expectedPlayerIndex` for the thrower.
 
 ## Takeout ready (patron ack)
 
@@ -92,13 +96,13 @@ Content-Type: application/json
 { "roomId": "Board 1" }
 ```
 
-Open to the play kiosk (no camera API key). Bridge polls:
+Open to the play kiosk (no camera API key). Clears the **Pull darts** banner + next-seat hold immediately, and leaves a pending ack for the bridge:
 
 ```http
 GET /api/camera/takeout-ready?room=Board%201&consume=1
 ```
 
-Used when Autodarts is stuck in remove-darts / takeout and the player confirms the board is clear (**Ready for next visit** on `/play`).
+Used when Autodarts is stuck in remove-darts / takeout and the player confirms the board is clear (**Ready** on `/play`).
 
 ## Undo one dart
 

@@ -1,0 +1,28 @@
+{
+  "status": "Takeout started",
+  "event": "Hand",
+  "numThrows": 3,
+  "throws": [
+    {
+      "segment": {
+        "name": "T20",
+        "number": 20,
+        "multiplier": 3
+      }
+    },
+    {
+      "segment": {
+        "name": "5",
+        "number": 5,
+        "multiplier": 1
+      }
+    },
+    {
+      "segment": {
+        "name": "D16",
+        "number": 16,
+        "multiplier": 2
+      }
+    }
+  ]
+}
