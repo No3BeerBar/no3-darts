@@ -78,7 +78,7 @@ describe("camera correct bleed guard", () => {
   });
 
   it("turnEnded after 3rd camera dart advances seat", () => {
-    let state = createGame({
+    const state = createGame({
       modeConfig: {
         mode: "x01",
         config: { startScore: 501, doubleIn: false, doubleOut: false },
