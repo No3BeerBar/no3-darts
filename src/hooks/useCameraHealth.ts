@@ -163,23 +163,30 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     const room = (roomId || "Board 1").trim() || "Board 1";
     setTakeoutBusy(true);
     try {
-      await fetch("/api/camera/takeout-ready", {
+      const r = await fetch("/api/camera/takeout-ready", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: room }),
       });
-      // Keep banner until bridge posts takeout_cleared / ok via health SSE.
-      // Bridge ends incomplete visit, probes AD reset, then unlocks when clear.
-      setNotice({
-        level: "takeout",
-        message: "Resetting takeout…",
-        takeout: true,
-        ts: Date.now(),
-      });
+      // Clear stuck Pull-darts immediately (server also emits takeout_cleared).
+      // Bridge ends incomplete visit, probes AD reset, unlocks when board clear.
+      if (r.ok) {
+        setTakeout(false);
+        setNotice({
+          level: "ok",
+          message: "Ready for next visit",
+          ts: Date.now(),
+        });
+        window.setTimeout(() => {
+          setNotice((n) =>
+            n?.message === "Ready for next visit" ? null : n
+          );
+        }, 1800);
+      }
     } catch {
       /* offline */
     } finally {
-      window.setTimeout(() => setTakeoutBusy(false), 1600);
+      window.setTimeout(() => setTakeoutBusy(false), 800);
     }
   }, [roomId]);
 

@@ -92,7 +92,10 @@ export function listServerMatches(): GameState[] {
 
 export function removeServerMatch(id: string): void {
   const m = matches.get(id);
-  if (m?.roomId) byRoom.delete(m.roomId);
+  if (m?.roomId) {
+    byRoom.delete(m.roomId);
+    clearTakeoutHold(m.roomId);
+  }
   matches.delete(id);
   emit({ type: "match_removed", data: { id } });
 }
@@ -117,11 +120,84 @@ function currentThrowerIsBot(state: GameState): boolean {
   return Boolean(p?.isBot || p?.botDifficulty != null);
 }
 
-/** Hard seat lock: refuse camera posts meant for a different thrower. */
+function normRoom(roomId: string): string {
+  return (roomId || "Board 1").trim() || "Board 1";
+}
+
+/**
+ * Per-room camera visit gate.
+ *
+ * Hard invariant: while a visit is open for seat N, dart/correct/end-turn must
+ * carry expectedPlayerIndex=N. After the visit closes, hold the *next* seat
+ * until takeout is cleared / board empty (or patron Ready) so a late dart 3
+ * cannot open the next thrower's visit.
+ */
+type RoomCameraGate = {
+  /** Seat locked for the open Autodarts visit (null when no open visit). */
+  openVisitSeat: number | null;
+  /** After turn end — refuse next-seat scoring until takeout clear / Ready. */
+  holdUntilTakeoutClear: boolean;
+};
+
+const cameraGateByRoom = new Map<string, RoomCameraGate>();
+
+function getCameraGate(roomId: string): RoomCameraGate {
+  const room = normRoom(roomId);
+  let gate = cameraGateByRoom.get(room) ?? cameraGateByRoom.get(room.toLowerCase());
+  if (!gate) {
+    gate = { openVisitSeat: null, holdUntilTakeoutClear: false };
+    cameraGateByRoom.set(room, gate);
+    cameraGateByRoom.set(room.toLowerCase(), gate);
+  }
+  return gate;
+}
+
+export function clearTakeoutHold(roomId: string): void {
+  const gate = getCameraGate(roomId);
+  gate.holdUntilTakeoutClear = false;
+  gate.openVisitSeat = null;
+}
+
+export function getCameraGateSnapshot(roomId: string): RoomCameraGate {
+  const g = getCameraGate(roomId);
+  return {
+    openVisitSeat: g.openVisitSeat,
+    holdUntilTakeoutClear: g.holdUntilTakeoutClear,
+  };
+}
+
+/** Hard seat lock + takeout hold for camera dart/correct/end-turn. */
 function seatLockRejected(
   state: GameState,
-  expectedPlayerIndex: number | undefined
+  expectedPlayerIndex: number | undefined,
+  opts?: { allowEmptyVisit?: boolean }
 ): string | null {
+  const room = normRoom(state.roomId || "Board 1");
+  const gate = getCameraGate(room);
+  const visitOpen = state.currentTurnDarts.length > 0 || gate.openVisitSeat != null;
+
+  // After premature/close: do not let late AD throws start the next seat's visit
+  if (
+    gate.holdUntilTakeoutClear &&
+    state.currentTurnDarts.length === 0 &&
+    !opts?.allowEmptyVisit
+  ) {
+    return "Takeout hold — pull darts before next visit scores";
+  }
+
+  if (visitOpen && state.currentTurnDarts.length > 0) {
+    // Open visit: expectedPlayerIndex is required and must match seat N
+    if (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex)) {
+      return "expectedPlayerIndex required while visit open";
+    }
+    const want = Math.trunc(expectedPlayerIndex);
+    const locked = gate.openVisitSeat ?? state.currentPlayerIndex;
+    if (want !== state.currentPlayerIndex || want !== locked) {
+      return `Seat mismatch — expected player ${want}, current is ${state.currentPlayerIndex}`;
+    }
+    return null;
+  }
+
   if (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex)) {
     return null;
   }
@@ -132,10 +208,24 @@ function seatLockRejected(
   return null;
 }
 
+function markVisitOpen(state: GameState): void {
+  const room = normRoom(state.roomId || "Board 1");
+  const gate = getCameraGate(room);
+  gate.openVisitSeat = state.currentPlayerIndex;
+  gate.holdUntilTakeoutClear = false;
+}
+
+function markVisitClosedForTakeout(state: GameState): void {
+  const room = normRoom(state.roomId || "Board 1");
+  const gate = getCameraGate(room);
+  gate.openVisitSeat = null;
+  gate.holdUntilTakeoutClear = true;
+}
+
 /**
  * P0: while Autodarts takeout / remove-darts is active, the next seat must not
  * start a visit. Late dart 3 used to land here as "first dart" for the next
- * player after a premature end-turn. Incomplete visits (1–2 darts already on
+ * player after a premature end-turn. Incomplete visits (1-2 darts already on
  * the open turn) still accept APPEND so dart 3 can finish the same seat.
  */
 function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null {
@@ -144,7 +234,7 @@ function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null
   if (!room) return null;
   const health = getCameraHealth(room);
   if (health?.takeout || health?.level === "takeout" || health?.reason === "takeout") {
-    return "Takeout active — scoring paused until reset";
+    return "Takeout active - scoring paused until reset";
   }
   return null;
 }
@@ -182,6 +272,12 @@ export function applyCameraDart(
     (beforeTurnLen + 1 >= 3 && result.state.currentTurnDarts.length === 0) ||
     result.state.status !== "playing";
 
+  if (turnEnded) {
+    markVisitClosedForTakeout(result.state);
+  } else {
+    markVisitOpen(result.state);
+  }
+
   emit({
     type: "dart_detected",
     data: {
@@ -210,17 +306,20 @@ export function applyCameraEndTurn(opts: {
   if (currentThrowerIsBot(state)) {
     return { ok: false, error: "Bot thrower — camera scoring paused" };
   }
-  const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
-  if (seatErr) return { ok: false, error: seatErr };
 
-  // Visit already empty (3rd dart auto-ended) — just re-broadcast state
+  // Visit already empty (3rd dart auto-ended) — re-broadcast; keep takeout hold
   if (state.currentTurnDarts.length === 0) {
+    markVisitClosedForTakeout(state);
     emit({ type: "match_update", data: state });
     return { ok: true, state, callout: "READY" };
   }
 
+  const seatErr = seatLockRejected(state, opts.expectedPlayerIndex);
+  if (seatErr) return { ok: false, error: seatErr };
+
   const result = endTurn(state);
   matches.set(result.state.id, result.state);
+  markVisitClosedForTakeout(result.state);
   emit({
     type: "dart_detected",
     data: {
@@ -305,6 +404,16 @@ export function applyCameraCorrect(opts: {
     result.state.currentPlayerIndex !== beforePlayer ||
     result.state.status !== "playing";
 
+  if (state.status === "playing") {
+    if (turnEnded) {
+      markVisitClosedForTakeout(result.state);
+    } else if (result.state.currentTurnDarts.length > 0) {
+      markVisitOpen(result.state);
+    } else {
+      clearTakeoutHold(normRoom(result.state.roomId || "Board 1"));
+    }
+  }
+
   emit({
     type: "dart_detected",
     data: {
@@ -364,7 +473,7 @@ export function applyCameraUndo(opts: {
 }
 
 export function setCameraHealth(health: CameraHealth): CameraHealth {
-  const room = (health.roomId || "Board 1").trim() || "Board 1";
+  const room = normRoom(health.roomId || "Board 1");
   const next: CameraHealth = {
     ...health,
     roomId: room,
@@ -374,6 +483,16 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   cameraHealthByRoom.set(room, next);
   // Also index case-insensitive lookup key
   cameraHealthByRoom.set(room.toLowerCase(), next);
+  // Bridge cleared takeout / Ready — release next-seat scoring hold
+  // (Do not clear on ordinary "Cameras healthy" heartbeats.)
+  if (
+    !next.takeout &&
+    (next.reason === "takeout_cleared" ||
+      /ready for next visit/i.test(next.message || ""))
+  ) {
+    const gate = getCameraGate(room);
+    gate.holdUntilTakeoutClear = false;
+  }
   emit({ type: "camera_health", data: next });
   return next;
 }
@@ -381,15 +500,30 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
 /** Patron / staff ack: "darts pulled — ready for next visit" (bridge consumes). */
 const takeoutReadyByRoom = new Map<string, number>();
 
-function normRoom(roomId: string): string {
-  return (roomId || "Board 1").trim() || "Board 1";
-}
-
 export function requestTakeoutReady(roomId: string): { roomId: string; ts: number } {
   const room = normRoom(roomId);
   const ts = Date.now();
   takeoutReadyByRoom.set(room, ts);
   takeoutReadyByRoom.set(room.toLowerCase(), ts);
+  // Clear stuck Pull-darts banner + next-seat hold (bridge + UI must agree)
+  clearTakeoutHold(room);
+  const prev = getCameraHealth(room);
+  setCameraHealth({
+    roomId: room,
+    ok: true,
+    level: "ok",
+    message: "Ready for next visit",
+    reason: "takeout_cleared",
+    takeout: false,
+    status: prev?.status || "",
+    fps: prev?.fps || [],
+    minFps: prev?.minFps ?? null,
+    cameras: prev?.cameras || [],
+    connected: prev?.connected ?? true,
+    unhealthyForS: 0,
+    restarting: false,
+    ts,
+  });
   emit({ type: "takeout_ready", data: { roomId: room, ts } });
   return { roomId: room, ts };
 }

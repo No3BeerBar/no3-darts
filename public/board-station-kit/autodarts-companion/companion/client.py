@@ -49,6 +49,12 @@ RECAL_PATHS = (
 
 _THROW_KEYS = ("throws", "Throws", "darts", "Darts", "countedDarts", "CountedDarts")
 _NEST_KEYS = ("board", "data", "state", "Board", "Data", "State", "game", "Game")
+# Autodarts Board Manager /api/state (real fields):
+#   status  = Board State (Throw / Throw detected / Takeout / Takeout started /
+#             Takeout finished)
+#   event   = Detection State (Wait / Stable / Empty / Dart / Hand /
+#             Partial Takeout / Takeout)
+# Prefer dedicated board-state keys before detection `event`.
 _STATUS_KEYS = (
     "status",
     "Status",

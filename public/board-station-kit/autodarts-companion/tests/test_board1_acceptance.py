@@ -25,9 +25,12 @@ def _seg(name: str, number: int, mult: int) -> dict:
 def test_board1_p0_recognize_takeout_and_removing_darts() -> None:
     assert is_takeout_status("Takeout")
     assert is_takeout_status("Takeout started")
-    assert is_takeout_status("Takeout finished")
+    assert is_takeout_status("Hand")
+    assert is_takeout_status("Partial Takeout")
     assert is_takeout_status("Removing darts")
     assert is_takeout_status("removing darts")
+    # Takeout finished = complete (must not leave Pull-darts stuck)
+    assert not is_takeout_status("Takeout finished")
     assert scoring_frozen(takeout=True, visit_closed=False) is True
     assert scoring_frozen(takeout=False, visit_closed=True) is True
 

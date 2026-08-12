@@ -189,38 +189,60 @@ def dart_to_no3(dart: Any) -> No3Dart:
     return label_to_kind_number(label)
 
 
-def is_takeout_status(status: str) -> bool:
-    """True when Board Manager signals visit / takeout / removing-darts."""
-    s = (status or "").strip().lower()
-    if not s:
-        return False
-    # Exact / common board states from Autodarts docs
-    if s in {
-        "takeout",
-        "takeout started",
-        "takeout finished",
-        "takeoutstarted",
-        "takeoutfinished",
-        "removing",
-        "removing darts",
-        "remove darts",
-        "pull darts",
-    }:
-        return True
-    norm = s.replace("_", " ")
-    # Be resilient to "Board: Takeout" / "Removing darts..." style strings
-    if "takeout" in norm:
-        return True
-    if "removing dart" in norm or "remove dart" in norm:
-        return True
-    if "pull dart" in norm:
-        return True
-    return False
-
-
 def is_takeout_finished_status(status: str) -> bool:
-    """True when AD signals darts have been removed (takeout complete)."""
+    """
+    True when AD signals darts have been removed (takeout complete).
+
+    Autodarts Board Manager docs - Board State: "Takeout finished".
+    This is NOT active remove-darts; scoring may resume once throws are empty.
+    """
     s = (status or "").strip().lower().replace("_", " ")
     if not s:
         return False
     return "takeout finished" in s or s.replace(" ", "") == "takeoutfinished"
+
+
+def is_takeout_status(status: str) -> bool:
+    """
+    True when Board Manager is in *active* remove-darts / takeout.
+
+    Real Autodarts Board Manager fields (docs + local /api/state integrations):
+      status (Board State): "Takeout", "Takeout started"
+      event  (Detection State): "Takeout", "Hand", "Partial Takeout"
+
+    "Takeout finished" is intentionally excluded - that means takeout completed
+    successfully and must not keep the No3 Pull-darts banner / scoring freeze
+    stuck forever.
+    """
+    s = (status or "").strip().lower().replace("_", " ")
+    if not s:
+        return False
+    if is_takeout_finished_status(s):
+        return False
+    compact = s.replace(" ", "")
+    # Board State + Detection State (official Autodarts docs)
+    if s in {
+        "takeout",
+        "takeout started",
+        "hand",
+        "partial takeout",
+    } or compact in {
+        "takeout",
+        "takeoutstarted",
+        "hand",
+        "partialtakeout",
+    }:
+        return True
+    # Be resilient to "Board: Takeout" / "status=Takeout" style strings,
+    # but never treat "...finished" as active (checked above).
+    if "partial takeout" in s or "partialtakeout" in compact:
+        return True
+    if "takeout" in s:
+        return True
+    # Detection State "Hand" = board recognized hand (remove-darts)
+    if s == "hand" or compact == "hand":
+        return True
+    # Some Board Manager / UI strings
+    if "removing dart" in s or "remove dart" in s or "pull dart" in s:
+        return True
+    return False

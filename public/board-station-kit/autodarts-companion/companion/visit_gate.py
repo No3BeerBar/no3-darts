@@ -1,9 +1,17 @@
 """
 Visit / takeout gating for the Autodarts -> No3 bridge.
 
-Autodarts Board Manager exposes takeout on `/api/state` as status/event
-strings (fixtures: "Takeout", "Takeout started", "Takeout finished", and
-sometimes "Removing darts") while `throws` may still hold the prior visit.
+Autodarts Board Manager `/api/state` (real fields from Autodarts docs +
+local integrations such as ioBroker/HA):
+  - status: Board State - "Throw", "Throw detected", "Takeout",
+    "Takeout started", "Takeout finished"
+  - event: Detection State - "Wait", "Stable", "Empty", "Dart", "Hand",
+    "Partial Takeout", "Takeout"
+  - throws / numThrows: counted darts (often still present during Takeout)
+
+Active remove-darts = Takeout / Takeout started / Hand / Partial Takeout /
+"Removing darts". "Takeout finished" means takeout completed - must NOT
+keep scoring frozen.
 
 Critical ordering (bar P0):
   1. Mirror AD throw growth into No3 for the *current* seat first.
@@ -15,7 +23,7 @@ Critical ordering (bar P0):
      that would apply to a different seat than the visit started on.
   5. After a visit closes, do not unlock on scored-close alone - require an AD
      takeout handshake or patron Ready so residual dart 3 cannot start the
-     next seat.
+     next seat. Freeze until board empty and AD left *active* takeout (or Ready).
 """
 
 from __future__ import annotations
@@ -33,14 +41,17 @@ INCOMPLETE_VISIT_MIN_EMPTY_POLLS = 4
 
 def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
     """
-    True when Autodarts signals remove-darts / takeout.
+    True when Autodarts signals *active* remove-darts / takeout.
 
-    Checks dedicated status first, then event (some Board Manager builds put
-    Takeout only on event while status lags).
+    Prefers Board State (`status`), then Detection State (`event`).
+    "Takeout finished" is not active - unlock / Ready may proceed.
     """
     if not isinstance(state, dict):
         return False
     status = extract_status(state)
+    # Finished board state wins over a lagging detection event
+    if is_takeout_finished_status(status):
+        return False
     if is_takeout_status(status):
         return True
     for key in ("event", "Event"):
@@ -52,7 +63,11 @@ def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
         if isinstance(sub, dict):
             for key in ("status", "Status", "event", "Event"):
                 val = sub.get(key)
-                if isinstance(val, str) and is_takeout_status(val):
+                if not isinstance(val, str):
+                    continue
+                if key.lower() in ("status",) and is_takeout_finished_status(val):
+                    return False
+                if is_takeout_status(val):
                     return True
     return False
 
@@ -196,9 +211,10 @@ def should_unlock_next_visit(
     Next thrower may score only after a closed visit sees a clean board.
 
     Patron Ready may unlock even if AD takeout status is sticky.
-    Otherwise require empty throws, not in takeout, and a real takeout
+    Otherwise require empty throws, not in *active* takeout, and a real takeout
     handshake after close. Scored-close alone is NOT enough - that unlocked
     too early for residual / late dart 3 after an empty flicker.
+    "Takeout finished" is not active takeout - callers pass takeout=False then.
     """
     _ = closed_by_scoring
     if not visit_closed or not throws_empty:

@@ -31,8 +31,8 @@ export function TakeoutBanner({
             Removing darts — takeout
           </p>
           <p className="text-xs text-sky-200/90">
-            Camera scoring paused. Pull your darts, then tap Reset so the next
-            visit can start.
+            Camera scoring paused. Pull your darts, then tap Ready to reset so
+            the next visit can start.
           </p>
         </div>
         <button
@@ -44,7 +44,7 @@ export function TakeoutBanner({
             "hover:bg-sky-300 disabled:opacity-60"
           )}
         >
-          {busy ? "Resetting…" : "Reset takeout"}
+          {busy ? "Resetting…" : "Ready"}
         </button>
       </div>
     </div>
