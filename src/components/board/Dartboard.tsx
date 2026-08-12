@@ -158,23 +158,33 @@ export function Dartboard({
         </div>
       )}
 
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${VB} ${VB}`}
-        width={size}
-        height={size}
-        className={cn(
-          "max-w-full select-none drop-shadow-[0_8px_32px_rgba(0,0,0,0.55)]",
-          interactive && "touch-none cursor-crosshair"
-        )}
-        style={interactive ? { touchAction: "none" } : undefined}
-        role={interactive ? "application" : "img"}
-        aria-label="Dartboard"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
+      {/*
+        Keep the SVG square and put drop-shadow on a wrapper — CSS filter on the
+        <svg> breaks getScreenCTM on iPad WebKit and was shifting polar hits.
+        clientToSvg now uses getBoundingClientRect + viewBox meet instead.
+      */}
+      <div
+        className="relative w-full drop-shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
+        style={{ maxWidth: size, aspectRatio: "1 / 1" }}
       >
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${VB} ${VB}`}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="xMidYMid meet"
+          className={cn(
+            "block h-full w-full select-none",
+            interactive && "touch-none cursor-crosshair"
+          )}
+          style={interactive ? { touchAction: "none" } : undefined}
+          role={interactive ? "application" : "img"}
+          aria-label="Dartboard"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+        >
         <defs>
           <radialGradient id="boardFace" cx="50%" cy="42%" r="65%">
             <stop offset="0%" stopColor="#2a2a2e" />
@@ -354,7 +364,8 @@ export function Dartboard({
 
         {/* Live drag preview */}
         {livePin && <LaserMark x={livePin.x} y={livePin.y} active preview />}
-      </svg>
+        </svg>
+      </div>
     </div>
   );
 }

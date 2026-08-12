@@ -10,7 +10,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { PLAY_SECONDARY_IDLE_MS, type PlayBackPath } from "@/lib/play-kiosk";
+import { PLAY_SECONDARY_IDLE_MS, type PlayBackHref } from "@/lib/play-kiosk";
 
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "pointerdown",
@@ -20,7 +20,7 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "wheel",
 ];
 
-export function usePlayReturnIdle(enabled: boolean, back: PlayBackPath) {
+export function usePlayReturnIdle(enabled: boolean, back: PlayBackHref) {
   const router = useRouter();
   const backRef = useRef(back);
   backRef.current = back;

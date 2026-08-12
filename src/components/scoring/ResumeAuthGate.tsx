@@ -10,10 +10,11 @@ import { useRouter } from "next/navigation";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ConfirmDialog } from "@/components/play/ConfirmDialog";
 import type { PlayerRef } from "@/engine/types";
-import { PLAY_IDLE_HREF } from "@/lib/play-kiosk";
+import { playHref } from "@/lib/play-kiosk";
 import { markSeatVerified, seatsNeedingReauth } from "@/lib/seat-auth";
 import { useGameStore } from "@/store/game-store";
 import { useSessionStore } from "@/store/session-store";
+import { useSettingsStore } from "@/store/settings-store";
 
 interface ResumeAuthGateProps {
   matchId: string;
@@ -24,6 +25,7 @@ interface ResumeAuthGateProps {
 
 export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAuthGateProps) {
   const router = useRouter();
+  const roomName = useSettingsStore((s) => s.roomName);
   const sessionPlayer = useSessionStore((s) => s.player);
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const [authOpen, setAuthOpen] = useState(false);
@@ -56,7 +58,7 @@ export function ResumeAuthGate({ matchId, players, onVerifiedChange }: ResumeAut
     setAbortConfirmOpen(false);
     useGameStore.getState().setDisplayOnly(false);
     useGameStore.getState().clearGame();
-    router.replace(PLAY_IDLE_HREF);
+    router.replace(playHref(roomName));
   };
 
   return (

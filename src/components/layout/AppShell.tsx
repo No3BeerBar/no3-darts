@@ -7,8 +7,8 @@ import { Suspense, useEffect } from "react";
 import { usePlayReturnIdle } from "@/hooks/usePlayReturnIdle";
 import { usePlaySessionIdleLogout } from "@/hooks/usePlaySessionIdleLogout";
 import {
-  PLAY_IDLE_HREF,
   isFromPlaySearch,
+  playHref,
   statsHrefFromPlay,
 } from "@/lib/play-kiosk";
 import { useGameStore } from "@/store/game-store";
@@ -29,9 +29,9 @@ function isBareRoute(pathname: string) {
   return pathname === "/play" || pathname === "/tv" || pathname === "/board-setup";
 }
 
-function ShellBrand() {
+function ShellBrand({ room }: { room?: string | null }) {
   return (
-    <Link href={PLAY_IDLE_HREF} className="flex min-w-0 items-center gap-2">
+    <Link href={playHref(room)} className="flex min-w-0 items-center gap-2">
       <Image
         src="/brand/logo.png"
         alt="No.3"
@@ -49,19 +49,19 @@ function ShellBrand() {
 }
 
 /** Setup (`/`): Cancel → idle `/play`, plus Stats. No browser-back reliance. */
-function SetupChromeActions() {
+function SetupChromeActions({ room }: { room?: string | null }) {
   const router = useRouter();
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
       <button
         type="button"
-        onClick={() => router.replace(PLAY_IDLE_HREF)}
+        onClick={() => router.replace(playHref(room))}
         className="btn-ghost min-h-11 px-4 font-display text-xs tracking-wider text-red-300"
       >
         Cancel
       </button>
       <Link
-        href={statsHrefFromPlay("/")}
+        href={statsHrefFromPlay("/", room)}
         className="btn-ghost min-h-11 px-4 font-display text-xs tracking-wider text-zinc-300"
       >
         Stats
@@ -94,9 +94,11 @@ function MainNav({ pathname }: { pathname: string }) {
 function ShellHeaderInner({
   pathname,
   kioskMode,
+  room,
 }: {
   pathname: string;
   kioskMode: boolean;
+  room?: string | null;
 }) {
   const searchParams = useSearchParams();
   const { fromPlay, back } = isFromPlaySearch((k) => searchParams.get(k));
@@ -107,7 +109,7 @@ function ShellHeaderInner({
   return (
     <header className="shrink-0 border-b border-[var(--panel-border)] bg-black">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2">
-        <ShellBrand />
+        <ShellBrand room={room} />
         {fromPlay ? (
           <Link
             href={back}
@@ -116,7 +118,7 @@ function ShellHeaderInner({
             Back to play
           </Link>
         ) : pathname === "/" ? (
-          <SetupChromeActions />
+          <SetupChromeActions room={room} />
         ) : !hideNav ? (
           <MainNav pathname={pathname} />
         ) : null}
@@ -128,17 +130,19 @@ function ShellHeaderInner({
 function ShellHeaderFallback({
   pathname,
   kioskMode,
+  room,
 }: {
   pathname: string;
   kioskMode: boolean;
+  room?: string | null;
 }) {
   const hideNav = kioskMode || pathname === "/";
   return (
     <header className="shrink-0 border-b border-[var(--panel-border)] bg-black">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2">
-        <ShellBrand />
+        <ShellBrand room={room} />
         {pathname === "/" ? (
-          <SetupChromeActions />
+          <SetupChromeActions room={room} />
         ) : !hideNav ? (
           <MainNav pathname={pathname} />
         ) : null}
@@ -152,6 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const settings = useSettingsStore();
   const hydrateGame = useGameStore((s) => s.hydrate);
   const bare = isBareRoute(pathname);
+  const room = settings.roomName;
 
   useEffect(() => {
     settings.hydrate();
@@ -170,10 +175,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="shell-black flex flex-col">
       <Suspense
         fallback={
-          <ShellHeaderFallback pathname={pathname} kioskMode={settings.kioskMode} />
+          <ShellHeaderFallback
+            pathname={pathname}
+            kioskMode={settings.kioskMode}
+            room={room}
+          />
         }
       >
-        <ShellHeaderInner pathname={pathname} kioskMode={settings.kioskMode} />
+        <ShellHeaderInner
+          pathname={pathname}
+          kioskMode={settings.kioskMode}
+          room={room}
+        />
       </Suspense>
       <main className="min-h-0 flex-1">{children}</main>
     </div>
