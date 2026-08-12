@@ -87,6 +87,138 @@ function Get-DeadVenvHint([string]$Py) {
   return ("Companion venv python.exe is not recognized or will not run:`n  $Py`nDelete C:\No3Darts\Board1\autodarts-companion\.venv and re-run Board1-FixMe.bat")
 }
 
+# True dead venv only: PowerShell could not find/run $Py itself.
+# Do NOT treat pip logs / script errors / "not recognized" in some other
+# message as a dead venv (that hid the real load-config failure at the bar).
+function Test-IsDeadVenvInvokeError {
+  param($ErrorRecord, [string]$Py)
+  if (-not $ErrorRecord) { return $false }
+  $ex = $ErrorRecord.Exception
+  if (-not $ex) { return $false }
+  if ($ex -is [System.Management.Automation.CommandNotFoundException]) {
+    $name = [string]$ex.CommandName
+    if (-not $name) { return $false }
+    if ($Py -and ($name -eq $Py)) { return $true }
+    $leaf = Split-Path -Leaf $Py
+    if ($leaf -and ($name -eq $leaf) -and -not (Test-Path -LiteralPath $Py)) { return $true }
+    return $false
+  }
+  if ($ex -is [System.ComponentModel.Win32Exception]) {
+    $code = $ex.NativeErrorCode
+    if (($code -eq 2 -or $code -eq 3) -and $Py -and -not (Test-Path -LiteralPath $Py)) { return $true }
+    return $false
+  }
+  $msg = [string]$ex.Message
+  if (-not $msg) { return $false }
+  $isCmdNotFound = ($msg -match 'is not recognized as the name of a cmdlet') -or
+    ($msg -match 'is not recognized as an internal or external command')
+  if ($isCmdNotFound -and $Py -and ($msg.IndexOf($Py, [StringComparison]::OrdinalIgnoreCase) -ge 0)) {
+    return $true
+  }
+  if ($msg -match 'cannot find the file specified' -and $Py -and -not (Test-Path -LiteralPath $Py)) {
+    return $true
+  }
+  return $false
+}
+
+# Ensure-CompanionVenv must return a single python.exe path. Native pip/venv
+# stdout is extra pipeline output in PS 5.1 and would otherwise become $venvPy.
+function Receive-PythonPath([object]$Value) {
+  if ($null -eq $Value) {
+    throw "Companion venv python path missing after ensure. PHOTO THIS WINDOW."
+  }
+  $path = $Value
+  if ($Value -is [array]) {
+    $path = $Value[-1]
+  }
+  $path = [string]$path
+  if (-not $path -or $path -notmatch '(?i)[\\/]python\.exe$') {
+    throw ("Companion venv python path missing after ensure (got: $path). PHOTO THIS WINDOW.")
+  }
+  return $path
+}
+
+function Get-PythonFileDiag([string]$Py, [string]$ScriptPath) {
+  $pyExists = Test-Path -LiteralPath $Py
+  $pyLen = "n/a"
+  if ($pyExists) {
+    try { $pyLen = [string](Get-Item -LiteralPath $Py).Length } catch { $pyLen = "error" }
+  }
+  $scriptExists = Test-Path -LiteralPath $ScriptPath
+  return @(
+    "  python.exe Test-Path=$pyExists length=$pyLen",
+    "  python.exe: $Py",
+    "  load-config.py Test-Path=$scriptExists",
+    "  load-config.py: $ScriptPath"
+  ) -join "`n"
+}
+
+function Get-LoadConfigFailMessage {
+  param(
+    [string]$Py,
+    [string]$ScriptPath,
+    [string]$ConfigPath,
+    [int]$ExitCode,
+    [string]$StdErr,
+    [string]$ExceptionMessage
+  )
+  $err = $StdErr
+  if ($err -and $err.Length -gt 800) { $err = $err.Substring(0, 800) + "..." }
+  $parts = @(
+    "Failed to load config.yaml (not a dead venv - do not delete .venv if pip just succeeded)."
+    "  python exit=$ExitCode"
+    "  config: $ConfigPath"
+    (Get-PythonFileDiag $Py $ScriptPath)
+  )
+  if ($ExceptionMessage) {
+    $parts += "  exception: $ExceptionMessage"
+  }
+  if ($err -and $err.Trim()) {
+    $parts += "  python stderr:"
+    $parts += $err.Trim()
+  }
+  $parts += "  PHOTO THIS WINDOW. Then in cmd run: dir python.exe / python -c print('ok') / python load-config.py config.yaml"
+  return ($parts -join "`n")
+}
+
+# PS 5.1-safe invoke: quoted paths, capture stdout/stderr, no call-operator remap.
+function Invoke-VenvPythonCapture {
+  param(
+    [Parameter(Mandatory = $true)][string]$Py,
+    [Parameter(Mandatory = $true)][string[]]$ArgumentList
+  )
+  if (-not $Py -or $Py -notmatch '(?i)python\.exe$') {
+    throw ("Refusing to invoke non-python path as venv python:`n  $Py")
+  }
+  if (-not (Test-Path -LiteralPath $Py)) {
+    throw (Get-DeadVenvHint $Py)
+  }
+  $id = [guid]::NewGuid().ToString("N")
+  $outFile = Join-Path $env:TEMP ("no3-board1-py-out-" + $id + ".txt")
+  $errFile = Join-Path $env:TEMP ("no3-board1-py-err-" + $id + ".txt")
+  $argString = ($ArgumentList | ForEach-Object {
+    '"' + (([string]$_).Replace('"', '\"')) + '"'
+  }) -join " "
+  try {
+    $p = Start-Process -FilePath $Py -ArgumentList $argString -Wait -PassThru -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+    $stdout = ""
+    $stderr = ""
+    if (Test-Path -LiteralPath $outFile) { $stdout = [IO.File]::ReadAllText($outFile) }
+    if (Test-Path -LiteralPath $errFile) { $stderr = [IO.File]::ReadAllText($errFile) }
+    $code = 1
+    if ($null -ne $p) { $code = $p.ExitCode }
+    return @{ ExitCode = $code; StdOut = $stdout; StdErr = $stderr }
+  } catch {
+    if (Test-IsDeadVenvInvokeError $_ $Py) {
+      throw (Get-DeadVenvHint $Py)
+    }
+    throw
+  } finally {
+    Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Assert-VenvPythonRunnable([string]$Py) {
   if (Test-VenvPythonRuns $Py "import sys") { return }
   throw (Get-DeadVenvHint $Py)
@@ -114,12 +246,13 @@ function Install-CompanionDeps([string]$Py, [string]$Dir) {
   $prev = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
-    & $Py -m pip install --disable-pip-version-check -r requirements.txt
+    # Out-Host: pip stdout must not become Ensure-CompanionVenv's return value.
+    & $Py -m pip install --disable-pip-version-check -r requirements.txt 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
       throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)"
     }
   } catch {
-    if ($_.Exception.Message -match "not recognized") {
+    if (Test-IsDeadVenvInvokeError $_ $Py) {
       throw (Get-DeadVenvHint $Py)
     }
     throw
@@ -146,7 +279,7 @@ function New-CompanionVenv([string]$Dir) {
     $pyCheck = Join-Path $Dir ".venv\Scripts\python.exe"
     Write-Host "  Trying: py -3 -m venv --clear .venv"
     try {
-      & py -3 -m venv --clear .venv
+      & py -3 -m venv --clear .venv 2>&1 | Out-Host
     } catch {
       Write-Host ("  py -3 failed: " + $_.Exception.Message)
     }
@@ -154,7 +287,7 @@ function New-CompanionVenv([string]$Dir) {
     if (-not $created) {
       Write-Host "  Trying: python -m venv --clear .venv"
       try {
-        & python -m venv --clear .venv
+        & python -m venv --clear .venv 2>&1 | Out-Host
       } catch {
         Write-Host ("  python failed: " + $_.Exception.Message)
       }
@@ -169,7 +302,7 @@ function New-CompanionVenv([string]$Dir) {
   if (-not $created -or -not (Test-Path -LiteralPath $py)) {
     throw ("Failed to create companion venv (python.exe missing). Tried py -3 and python.`n  Expected: $py`n  Install Python 3 from https://www.python.org/downloads/ (check Add to PATH), then re-run Board1-FixMe.bat")
   }
-  if (-not (Test-VenvPythonRuns $Py "print('ok')")) {
+  if (-not (Test-VenvPythonRuns $py "print('ok')")) {
     throw ("Companion venv python.exe exists but does not run:`n  $py`n  Delete C:\No3Darts\Board1\autodarts-companion\.venv and re-run Board1-FixMe.bat")
   }
   return $py
@@ -185,7 +318,7 @@ function Ensure-CompanionVenv([string]$Dir) {
     $needCreate = $true
   }
   if ($needCreate) {
-    $py = New-CompanionVenv $Dir
+    $py = Receive-PythonPath (New-CompanionVenv $Dir)
     Install-CompanionDeps $py $Dir
     return $py
   }
@@ -323,30 +456,42 @@ Set-Step "companion-venv"
 $CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
 $venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
 
-$venvPy = Ensure-CompanionVenv $CompanionDirGuess
+$venvPy = Receive-PythonPath (Ensure-CompanionVenv $CompanionDirGuess)
 
 # Reliable YAML -> JSON via PyYAML (shipped with companion requirements).
-# Out-String: Windows PS 5.1 captures native stdout as a string[] (one line each);
-# ConvertFrom-Json then fails on the first "{" line alone - looks like a crash
-# right after a successful first pip install.
+# Invoke-VenvPythonCapture: PS 5.1 call-operator + Out-String hid real errors
+# (and remapped them to "dead venv") right after a successful pip install.
 Set-Step "load-config"
-$prevEap = $ErrorActionPreference
-$ErrorActionPreference = "Continue"
+Assert-VenvPythonRunnable $venvPy
+if (-not (Test-Path -LiteralPath $LoadConfigPy)) {
+  throw ("Missing load-config.py (kit refresh dropped it?).`n  Expected: $LoadConfigPy`n  Re-run Board1-FixMe.bat to refresh the kit zip from production.")
+}
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+  throw "Missing config.yaml: $ConfigPath"
+}
+
+$cfgJson = ""
+$loadExit = -1
+$loadErr = ""
 try {
-  $cfgJson = & $venvPy $LoadConfigPy $ConfigPath | Out-String
-  $loadExit = $LASTEXITCODE
+  $loaded = Invoke-VenvPythonCapture -Py $venvPy -ArgumentList @($LoadConfigPy, $ConfigPath)
+  $cfgJson = ([string]$loaded.StdOut).Trim()
+  $loadExit = [int]$loaded.ExitCode
+  $loadErr = [string]$loaded.StdErr
 } catch {
-  if ($_.Exception.Message -match "not recognized") {
+  if (Test-IsDeadVenvInvokeError $_ $venvPy) {
     throw (Get-DeadVenvHint $venvPy)
   }
-  throw
-} finally {
-  $ErrorActionPreference = $prevEap
+  throw (Get-LoadConfigFailMessage -Py $venvPy -ScriptPath $LoadConfigPy -ConfigPath $ConfigPath -ExitCode -1 -StdErr "" -ExceptionMessage $_.Exception.Message)
 }
 if ($loadExit -ne 0 -or [string]::IsNullOrWhiteSpace($cfgJson)) {
-  throw "Failed to load config.yaml (need PyYAML in companion venv; python exit=$loadExit)"
+  throw (Get-LoadConfigFailMessage -Py $venvPy -ScriptPath $LoadConfigPy -ConfigPath $ConfigPath -ExitCode $loadExit -StdErr $loadErr -ExceptionMessage "")
 }
-$cfg = $cfgJson | ConvertFrom-Json
+try {
+  $cfg = $cfgJson | ConvertFrom-Json
+} catch {
+  throw (Get-LoadConfigFailMessage -Py $venvPy -ScriptPath $LoadConfigPy -ConfigPath $ConfigPath -ExitCode $loadExit -StdErr $loadErr -ExceptionMessage ("ConvertFrom-Json: " + $_.Exception.Message))
+}
 
 $ad = $cfg.autodarts
 $no3 = $cfg.no3
@@ -366,7 +511,7 @@ Set-Step "companion-dir"
 $CompanionDir = Join-Path $Here $(if ($bridge.companion_dir) { [string]$bridge.companion_dir } else { "..\autodarts-companion" })
 $CompanionDir = [System.IO.Path]::GetFullPath($CompanionDir)
 if ($CompanionDir -ne $CompanionDirGuess) {
-  $venvPy = Ensure-CompanionVenv $CompanionDir
+  $venvPy = Receive-PythonPath (Ensure-CompanionVenv $CompanionDir)
 }
 
 Write-Banner "No. 3 Board Station"

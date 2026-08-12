@@ -140,6 +140,60 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
     expect(src).not.toMatch(/python -m venv \.venv\s*$/m);
   });
 
+  it("Start-Board load-config is not a false dead-venv after pip", () => {
+    const src = readFileSync(
+      join(ROOT, "tools/board-station/Start-Board.ps1"),
+      "utf8"
+    );
+    expect(src).toContain("function Test-IsDeadVenvInvokeError");
+    expect(src).toContain("CommandNotFoundException");
+    expect(src).toContain("function Invoke-VenvPythonCapture");
+    expect(src).toContain("function Receive-PythonPath");
+    expect(src).toContain("Start-Process");
+    expect(src).toContain("RedirectStandardOutput");
+    expect(src).toContain("RedirectStandardError");
+    expect(src).toContain("Out-Host");
+    expect(src).toContain("Failed to load config.yaml");
+    expect(src).toContain("Missing load-config.py");
+    expect(src).toContain("python.exe Test-Path=");
+    expect(src).toMatch(/Test-VenvPythonRuns \$py "print\('ok'\)"/);
+    expect(src).toMatch(/Assert-VenvPythonRunnable \$venvPy/);
+    // Call-operator + broad "not recognized" remap hid the real error
+    expect(src).not.toMatch(
+      /\$cfgJson = & \$venvPy \$LoadConfigPy \$ConfigPath \| Out-String/
+    );
+    expect(src).not.toMatch(
+      /if \(\$_\.Exception\.Message -match "not recognized"\) \{\s*\r?\n\s*throw \(Get-DeadVenvHint \$venvPy\)/
+    );
+  });
+
+  it("kit ships load-config.py and Fix Me requires it after refresh", () => {
+    expect(existsSync(join(ROOT, "tools/board-station/load-config.py"))).toBe(
+      true
+    );
+    expect(
+      existsSync(
+        join(ROOT, "public/board-station-kit/board-station/load-config.py")
+      )
+    ).toBe(true);
+    const zip = readFileSync(join(ROOT, "public/board-station-board1.zip"));
+    expect(zip.toString("utf8")).toContain("board-station/load-config.py");
+    const ps1 = readFileSync(join(ROOT, "public/Board1-FixMe.ps1"), "utf8");
+    expect(ps1).toContain("board-station\\load-config.py");
+    const bat = readFileSync(join(ROOT, "public/Board1-FixMe.bat"), "utf8");
+    expect(bat).toContain("board-station\\load-config.py");
+  });
+
+  it("BOARD1-QA documents load-config probes after pip success", () => {
+    const qa = readFileSync(join(ROOT, "docs/BOARD1-QA.md"), "utf8");
+    expect(qa).toMatch(/pip install printed OK/i);
+    expect(qa).toContain("load-config.py");
+    expect(qa).toContain("print('ok')");
+    expect(qa).toContain(
+      "dir C:\\No3Darts\\Board1\\autodarts-companion\\.venv\\Scripts\\python.exe"
+    );
+  });
+
   it("Board1-FixMe does not preserve a dead companion .venv", () => {
     const ps1 = readFileSync(join(ROOT, "public/Board1-FixMe.ps1"), "utf8");
     expect(ps1).toContain("function Test-CompanionVenvHealthy");

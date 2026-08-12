@@ -111,6 +111,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  Write-Host 'PHOTO THIS WINDOW and send it to No.3 support.';" ^
   "  exit 1" ^
   "};" ^
+  "$LoadCfgPy=Join-Path $KitRoot 'board-station\load-config.py';" ^
+  "if (-not (Test-Path -LiteralPath $LoadCfgPy)) {" ^
+  "  Write-Host ('ERROR: Missing load-config.py after unzip: ' + $LoadCfgPy) -ForegroundColor Red;" ^
+  "  Write-Host 'PHOTO THIS WINDOW and send it to No.3 support.';" ^
+  "  exit 1" ^
+  "};" ^
   "if (-not (Test-Path -LiteralPath $CfgPath)) {" ^
   "  $lines = @(" ^
   "    '# Board station config - Board 1 (production)'," ^
@@ -178,8 +184,11 @@ echo  Fix Me finished with exit code %EXITCODE%.
 echo  PHOTO THIS WINDOW and send it to No.3 support.
 echo  Common causes:
 echo    - Python 3 missing from PATH  (install + "Add to PATH", re-open)
-echo    - Companion .venv python.exe not recognized: delete
+echo    - python.exe itself will not run: delete
 echo      C:\No3Darts\Board1\autodarts-companion\.venv and re-run Fix Me
+echo    - pip OK but load-config failed: PHOTO the Start-Board error (do not
+echo      delete .venv in a loop). cmd probes: dir python.exe / python -c
+echo      print('ok') / python load-config.py config.yaml
 echo    - Kit zip download / unzip failed
 echo    - Autodarts Board Manager missing / not starting
 echo    - start-board.bat failed (see messages above)
@@ -333,6 +342,7 @@ function Test-KitOk {
   $need = @(
     $StartBat,
     (Join-Path $KitRoot "board-station\Start-Board.ps1"),
+    (Join-Path $KitRoot "board-station\load-config.py"),
     (Join-Path $KitRoot "autodarts-companion\companion\bridge.py")
   )
   foreach ($p in $need) {
@@ -659,7 +669,7 @@ Write-Host "[3/6] Refreshing kit from production (always)..."
 New-Item -ItemType Directory -Force -Path $KitRoot | Out-Null
 Refresh-Kit
 if (-not (Test-KitOk)) {
-  Write-Fail ("Kit still incomplete after refresh.`n  Expected start-board.bat + companion bridge.py under $KitRoot`n  Re-download: $ZipUrl") 1
+  Write-Fail ("Kit still incomplete after refresh.`n  Expected start-board.bat + load-config.py + companion bridge.py under $KitRoot`n  Re-download: $ZipUrl") 1
 }
 $bridgePy = Join-Path $KitRoot "autodarts-companion\companion\bridge.py"
 try {

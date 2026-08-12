@@ -126,6 +126,7 @@ function Test-KitOk {
   $need = @(
     $StartBat,
     (Join-Path $KitRoot "board-station\Start-Board.ps1"),
+    (Join-Path $KitRoot "board-station\load-config.py"),
     (Join-Path $KitRoot "autodarts-companion\companion\bridge.py")
   )
   foreach ($p in $need) {
@@ -452,7 +453,7 @@ Write-Host "[3/6] Refreshing kit from production (always)..."
 New-Item -ItemType Directory -Force -Path $KitRoot | Out-Null
 Refresh-Kit
 if (-not (Test-KitOk)) {
-  Write-Fail ("Kit still incomplete after refresh.`n  Expected start-board.bat + companion bridge.py under $KitRoot`n  Re-download: $ZipUrl") 1
+  Write-Fail ("Kit still incomplete after refresh.`n  Expected start-board.bat + load-config.py + companion bridge.py under $KitRoot`n  Re-download: $ZipUrl") 1
 }
 $bridgePy = Join-Path $KitRoot "autodarts-companion\companion\bridge.py"
 try {
