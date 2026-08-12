@@ -1,5 +1,5 @@
 """
-Autodarts → No3 score bridge.
+Autodarts -> No3 score bridge.
 
 Autodarts Board Manager owns throw detection. No3 owns game modes / scoring UI.
 This process polls local `/api/state` and POSTs darts into No3.
@@ -97,11 +97,11 @@ def run_bridge(
 
     Visit / takeout / correction behaviour
     --------------------------------------
-    - New darts appended to `throws` → POST /api/camera/dart (each once).
-    - Throws list corrected / shrunk mid-visit → POST /api/camera/correct
+    - New darts appended to `throws` -> POST /api/camera/dart (each once).
+    - Throws list corrected / shrunk mid-visit -> POST /api/camera/correct
       with the full current visit (idempotent replace of open turn).
-    - Board status enters Takeout* OR throws list clears after a visit →
-      POST /api/camera/end-turn once (covers early pull of 1–2 darts).
+    - Board status enters Takeout* OR throws list clears after a visit ->
+      POST /api/camera/end-turn once (covers early pull of 1-2 darts).
     - No3 already auto-ends the turn after the 3rd dart; end-turn then
       returns READY and is harmless.
     """
@@ -119,7 +119,7 @@ def run_bridge(
     last_health_post_at = 0.0
 
     console.print(
-        f"[bold]Autodarts → No3 bridge[/bold]\n"
+        f"[bold]Autodarts -> No3 bridge[/bold]\n"
         f"  AD:       http://{host}:{port}/api/state\n"
         f"  No3:      {no3_url}\n"
         f"  room:     {room!r}\n"
@@ -127,7 +127,7 @@ def run_bridge(
         f"  dry_run:  {dry_run}\n"
         f"  end_turn: {end_turn_on_takeout} (on Autodarts takeout / clear)\n"
         f"  health:   {hcfg.enabled} (fps_min={hcfg.fps_min}, "
-        f"unhealthy≥{hcfg.unhealthy_seconds}s)\n"
+        f"unhealthy>={hcfg.unhealthy_seconds}s)\n"
         "\n"
         "Start a No3 match on this room (any game mode). Leave Autodarts detecting.\n"
         "Ctrl+C to stop.\n"
@@ -162,7 +162,7 @@ def run_bridge(
             "reason": reason,
         }
         console.print(
-            f"[magenta]correct[/magenta] ({reason}) → {labels or '[]'}"
+            f"[magenta]correct[/magenta] ({reason}) -> {labels or '[]'}"
         )
         resp = _post_json(correct_url, payload, headers, dry_run)
         if resp is not None:
@@ -212,9 +212,9 @@ def run_bridge(
     def maybe_restart(payload: dict[str, Any]) -> None:
         if not tracker.should_restart():
             return
-        console.print("[bold yellow]Cameras unhealthy — restarting Board Manager…[/bold yellow]")
+        console.print("[bold yellow]Cameras unhealthy - restarting Board Manager...[/bold yellow]")
         notify = {**payload, "level": "unhealthy", "restarting": True,
-                  "message": "Detection restarting…"}
+                  "message": "Detection restarting..."}
         post_health(notify, force=True)
         restart_board_manager(hcfg)
         tracker.mark_restart()
@@ -244,7 +244,7 @@ def run_bridge(
                 {
                     **payload,
                     "level": "unhealthy",
-                    "message": "Detection offline — check Board Manager",
+                    "message": "Detection offline - check Board Manager",
                     "restarting": False,
                 },
                 force=True,
@@ -263,7 +263,7 @@ def run_bridge(
             visit_just_cleared=visit_just_cleared,
         ):
             return
-        console.print("[cyan]between-games[/cyan] attempting Board Manager reset/recal…")
+        console.print("[cyan]between-games[/cyan] attempting Board Manager reset/recal...")
         result = client.try_recalibrate()
         tracker.mark_recal()
         if result.get("ok"):
@@ -289,7 +289,7 @@ def run_bridge(
             )
         else:
             console.print(
-                "[dim]No recalibrate HTTP endpoint accepted — "
+                "[dim]No recalibrate HTTP endpoint accepted - "
                 "use Board Manager UI Calibration between games if cams drift.[/dim]"
             )
 
@@ -318,14 +318,14 @@ def run_bridge(
 
             if status and status != prev_status:
                 console.print(
-                    f"[cyan]status[/cyan] {prev_status or '—'} → [bold]{status}[/bold]"
+                    f"[cyan]status[/cyan] {prev_status or '-'} -> [bold]{status}[/bold]"
                 )
                 if is_takeout_status(status) and not is_takeout_status(prev_status):
                     maybe_end_turn(f"status={status}")
                 maybe_between_games_recal(status, throws)
                 # prev_status updated after visit-clear check so recal can see takeout
 
-            # New visit after empty board — allow end-turn again
+            # New visit after empty board - allow end-turn again
             if throws and not prev_throws:
                 end_turn_sent = False
 
@@ -346,7 +346,7 @@ def run_bridge(
                     item = _dart_payload(dart)
                     payload = {**item, "roomId": room}
                     console.print(
-                        f"[green]AD[/green] {label} → No3 {item['kind']} {item['number']}"
+                        f"[green]AD[/green] {label} -> No3 {item['kind']} {item['number']}"
                     )
                     resp = _post_json(dart_url, payload, headers, dry_run)
                     if resp is not None:
@@ -363,11 +363,11 @@ def run_bridge(
                 # apply AD corrections onto the next thrower's open turn.
                 if end_turn_sent:
                     console.print(
-                        "[dim]AD visit changed after No3 turn ended — "
+                        "[dim]AD visit changed after No3 turn ended - "
                         "waiting for takeout/clear[/dim]"
                     )
                 else:
-                    # Correction / remove / replace prior throws — full visit sync
+                    # Correction / remove / replace prior throws - full visit sync
                     post_correct(diff["throws"], "autodarts_state_diff")
                     if not diff["throws"]:
                         maybe_end_turn("visit emptied via replace")

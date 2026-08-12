@@ -10,7 +10,7 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("PyYAML missing — pip install pyyaml", file=sys.stderr)
+    print("PyYAML missing - pip install pyyaml", file=sys.stderr)
     sys.exit(2)
 
 

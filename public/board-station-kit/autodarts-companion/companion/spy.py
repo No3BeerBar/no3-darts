@@ -78,7 +78,7 @@ def run_spy(
             sig = throws_signature(throws)
 
             if status and status != last_status:
-                console.print(f"[cyan]status[/cyan] {last_status or '—'} → [bold]{status}[/bold]")
+                console.print(f"[cyan]status[/cyan] {last_status or '-'} -> [bold]{status}[/bold]")
                 last_status = status
 
             if sig != last_sig:

@@ -1,5 +1,5 @@
 """
-Camera / Board Manager health helpers for the Autodarts → No3 bridge.
+Camera / Board Manager health helpers for the Autodarts -> No3 bridge.
 
 Uses local HTTP + OS process management only (no Autodarts CV reverse-engineering).
 """
@@ -29,7 +29,7 @@ class HealthConfig:
     unhealthy_seconds: float = 15.0
     restart_cooldown_seconds: float = 60.0
     between_games_recal: bool = True
-    # Editable path — set in config.yaml / board-station config
+    # Editable path - set in config.yaml / board-station config
     exe_path: str = ""
     process_names: list[str] = field(
         default_factory=lambda: ["Autodarts", "autodarts", "AutodartsDesktop"]
@@ -155,14 +155,14 @@ class HealthTracker:
 
 def _message_for(reason: str) -> str:
     mapping = {
-        "board_manager_offline": "Detection offline — restarting…",
+        "board_manager_offline": "Detection offline - restarting...",
         "camera_disconnected": "Cameras unhealthy",
         "fps_zero": "Cameras unhealthy (0 FPS)",
         "fps_low": "Cameras unhealthy (low FPS)",
         "fps_below_threshold": "Cameras unhealthy (low FPS)",
-        "invalid_state": "Detection restarting…",
+        "invalid_state": "Detection restarting...",
         "unhealthy": "Cameras unhealthy",
-        "degraded": "Cameras degraded…",
+        "degraded": "Cameras degraded...",
     }
     return mapping.get(reason, "Cameras unhealthy")
 
@@ -171,7 +171,7 @@ def restart_board_manager(cfg: HealthConfig) -> dict[str, Any]:
     """
     Restart Autodarts Board Manager process (Windows-first).
 
-    Uses editable exe_path + process_names from config — never hardcodes a
+    Uses editable exe_path + process_names from config - never hardcodes a
     machine-specific install path without an override.
     """
     system = platform.system().lower()
@@ -205,7 +205,7 @@ def restart_board_manager(cfg: HealthConfig) -> dict[str, Any]:
             elif exe:
                 error = f"exe_path not found: {exe}"
             else:
-                error = "exe_path not set — killed processes only; start Board Manager manually"
+                error = "exe_path not set - killed processes only; start Board Manager manually"
         else:
             # Dev / CI: best-effort pkill; no Autodarts on Linux typically
             for name in names:
