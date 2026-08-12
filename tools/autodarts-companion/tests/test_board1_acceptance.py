@@ -96,6 +96,13 @@ def test_board1_p0_late_visit_reshow_is_continuation() -> None:
     assert is_ad_visit_continuation(closed, late) is True
 
 
+def test_board1_p0_forty_one_same_target_is_not_continuation() -> None:
+    """P2 hitting the same 41 target as P1 must not freeze after unlock."""
+    done = [_seg("D20", 20, 2), _seg("D16", 16, 2), _seg("D8", 8, 2)]
+    assert is_ad_visit_continuation(done, [_seg("D20", 20, 2)]) is False
+    assert is_ad_visit_continuation(done, [_seg("D8", 8, 2)]) is False
+
+
 def test_board1_p0_maybe_end_turn_fail_closed_without_seat() -> None:
     """Never POST end-turn without expectedPlayerIndex when seat is unknown."""
     src = BRIDGE_PY.read_text(encoding="utf-8")

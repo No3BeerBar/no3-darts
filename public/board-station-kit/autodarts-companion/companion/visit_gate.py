@@ -24,13 +24,16 @@ Critical ordering (bar P0):
   5. After a visit closes, do not unlock on scored-close alone - require an AD
      takeout handshake or patron Ready so residual dart 3 cannot start the
      next seat. Freeze until board empty and AD left *active* takeout (or Ready).
+  6. After unlock, a single same-segment dart is a new visit (41 / Baseball
+     same-target). Only refuse a residual re-show of the *same* visit (prefix
+     of 2+ darts, full list, or singleton with matching coords).
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional, Sequence
 
-from .client import extract_status, throw_identity
+from .client import dart_coords, extract_status, throw_identity
 from .mapping import format_segment_label, is_takeout_finished_status, is_takeout_status
 
 # Kept for tests / docs. Auto early-pull no longer ends incomplete visits;
@@ -250,6 +253,13 @@ def _label_list(throws: Sequence[dict[str, Any]]) -> list[str]:
     return [format_segment_label(d) for d in throws]
 
 
+def _same_physical_dart(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """True when two AD throws look like the same tip (coords), not just segment."""
+    ca = dart_coords(a)
+    cb = dart_coords(b)
+    return bool(ca and cb and ca == cb)
+
+
 def is_ad_visit_continuation(
     closed_throws: Sequence[dict[str, Any]],
     current_throws: Sequence[dict[str, Any]],
@@ -260,16 +270,32 @@ def is_ad_visit_continuation(
     After a premature end-turn + empty unlock, AD often re-shows the same
     prefix plus late dart 3 - sometimes with new tip coords. Posting that
     onto the next seat is the P0 bleed.
+
+    Do NOT treat a single same-segment dart as continuation after a completed
+    3-dart close. 41 / Baseball / Cricket aim both players at the same target,
+    so P2's first dart matching P1's first or last label is normal (Board 1
+    freeze after 41 round 3 / any-double). Residual singleton dart 3 is only
+    refused when coords show it is the same physical tip.
     """
     if not closed_throws or not current_throws:
         return False
 
     last_ids = [throw_identity(d) for d in closed_throws]
     curr_ids = [throw_identity(d) for d in current_throws]
+    # Current extends closed (full re-show, or late dart 3 on the same visit)
     if len(curr_ids) >= len(last_ids) and curr_ids[: len(last_ids)] == last_ids:
         return True
+    # Closed extends current: re-show of a prefix. A single dart after a
+    # completed 3-dart visit is the next thrower's same-target hit unless
+    # coords prove it is the same physical dart.
     if len(last_ids) >= len(curr_ids) and last_ids[: len(curr_ids)] == curr_ids:
-        return True
+        if len(curr_ids) >= 2:
+            return True
+        if len(last_ids) < 3:
+            return True
+        if _same_physical_dart(closed_throws[0], current_throws[0]):
+            return True
+        return False
 
     # Coords often change on re-detect - match segment labels only
     last_labels = _label_list(closed_throws)
@@ -283,11 +309,18 @@ def is_ad_visit_continuation(
         len(last_labels) >= len(curr_labels)
         and last_labels[: len(curr_labels)] == curr_labels
     ):
-        return True
+        if len(curr_labels) >= 2:
+            return True
+        if len(last_labels) < 3:
+            return True
+        if _same_physical_dart(closed_throws[0], current_throws[0]):
+            return True
+        return False
 
-    # Residual last dart of a full visit reappearing alone after unlock
+    # Residual last dart of a full visit alone: only if same physical tip.
+    # Label-only match is the 41 any-double false positive (both throw D20).
     if len(closed_throws) >= 3 and len(current_throws) == 1:
-        if curr_labels[0] == last_labels[-1]:
+        if _same_physical_dart(closed_throws[-1], current_throws[0]):
             return True
 
     # Incomplete close: singleton re-detect of an already-mirrored dart

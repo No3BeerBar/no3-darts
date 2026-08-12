@@ -343,4 +343,58 @@ describe("forty_one engine play", () => {
     expect(state.playerStates[0].score).toBeGreaterThan(state.playerStates[1].score);
     expect(state.legWinnerId ?? state.winnerId).toBe("p1");
   });
+
+  it("2-player 41 keeps scoring and advancing after round 3 (any double)", () => {
+    // Bar freeze: after the third round, P2's darts stopped applying and the
+    // visit never advanced. Round 3 is ANY DOUBLE — both seats throw the same
+    // target. Engine must still wrap to round 4 (18s) and keep taking visits.
+    let state = start();
+    expect(state.status).toBe("playing");
+
+    function missVisit(s: typeof state) {
+      return throwThree(s, ["miss", 0], ["miss", 0], ["miss", 0]);
+    }
+
+    // Rounds 1–2: 20s then 19s (both players)
+    for (let r = 0; r < 2; r++) {
+      expect(state.status).toBe("playing");
+      const thrower = state.currentPlayerIndex;
+      state = missVisit(state);
+      expect(state.currentPlayerIndex).toBe(1 - thrower);
+      expect(state.currentTurnDarts).toHaveLength(0);
+      state = missVisit(state);
+      expect(state.currentPlayerIndex).toBe(thrower);
+    }
+    expect(fortyOneTarget(state).type).toBe("any_double");
+    expect(fortyOneRoundNumber(state)).toBe(3);
+    expect(state.currentPlayerIndex).toBe(0);
+
+    // Round 3: Alice hits doubles; Bob misses — must still advance
+    state = throwThree(
+      state,
+      ["double", 20],
+      ["double", 16],
+      ["double", 8]
+    );
+    expect(state.status).toBe("playing");
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(state.playerStates[0].extra?.lastVisitHalved).toBe(false);
+
+    state = missVisit(state);
+    expect(state.status).toBe("playing");
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 18 });
+    expect(fortyOneRoundNumber(state)).toBe(4);
+
+    // Round 4: both still score / wrap
+    const bobBefore = state.playerStates[1].score;
+    state = throwThree(state, ["triple", 18], ["miss", 0], ["miss", 0]);
+    expect(state.currentPlayerIndex).toBe(1);
+    state = missVisit(state);
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(fortyOneTarget(state)).toEqual({ type: "number", n: 17 });
+    expect(state.playerStates[1].score).toBe(fortyOneHalve(bobBefore));
+    expect(state.status).toBe("playing");
+  });
 });
