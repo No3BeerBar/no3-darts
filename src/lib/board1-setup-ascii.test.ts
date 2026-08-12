@@ -97,6 +97,13 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
     expect(norm(txt)).toBe(norm(ps1));
     expect(ps1).toContain("Test-No3LeftoverCommand");
     expect(ps1).toContain("[/\\\\]tv(\\?|#|\\s|$)");
+    // Stale companion on disk must not skip Refresh-Kit (seat-lock / 409s)
+    expect(ps1).toContain("Refreshing kit from production (always)");
+    expect(ps1).toMatch(/Refresh-Kit\s*\n/);
+    expect(ps1).not.toMatch(
+      /if \(Test-KitOk\) \{\s*\n\s*Write-Host "  Kit looks OK/
+    );
+    expect(ps1).toContain("expectedPlayerIndex");
   });
 
   it("Board1-Setup.bat embeds PS 5.1 pre-parse + ASCII write markers", () => {

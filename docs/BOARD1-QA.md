@@ -7,6 +7,8 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
 
 1. Cams + ring light on.
 2. Prefer `Board1-FixMe.bat` if anything is wedged (bridge dead, takeout stuck, TV blank).
+   Fix Me **always** re-downloads the kit zip (keeps `config.yaml` / `.venv`) so a
+   stale companion without `expectedPlayerIndex` cannot keep running.
    Otherwise `Board1-Setup.bat` / `start-board.bat` from the kit.
 3. Board Manager detecting at `http://127.0.0.1:3180`.
 4. Companion bridge window stays open (`python -m companion bridge`).

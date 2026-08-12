@@ -16,8 +16,8 @@ export default function BoardSetupPage() {
       </p>
       <p style={{ marginTop: 16 }}>
         Something wrong?{" "}
-        <a href="/Board1-FixMe.bat?v=2">Double-click Fix Me</a>
-        {" - kills leftovers, refreshes the kit if needed, brings Board 1 back."}
+        <a href="/Board1-FixMe.bat?v=3">Double-click Fix Me</a>
+        {" - kills leftovers, always refreshes the kit, brings Board 1 back."}
       </p>
       <p style={{ marginTop: 12, color: "#666", fontSize: 14 }}>
         The bat embeds setup (downloads the kit zip, writes Board 1 config, runs
