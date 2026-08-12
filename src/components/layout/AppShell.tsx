@@ -169,8 +169,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     hydrateGame();
   }, [settings, hydrateGame]);
 
-  // Setup `/` + idle `/play`: 2-min inactivity → tablet sign-out (not mid-match).
-  // Hook still runs for bare `/play` (chrome is skipped; idle logic is not).
+  // Setup `/` + `/play`: 2-min inactivity → sign-out when not mid-match;
+  // re-arms after match ends. Hook runs for bare `/play` too (chrome skipped).
   usePlaySessionIdleLogout();
 
   if (bare) {

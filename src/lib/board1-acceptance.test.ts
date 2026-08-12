@@ -145,6 +145,21 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(session).toMatch(/player:\s*null/);
   });
 
+  it("idle logout arms off-match and after match_won; never mid-match (John rules)", () => {
+    const idle = readSrc("src/lib/play-session-idle.ts");
+    expect(idle).toMatch(/isMidMatchForSessionIdle/);
+    expect(idle).toMatch(/PLAY_SESSION_IDLE_MS\s*=\s*2\s*\*\s*60\s*\*\s*1000/);
+    // Mid-match statuses that must NOT arm
+    expect(idle).toMatch(/status === "playing"/);
+    expect(idle).toMatch(/status === "paused"/);
+    expect(idle).toMatch(/status === "leg_won"/);
+    // match_won must not be treated as mid-match (timer re-arms after match ends)
+    expect(idle).not.toMatch(/status === "match_won"/);
+
+    const shell = readSrc("src/components/layout/AppShell.tsx");
+    expect(shell).toMatch(/usePlaySessionIdleLogout/);
+  });
+
   it("takeout health + hold pause scoring on an empty next-seat visit", () => {
     const state = board1Match("Board1 Takeout Pause");
     upsertServerMatch(state);
