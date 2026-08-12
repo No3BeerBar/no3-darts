@@ -7,6 +7,8 @@ Board 1 / camera-bridge acceptance net (companion side) - John P0s.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from companion.mapping import is_takeout_status
 from companion.visit_gate import (
     is_ad_visit_continuation,
@@ -16,6 +18,8 @@ from companion.visit_gate import (
     should_end_turn_on_takeout,
     should_unlock_next_visit,
 )
+
+BRIDGE_PY = Path(__file__).resolve().parents[1] / "companion" / "bridge.py"
 
 
 def _seg(name: str, number: int, mult: int) -> dict:
@@ -90,3 +94,15 @@ def test_board1_p0_late_visit_reshow_is_continuation() -> None:
     closed = [_seg("T20", 20, 3), _seg("5", 5, 1)]
     late = closed + [_seg("D16", 16, 2)]
     assert is_ad_visit_continuation(closed, late) is True
+
+
+def test_board1_p0_maybe_end_turn_fail_closed_without_seat() -> None:
+    """Never POST end-turn without expectedPlayerIndex when seat is unknown."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    assert "def maybe_end_turn" in src
+    assert "No3 seat unknown (fail closed" in src
+    assert '"expectedPlayerIndex": seat' in src
+    # Must not omit the field when seat is missing (old skip-check path)
+    assert "if seat is not None:\n            payload[\"expectedPlayerIndex\"]" not in src
+    assert "patron_force_ready" in src
+    assert "keeping banner cleared until unlock" in src

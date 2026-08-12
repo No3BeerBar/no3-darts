@@ -176,7 +176,19 @@ function seatLockRejected(
 ): string | null {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
-  const visitOpen = state.currentTurnDarts.length > 0 || gate.openVisitSeat != null;
+  const visitOpen =
+    state.currentTurnDarts.length > 0 || gate.openVisitSeat != null;
+  // Fail closed for old companions: while any visit seat lock / takeout hold is
+  // active, dart/correct/end-turn must carry expectedPlayerIndex.
+  const seatLockActive =
+    visitOpen || gate.holdUntilTakeoutClear;
+
+  if (
+    seatLockActive &&
+    (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex))
+  ) {
+    return "expectedPlayerIndex required while visit seat lock active";
+  }
 
   // After premature/close: do not let late AD throws start the next seat's visit
   if (
@@ -187,12 +199,14 @@ function seatLockRejected(
     return "Takeout hold - pull darts before next visit scores";
   }
 
-  if (visitOpen && state.currentTurnDarts.length > 0) {
-    // Open visit: expectedPlayerIndex is required and must match seat N
-    if (expectedPlayerIndex == null || !Number.isFinite(expectedPlayerIndex)) {
-      return "expectedPlayerIndex required while visit open";
-    }
-    const want = Math.trunc(expectedPlayerIndex);
+  // Empty end-turn READY ack during hold: field was required above; do not
+  // seat-match against the *next* thrower (companion still sends prior seat).
+  if (opts?.allowEmptyVisit && state.currentTurnDarts.length === 0) {
+    return null;
+  }
+
+  if (visitOpen) {
+    const want = Math.trunc(expectedPlayerIndex as number);
     const locked = gate.openVisitSeat ?? state.currentPlayerIndex;
     if (want !== state.currentPlayerIndex || want !== locked) {
       return `Seat mismatch - expected player ${want}, current is ${state.currentPlayerIndex}`;
@@ -214,7 +228,15 @@ function markVisitOpen(state: GameState): void {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
   gate.openVisitSeat = state.currentPlayerIndex;
-  gate.holdUntilTakeoutClear = false;
+  // Do not clear a takeout-armed hold while health still says takeout -
+  // empty-visit reject must stay fail-closed even mid-APPEND of dart 3.
+  const health = getCameraHealth(room);
+  const takeoutActive = Boolean(
+    health?.takeout || health?.level === "takeout" || health?.reason === "takeout"
+  );
+  if (!takeoutActive) {
+    gate.holdUntilTakeoutClear = false;
+  }
 }
 
 function markVisitClosedForTakeout(state: GameState): void {
@@ -331,8 +353,14 @@ export function applyCameraEndTurn(opts: {
     return { ok: false, error: "Bot thrower - camera scoring paused" };
   }
 
-  // Visit already empty (3rd dart auto-ended) - re-broadcast; keep takeout hold
+  // Visit already empty (3rd dart auto-ended) - re-broadcast; keep takeout hold.
+  // Fail closed: while hold/lock is active, old companions without
+  // expectedPlayerIndex must not get a silent READY ack.
   if (state.currentTurnDarts.length === 0) {
+    const seatErr = seatLockRejected(state, opts.expectedPlayerIndex, {
+      allowEmptyVisit: true,
+    });
+    if (seatErr) return { ok: false, error: seatErr };
     markVisitClosedForTakeout(state);
     emit({ type: "match_update", data: state });
     return { ok: true, state, callout: "READY" };
@@ -513,14 +541,19 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   cameraHealthByRoom.set(room, next);
   // Also index case-insensitive lookup key
   cameraHealthByRoom.set(room.toLowerCase(), next);
-  // Bridge cleared takeout / Ready - release next-seat scoring hold
-  // (Do not clear on ordinary "Cameras healthy" heartbeats.)
-  if (
-    !next.takeout &&
-    (next.reason === "takeout_cleared" ||
-      /ready for next visit/i.test(next.message || ""))
+  const gate = getCameraGate(room);
+  const takeoutActive =
+    next.takeout || next.level === "takeout" || next.reason === "takeout";
+  // Companion freeze alone is not enough - arm server next-seat hold whenever
+  // takeout health is active so camera darts are rejected until Ready/clear.
+  if (takeoutActive) {
+    gate.holdUntilTakeoutClear = true;
+  } else if (
+    next.reason === "takeout_cleared" ||
+    /ready for next visit/i.test(next.message || "")
   ) {
-    const gate = getCameraGate(room);
+    // Bridge cleared takeout / Ready - release next-seat scoring hold
+    // (Do not clear on ordinary "Cameras healthy" heartbeats.)
     gate.holdUntilTakeoutClear = false;
   }
   emit({ type: "camera_health", data: next });

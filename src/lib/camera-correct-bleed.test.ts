@@ -283,6 +283,73 @@ describe("camera correct bleed guard", () => {
     }
   });
 
+  it("hold + missing expectedPlayerIndex rejects dart/end-turn/correct", () => {
+    const state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board LockReq",
+    });
+    upsertServerMatch(state);
+    clearTakeoutHold("Board LockReq");
+    try {
+      applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: "Board LockReq",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 5,
+        roomId: "Board LockReq",
+        expectedPlayerIndex: 0,
+      });
+      applyCameraDart({
+        kind: "single",
+        number: 1,
+        roomId: "Board LockReq",
+        expectedPlayerIndex: 0,
+      });
+      expect(getCameraGateSnapshot("Board LockReq").holdUntilTakeoutClear).toBe(
+        true
+      );
+
+      const dart = applyCameraDart({
+        kind: "triple",
+        number: 19,
+        roomId: "Board LockReq",
+      });
+      expect(dart.ok).toBe(false);
+      if (!dart.ok) {
+        expect(dart.error).toMatch(/expectedPlayerIndex required/i);
+      }
+
+      const end = applyCameraEndTurn({ roomId: "Board LockReq" });
+      expect(end.ok).toBe(false);
+      if (!end.ok) {
+        expect(end.error).toMatch(/expectedPlayerIndex required/i);
+      }
+
+      const correct = applyCameraCorrect({
+        roomId: "Board LockReq",
+        darts: [{ kind: "single", number: 1 }],
+      });
+      expect(correct.ok).toBe(false);
+      if (!correct.ok) {
+        expect(correct.error).toMatch(
+          /expectedPlayerIndex required|No open visit/i
+        );
+      }
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold("Board LockReq");
+    }
+  });
+
   it("Ready / takeout_cleared releases hold so next seat can score", () => {
     const state = createGame({
       modeConfig: {
