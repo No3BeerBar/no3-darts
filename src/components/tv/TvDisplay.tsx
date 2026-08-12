@@ -32,6 +32,7 @@ import { VisitHistory } from "@/components/scoring/VisitHistory";
 import { formatAvg } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settings-store";
 import { AttractMode } from "@/components/tv/AttractMode";
+import { TvTakeoutBanner } from "@/components/tv/TvTakeoutBanner";
 import { useTvMatchFeed } from "@/hooks/useTvMatchFeed";
 
 /**
@@ -49,8 +50,16 @@ export function TvDisplay() {
   }, [settings]);
 
   const room = settings.roomName || "Board 1";
-  const { state, idle, connected, statusText, cameraNotice, lastSyncAt } =
-    useTvMatchFeed(hydrated ? room : "");
+  const {
+    state,
+    idle,
+    connected,
+    statusText,
+    cameraNotice,
+    takeoutActive,
+    takeoutMessage,
+    lastSyncAt,
+  } = useTvMatchFeed(hydrated ? room : "");
 
   useEffect(() => {
     const fit = () => {
@@ -63,14 +72,21 @@ export function TvDisplay() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
+  const takeoutBanner = (
+    <TvTakeoutBanner active={takeoutActive} message={takeoutMessage} />
+  );
+
   // Idle / attract (leaderboards + games) when no live match
   if (!hydrated || idle || !state) {
     return (
-      <AttractMode
-        room={room}
-        barName={settings.barName || "No. 3 Craft Beer Bar"}
-        connected={connected}
-      />
+      <>
+        {takeoutBanner}
+        <AttractMode
+          room={room}
+          barName={settings.barName || "No. 3 Craft Beer Bar"}
+          connected={connected}
+        />
+      </>
     );
   }
 
@@ -103,15 +119,10 @@ export function TvDisplay() {
 
   return (
     <div className="tv-display shell-black relative overflow-hidden">
-      {cameraNotice && (
+      {takeoutBanner}
+      {cameraNotice && !takeoutActive && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-50 flex justify-center px-4">
-          <div
-            className={
-              /takeout|pull darts/i.test(cameraNotice)
-                ? "rounded-xl border border-sky-500/50 bg-sky-950/95 px-6 py-3 font-display text-lg tracking-wide text-sky-50 shadow-2xl backdrop-blur"
-                : "rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur"
-            }
-          >
+          <div className="rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur">
             {cameraNotice}
           </div>
         </div>

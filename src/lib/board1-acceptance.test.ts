@@ -79,6 +79,19 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(hook).toMatch(/isLiveTakeoutSignal/);
   });
 
+  it("TV shows prominent takeout / Reset status gated on live AD signal", () => {
+    const tvBanner = readSrc("src/components/tv/TvTakeoutBanner.tsx");
+    expect(tvBanner).toMatch(/Removing darts/);
+    expect(tvBanner).toMatch(/Reset/);
+    expect(tvBanner).toMatch(/scoring tablet/);
+    const tv = readSrc("src/components/tv/TvDisplay.tsx");
+    expect(tv).toMatch(/TvTakeoutBanner/);
+    expect(tv).toMatch(/takeoutActive/);
+    const feed = readSrc("src/hooks/useTvMatchFeed.ts");
+    expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/takeoutActive/);
+  });
+
   it("bridge maybe_end_turn fail-closed without expectedPlayerIndex", () => {
     const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
     expect(bridge).toMatch(/No3 seat unknown \(fail closed/);

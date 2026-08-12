@@ -328,3 +328,27 @@ describe("bridge AD-offline clears takeout (source)", () => {
     expect(bridge).toContain('post_health({**hp, "takeout": False}, force=True)');
   });
 });
+
+describe("TV takeout prominence (John watches /tv)", () => {
+  it("TV mounts big Removing darts banner only via live takeout signal", () => {
+    const banner = readFileSync(
+      join(ROOT, "src/components/tv/TvTakeoutBanner.tsx"),
+      "utf8"
+    );
+    expect(banner).toMatch(/Removing darts/);
+    expect(banner).toMatch(/Reset/);
+    expect(banner).toMatch(/text-4xl|text-5xl|text-6xl/);
+    const feed = readFileSync(
+      join(ROOT, "src/hooks/useTvMatchFeed.ts"),
+      "utf8"
+    );
+    expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/setTakeoutActive\(false\)/);
+    const tv = readFileSync(
+      join(ROOT, "src/components/tv/TvDisplay.tsx"),
+      "utf8"
+    );
+    expect(tv).toMatch(/TvTakeoutBanner/);
+    expect(tv).toMatch(/takeoutActive/);
+  });
+});

@@ -12,7 +12,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:board1": "vitest run src/lib/board1-acceptance.test.ts src/lib/camera-takeout-sandbox.test.ts src/lib/camera-correct-bleed.test.ts src/lib/camera-routes-board1.test.ts src/lib/camera-board1-fuzz.test.ts src/lib/board1-setup-ascii.test.ts src/engine/undo.test.ts src/components/scoring/TakeoutBanner.test.ts src/components/scoring/ResumeAuthGate.test.ts && npm run test:board1:companion",
+    "test:board1": "vitest run src/lib/board1-acceptance.test.ts src/lib/camera-takeout-sandbox.test.ts src/lib/camera-correct-bleed.test.ts src/lib/camera-routes-board1.test.ts src/lib/camera-board1-fuzz.test.ts src/lib/board1-setup-ascii.test.ts src/engine/undo.test.ts src/components/scoring/TakeoutBanner.test.ts src/components/scoring/ResumeAuthGate.test.ts src/components/tv/TvTakeoutBanner.test.ts && npm run test:board1:companion",
     "test:board1:companion": "python3 -m pytest -q tools/autodarts-companion/tests/test_visit_poll_replay.py tools/autodarts-companion/tests/test_visit_poll_fuzzer.py tools/autodarts-companion/tests/test_board1_acceptance.py tools/autodarts-companion/tests/test_visit_gate.py tools/autodarts-companion/tests/test_bridge_gates.py tools/autodarts-companion/tests/test_health.py tools/autodarts-companion/tests/test_mapping.py",
     "db:push": "drizzle-kit push"
   },

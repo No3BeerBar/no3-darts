@@ -7,6 +7,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameState } from "@/engine/types";
+import {
+  isLiveTakeoutSignal,
+  type CameraHealth,
+} from "@/lib/camera-health";
 
 const CACHE_KEY = "no3_tv_match_cache";
 /** Clear live UI after this many ms with no active match on the server. */
@@ -58,6 +62,9 @@ export function useTvMatchFeed(room: string) {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("Connecting…");
   const [cameraNotice, setCameraNotice] = useState<string | null>(null);
+  /** Live Autodarts takeout only — drives the prominent TV banner. */
+  const [takeoutActive, setTakeoutActive] = useState(false);
+  const [takeoutMessage, setTakeoutMessage] = useState<string | null>(null);
   const roomRef = useRef(room);
   roomRef.current = room;
   const healthTimer = useRef<number | null>(null);
@@ -155,8 +162,65 @@ export function useTvMatchFeed(room: string) {
     let stopped = false;
     let es: EventSource | null = null;
     let pollTimer: number | null = null;
+    let healthPollTimer: number | null = null;
     let sseRetryTimer: number | null = null;
     let sseDelay = 1000;
+
+    const applyCameraHealth = (h: CameraHealth | null) => {
+      if (!h) {
+        setTakeoutActive(false);
+        setTakeoutMessage(null);
+        return;
+      }
+      const want = roomRef.current.trim().toLowerCase();
+      const got = (h.roomId || "").trim().toLowerCase();
+      if (got && want && got !== want) return;
+
+      // Live Autodarts takeout only — never sticky sandbox / offline spam.
+      if (isLiveTakeoutSignal(h)) {
+        setTakeoutActive(true);
+        setTakeoutMessage(h.message || "Pull darts — takeout");
+        // Takeout has its own TV banner; don't also use the small toast.
+        setCameraNotice(null);
+        if (healthTimer.current) window.clearTimeout(healthTimer.current);
+        healthTimer.current = null;
+        return;
+      }
+
+      setTakeoutActive(false);
+      setTakeoutMessage(null);
+
+      if (h.level === "ok" && !h.restarting) {
+        setCameraNotice(null);
+        return;
+      }
+      const text = h.restarting
+        ? "Detection restarting…"
+        : h.message || "Cameras unhealthy";
+      setCameraNotice(text);
+      if (healthTimer.current) window.clearTimeout(healthTimer.current);
+      if (h.level === "degraded") {
+        healthTimer.current = window.setTimeout(
+          () => setCameraNotice(null),
+          4000
+        );
+      }
+    };
+
+    const fetchCameraHealth = async () => {
+      if (stopped) return;
+      try {
+        const r = await fetch(
+          `/api/camera/health?room=${encodeURIComponent(room)}&_=${Date.now()}`,
+          { cache: "no-store" }
+        );
+        if (!r.ok) return;
+        const data = (await r.json()) as { health?: CameraHealth | null };
+        applyCameraHealth(data.health ?? null);
+      } catch {
+        /* offline */
+      }
+    };
 
     const fetchActive = async () => {
       if (stopped) return;
@@ -240,42 +304,8 @@ export function useTvMatchFeed(room: string) {
 
       es.addEventListener("camera_health", (ev) => {
         try {
-          const h = JSON.parse((ev as MessageEvent).data) as {
-            roomId?: string;
-            level?: string;
-            message?: string;
-            restarting?: boolean;
-            takeout?: boolean;
-            reason?: string;
-          };
-          const want = roomRef.current.trim().toLowerCase();
-          const got = (h.roomId || "").trim().toLowerCase();
-          if (got && want && got !== want) return;
-          const takeout =
-            Boolean(h.takeout) ||
-            h.level === "takeout" ||
-            h.reason === "takeout";
-          if (takeout) {
-            setCameraNotice(h.message || "Pull darts — takeout");
-            if (healthTimer.current) window.clearTimeout(healthTimer.current);
-            healthTimer.current = null;
-            return;
-          }
-          if (h.level === "ok" && !h.restarting) {
-            setCameraNotice(null);
-            return;
-          }
-          const text = h.restarting
-            ? "Detection restarting…"
-            : h.message || "Cameras unhealthy";
-          setCameraNotice(text);
-          if (healthTimer.current) window.clearTimeout(healthTimer.current);
-          if (h.level === "degraded") {
-            healthTimer.current = window.setTimeout(
-              () => setCameraNotice(null),
-              4000
-            );
-          }
+          const h = JSON.parse((ev as MessageEvent).data) as CameraHealth;
+          applyCameraHealth(h);
         } catch {
           /* */
         }
@@ -304,11 +334,16 @@ export function useTvMatchFeed(room: string) {
     };
 
     void fetchActive();
+    void fetchCameraHealth();
     pollTimer = window.setInterval(fetchActive, 1500);
+    healthPollTimer = window.setInterval(fetchCameraHealth, 4000);
     connectSse();
 
     const onVis = () => {
-      if (document.visibilityState === "visible") void fetchActive();
+      if (document.visibilityState === "visible") {
+        void fetchActive();
+        void fetchCameraHealth();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("online", fetchActive);
@@ -321,6 +356,7 @@ export function useTvMatchFeed(room: string) {
         /* */
       }
       if (pollTimer) window.clearInterval(pollTimer);
+      if (healthPollTimer) window.clearInterval(healthPollTimer);
       if (sseRetryTimer) window.clearTimeout(sseRetryTimer);
       if (healthTimer.current) window.clearTimeout(healthTimer.current);
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
@@ -338,6 +374,8 @@ export function useTvMatchFeed(room: string) {
     lastSyncAt,
     statusText,
     cameraNotice,
+    takeoutActive,
+    takeoutMessage,
     apply,
   };
 }

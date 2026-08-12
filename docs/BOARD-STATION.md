@@ -137,7 +137,7 @@ Each poll **syncs AD throw growth onto the current No3 seat first**, then handle
 
 **Visit seat lock:** while mirroring an open AD visit, the bridge locks No3 `currentPlayerIndex` and sends `expectedPlayerIndex` on `dart` / `correct` / `end-turn`. The server **requires** that field while a visit is open and **409**s mismatches. After the visit closes, the server **holds next-seat scoring** until takeout is cleared (health `takeout_cleared`) or patron **Ready**. Late AD throws after a premature close cannot start the next seat’s visit. If AD re-shows a closed visit after unlock (late dart 3), the bridge also refuses that continuation.
 
-`/play` shows **Pull darts — takeout** with **Ready** (acks via `POST /api/camera/takeout-ready`). Ready clears the stuck banner + handshake (bridge + UI agree) and may probe Board Manager `/api/reset`. Mid-match **between-games recal** stays gated on No3 match boundary.
+`/play` shows **Removing darts - takeout** with **Reset** (acks via `POST /api/camera/takeout-ready`). **`/tv`** shows a large yellow **Removing darts** banner (tap Reset on the scoring tablet). Reset clears the stuck banner + handshake (bridge + UI agree) and may probe Board Manager `/api/reset`. Sandbox / no Autodarts / AD offline must not show takeout UI. Mid-match **between-games recal** stays gated on No3 match boundary.
 
 ### Redeploy on the mini-PC (required after bridge fixes)
 
@@ -160,6 +160,6 @@ Old companion bridge processes keep the previous takeout / seat-lock bugs. After
 4. iPad → play URL → start match on that room  
 5. TV shows `/tv` (attract until a match starts)  
 6. Throw; if misread → tap dart on iPad **or** correct in Board Manager (bridge syncs)  
-7. After a visit: Pull darts; if banner stuck → tap **Ready** on `/play`  
+7. After a visit: Pull darts; if banner stuck → tap **Reset** on `/play` (TV also shows Removing darts)  
 8. End match on iPad → TV returns to attract  
 9. If cams die → wait for toast + auto-restart; if still dead, relaunch Board Manager manually  
