@@ -11,8 +11,8 @@ export default function BoardSetupPage() {
     <main style={{ fontFamily: "system-ui, sans-serif", padding: 24 }}>
       <h1 style={{ fontSize: 18, marginBottom: 12 }}>Board 1 Setup</h1>
       <p>
-        <a href="/Board1-Setup.bat">Download Board1-Setup.bat</a>
-        {" — single file: save, then double-click on the mini-PC."}
+        <a href="/Board1-Setup.bat?v=3">Download Board1-Setup.bat</a>
+        {" - single file: save, then double-click on the mini-PC."}
       </p>
       <p style={{ marginTop: 12, color: "#666", fontSize: 14 }}>
         The bat embeds setup (downloads the kit zip, writes Board 1 config, runs
