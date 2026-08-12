@@ -253,6 +253,11 @@ function ScoringScreenInner() {
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
+        {settings.roomName?.trim() ? (
+          <p className="font-display text-xs tracking-wider text-zinc-500">
+            {settings.roomName.trim()}
+          </p>
+        ) : null}
         {sessionPlayer ? (
           <p className="text-sm text-zinc-400">
             Signed in · <span className="text-white">{sessionPlayer.name}</span>
@@ -517,6 +522,9 @@ function ScoringScreenInner() {
               )}
             </div>
             <div className="truncate text-xs text-zinc-500">
+              {(state.roomId || settings.roomName || "").trim()
+                ? `${(state.roomId || settings.roomName || "").trim()} · `
+                : ""}
               {statusLine} · Leg {state.legNumber}
               {botThrowing ? " · Bot visit" : ""}
               {isAdmin ? " · Staff" : ""}

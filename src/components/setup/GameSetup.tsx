@@ -1198,22 +1198,33 @@ export function GameSetup() {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => router.replace(playHref(settings.roomName))}
-          className="btn-ghost min-h-14 flex-1 px-4 font-display text-base tracking-wider text-red-300"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          disabled={!canStart}
-          onClick={onStart}
-          className="btn-primary min-h-14 flex-[2] text-lg disabled:opacity-40"
-        >
-          Start {isTeams ? "team match" : "match"}
-        </button>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => router.replace(playHref(settings.roomName))}
+            className="btn-ghost min-h-14 flex-1 px-4 font-display text-base tracking-wider text-red-300"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canStart}
+            onClick={onStart}
+            className="btn-primary min-h-14 flex-[2] text-lg disabled:opacity-40"
+          >
+            Start {isTeams ? "team match" : "match"}
+          </button>
+        </div>
+        {!canStart && (
+          <p className="text-center text-xs text-zinc-500">
+            {isTeams
+              ? "Add at least 2 teams with players to start"
+              : mode === "killer"
+                ? "Add at least 2 players to start"
+                : "Add at least one player to start"}
+          </p>
+        )}
       </div>
     </div>
   );
