@@ -118,7 +118,7 @@ health:
   [IO.File]::WriteAllText($Path, $yaml, [Text.Encoding]::ASCII)
 }
 
-Write-Banner "No.3 Darts - Board 1 Setup"
+Write-Banner "No.3 Darts - Board 1 Setup (v3 ASCII)"
 
 Write-Host "[1/5] Checking Python..."
 if (-not (Test-Python)) {
