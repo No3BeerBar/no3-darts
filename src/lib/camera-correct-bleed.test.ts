@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest";
+import { applyDart, createDart, createGame } from "@/engine";
+import {
+  applyCameraCorrect,
+  applyCameraDart,
+  upsertServerMatch,
+  removeServerMatch,
+} from "@/lib/server-game-store";
+
+const alice = { id: "p1", name: "Alice", isGuest: true };
+const bob = { id: "p2", name: "Bob", isGuest: true };
+
+describe("camera correct bleed guard", () => {
+  it("refuses non-empty correct onto the next thrower's empty visit", () => {
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board 1",
+    });
+    // Full visit auto-ends -> Bob is current with empty open visit
+    state = applyDart(state, createDart("single", 20)).state;
+    state = applyDart(state, createDart("single", 5)).state;
+    state = applyDart(state, createDart("single", 1)).state;
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.currentTurnDarts).toHaveLength(0);
+
+    upsertServerMatch(state);
+    try {
+      const result = applyCameraCorrect({
+        roomId: "Board 1",
+        darts: [
+          { kind: "single", number: 20 },
+          { kind: "single", number: 5 },
+          { kind: "single", number: 1 },
+        ],
+        reason: "residual_p1_visit",
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/No open visit/i);
+      }
+    } finally {
+      removeServerMatch(state.id);
+    }
+  });
+
+  it("still accepts mid-visit correct on the open thrower", () => {
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board 1",
+    });
+    state = applyDart(state, createDart("triple", 20)).state;
+    upsertServerMatch(state);
+    try {
+      const result = applyCameraCorrect({
+        roomId: "Board 1",
+        darts: [{ kind: "triple", number: 19 }],
+        reason: "fix",
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.state.currentTurnDarts).toHaveLength(1);
+        expect(result.state.currentTurnDarts[0].number).toBe(19);
+        expect(result.state.currentPlayerIndex).toBe(0);
+      }
+    } finally {
+      removeServerMatch(state.id);
+    }
+  });
+
+  it("turnEnded after 3rd camera dart advances seat", () => {
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: false },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: "Board Bleed",
+    });
+    upsertServerMatch(state);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: "Board Bleed",
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: "Board Bleed",
+        }).ok
+      ).toBe(true);
+      const third = applyCameraDart({
+        kind: "single",
+        number: 1,
+        roomId: "Board Bleed",
+      });
+      expect(third.ok).toBe(true);
+      if (third.ok) {
+        expect(third.turnEnded).toBe(true);
+        expect(third.state.currentPlayerIndex).toBe(1);
+        expect(third.state.currentTurnDarts).toHaveLength(0);
+      }
+    } finally {
+      removeServerMatch(state.id);
+    }
+  });
+});

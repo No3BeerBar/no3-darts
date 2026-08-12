@@ -234,6 +234,20 @@ export function applyCameraCorrect(opts: {
     })
   );
 
+  // Defense: after auto end-turn the next thrower's visit is empty. A non-empty
+  // correct here is almost always the prior player's Autodarts list bleeding
+  // onto the new seat (takeout / residual throws). Empty correct = clear OK.
+  if (
+    state.status === "playing" &&
+    state.currentTurnDarts.length === 0 &&
+    darts.length > 0
+  ) {
+    return {
+      ok: false,
+      error: "No open visit — refusing correct onto next thrower",
+    };
+  }
+
   // Empty list = clear open visit (undo all current-turn darts) without advancing
   const result = correctCurrentTurn(state, darts, { autoEnd: false });
   matches.set(result.state.id, result.state);

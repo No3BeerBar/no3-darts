@@ -130,6 +130,7 @@ Content-Type: application/json
 - `darts` is the **full** current visit (0–3 items). Empty array clears the open visit without advancing the thrower.
 - Server rebuilds from `turnBaseline` via `correctCurrentTurn` — idempotent, no double-scoring.
 - Prefer this over undo + re-post from the bridge.
+- Server **rejects** a non-empty correct when the current thrower has no open visit (blocks prior-player AD lists from landing on the next seat after auto end-turn).
 - Players can also fix on the iPad: tap the dart slot → pick the right segment.
 
 ## Camera health
