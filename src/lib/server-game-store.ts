@@ -13,9 +13,20 @@ import {
   endTurn,
   undo,
 } from "@/engine";
-import type { CameraHealth } from "@/lib/camera-health";
+import {
+  isCameraBridgeOffline,
+  isLiveTakeoutSignal,
+  isStaleCameraHealth,
+  type CameraHealth,
+} from "@/lib/camera-health";
 
 export type { CameraHealth } from "@/lib/camera-health";
+export {
+  isCameraBridgeOffline,
+  isLiveTakeoutSignal,
+  isStaleCameraHealth,
+  CAMERA_HEALTH_FRESH_MS,
+} from "@/lib/camera-health";
 
 type Listener = (event: { type: string; data: unknown }) => void;
 
@@ -236,12 +247,46 @@ function markVisitOpen(state: GameState): void {
   // Do not clear a takeout-armed hold while health still says takeout -
   // empty-visit reject must stay fail-closed even mid-APPEND of dart 3.
   const health = getCameraHealth(room);
-  const takeoutActive = Boolean(
-    health?.takeout || health?.level === "takeout" || health?.reason === "takeout"
-  );
-  if (!takeoutActive) {
+  if (!isLiveTakeoutSignal(health)) {
     gate.holdUntilTakeoutClear = false;
   }
+}
+
+/**
+ * Sandbox / dead bridge: never leave sticky takeout health or next-seat hold
+ * when Autodarts is offline or the companion has gone silent.
+ */
+function reconcileStaleTakeout(roomId: string, now = Date.now()): void {
+  const room = normRoom(roomId);
+  const health = cameraHealthByRoom.get(room) ?? cameraHealthByRoom.get(room.toLowerCase());
+  if (!health) return;
+  const offline = isCameraBridgeOffline(health);
+  const stale = isStaleCameraHealth(health, now);
+  if (!offline && !stale) return;
+
+  const hadTakeout =
+    Boolean(health.takeout) ||
+    health.level === "takeout" ||
+    health.reason === "takeout";
+  const gate = getCameraGate(room);
+  if (!hadTakeout && !gate.holdUntilTakeoutClear) return;
+
+  clearTakeoutHold(room);
+  if (!hadTakeout) return;
+
+  const cleared: CameraHealth = {
+    ...health,
+    takeout: false,
+    level: health.level === "takeout" ? (offline ? "unhealthy" : "ok") : health.level,
+    reason: offline ? "board_manager_offline" : "takeout_stale_cleared",
+    message: offline
+      ? health.message || "Board Manager offline"
+      : "Takeout cleared (bridge silent)",
+    connected: offline ? false : health.connected,
+    ts: health.ts,
+  };
+  cameraHealthByRoom.set(room, cleared);
+  cameraHealthByRoom.set(room.toLowerCase(), cleared);
 }
 
 function markVisitClosedForTakeout(state: GameState): void {
@@ -279,18 +324,23 @@ function realignCameraGateFromMatch(
  * player after a premature end-turn. Incomplete visits (1-2 darts already on
  * the open turn) still accept APPEND so dart 3 can finish the same seat.
  *
+ * Camera/bridge posts only — tablet manual taps and bot play use upsertMatch /
+ * local applyDart and must never be gated by this hold.
+ *
  * Also honors the server takeout hold latch (set on visit close) so a missing
- * health heartbeat cannot open the next seat.
+ * health heartbeat cannot open the next seat — unless the bridge is offline or
+ * the takeout health row is stale (sandbox / no Autodarts).
  */
 function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null {
   if (state.currentTurnDarts.length > 0) return null;
   const room = normRoom(roomId || state.roomId || "Board 1");
+  reconcileStaleTakeout(room);
   const gate = getCameraGate(room);
   if (gate.holdUntilTakeoutClear) {
     return "Takeout hold - pull darts before next visit scores";
   }
   const health = getCameraHealth(room);
-  if (health?.takeout || health?.level === "takeout" || health?.reason === "takeout") {
+  if (isLiveTakeoutSignal(health)) {
     return "Takeout active - scoring paused until reset";
   }
   return null;
@@ -546,21 +596,47 @@ export function applyCameraUndo(opts: {
 
 export function setCameraHealth(health: CameraHealth): CameraHealth {
   const room = normRoom(health.roomId || "Board 1");
-  const next: CameraHealth = {
+  const offline = isCameraBridgeOffline(health);
+  // Never persist sticky takeout:true while AD/bridge is unreachable or stale.
+  const rawTakeout =
+    Boolean(health.takeout) ||
+    health.level === "takeout" ||
+    health.reason === "takeout";
+  const candidate: CameraHealth = {
     ...health,
     roomId: room,
-    takeout: Boolean(health.takeout),
+    takeout: rawTakeout,
+    connected: offline ? false : health.connected,
     ts: health.ts || Date.now(),
+  };
+  const takeoutActive = !offline && isLiveTakeoutSignal(candidate);
+  const next: CameraHealth = {
+    ...candidate,
+    takeout: takeoutActive,
+    level: takeoutActive
+      ? candidate.level || "takeout"
+      : candidate.level === "takeout"
+        ? offline
+          ? "unhealthy"
+          : "ok"
+        : candidate.level,
+    reason:
+      offline && rawTakeout
+        ? "board_manager_offline"
+        : !takeoutActive && rawTakeout && isStaleCameraHealth(candidate)
+          ? "takeout_stale_cleared"
+          : candidate.reason,
   };
   cameraHealthByRoom.set(room, next);
   // Also index case-insensitive lookup key
   cameraHealthByRoom.set(room.toLowerCase(), next);
   const gate = getCameraGate(room);
-  const takeoutActive =
-    next.takeout || next.level === "takeout" || next.reason === "takeout";
   // Companion freeze alone is not enough - arm server next-seat hold whenever
-  // takeout health is active so camera darts are rejected until Ready/clear.
-  if (takeoutActive) {
+  // live takeout health is active so camera darts are rejected until Ready/clear.
+  // Offline / unreachable / stale AD must always release sticky hold (sandbox).
+  if (offline || (!takeoutActive && rawTakeout)) {
+    clearTakeoutHold(room);
+  } else if (takeoutActive) {
     gate.holdUntilTakeoutClear = true;
   } else if (
     next.reason === "takeout_cleared" ||
@@ -630,6 +706,7 @@ export function consumeTakeoutReady(
 
 export function getCameraHealth(roomId?: string): CameraHealth | undefined {
   if (roomId) {
+    reconcileStaleTakeout(roomId);
     const exact = cameraHealthByRoom.get(roomId);
     if (exact) return exact;
     const lower = cameraHealthByRoom.get(roomId.trim().toLowerCase());
@@ -646,7 +723,10 @@ export function getCameraHealth(roomId?: string): CameraHealth | undefined {
   for (const h of cameraHealthByRoom.values()) {
     if (!latest || (h.ts ?? 0) > (latest.ts ?? 0)) latest = h;
   }
-  return latest;
+  if (latest?.roomId) reconcileStaleTakeout(latest.roomId);
+  return latest?.roomId
+    ? cameraHealthByRoom.get(normRoom(latest.roomId)) ?? latest
+    : latest;
 }
 
 export function subscribe(listener: Listener): () => void {
