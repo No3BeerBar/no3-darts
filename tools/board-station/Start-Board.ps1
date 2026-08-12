@@ -52,19 +52,6 @@ function Find-Browser([string]$Name) {
   return $null
 }
 
-if (-not (Test-Path -LiteralPath $ConfigPath)) {
-  if (Test-Path -LiteralPath $Example) {
-    Copy-Item -LiteralPath $Example -Destination $ConfigPath
-    Write-Host "Created $ConfigPath from example - edit exe_path / no3.url / room_id before relying on it." -ForegroundColor Yellow
-  } else {
-    throw "Missing config.yaml and config.example.yaml in $Here"
-  }
-}
-
-# Resolve companion dir early (default) so we can use its venv + PyYAML for config
-$CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
-$venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
-
 function Test-CompanionDeps([string]$Py) {
   # Cheap smoke check - skip pip when runtime imports already work.
   & $Py -c "import yaml,requests,numpy,cv2" 2>$null
@@ -110,6 +97,127 @@ function Ensure-CompanionVenv([string]$Dir) {
   }
   return $py
 }
+
+# Search common Windows locations for Autodarts Board Manager (.exe or .lnk).
+# Caps wall time at ~10s so a slow disk never hangs the launcher.
+function Find-AutodartsExe {
+  $deadline = (Get-Date).AddSeconds(10)
+
+  $quick = @(
+    (Join-Path $env:ProgramFiles "Autodarts\Autodarts.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Autodarts\Autodarts.exe"),
+    (Join-Path $env:ProgramFiles "Autodarts Board Manager\Autodarts.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Autodarts Board Manager\Autodarts.exe"),
+    (Join-Path $env:ProgramFiles "autodarts\Autodarts.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "autodarts\Autodarts.exe"),
+    (Join-Path $env:LocalAppData "Autodarts\Autodarts.exe"),
+    (Join-Path $env:LocalAppData "Programs\Autodarts\Autodarts.exe"),
+    (Join-Path $env:AppData "Autodarts\Autodarts.exe"),
+    (Join-Path $env:USERPROFILE "Desktop\Autodarts.lnk"),
+    (Join-Path $env:PUBLIC "Desktop\Autodarts.lnk"),
+    (Join-Path $env:USERPROFILE "Desktop\Autodarts Board Manager.lnk"),
+    (Join-Path $env:PUBLIC "Desktop\Autodarts Board Manager.lnk"),
+    (Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs\Autodarts.lnk"),
+    (Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs\Autodarts Board Manager.lnk"),
+    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Autodarts.lnk"),
+    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Autodarts Board Manager.lnk")
+  )
+  foreach ($c in $quick) {
+    if ($c -and (Test-Path -LiteralPath $c)) { return $c }
+  }
+
+  $roots = @(
+    $env:ProgramFiles,
+    ${env:ProgramFiles(x86)},
+    $env:LocalAppData,
+    $env:AppData,
+    (Join-Path $env:USERPROFILE "Desktop"),
+    (Join-Path $env:PUBLIC "Desktop"),
+    (Join-Path $env:AppData "Microsoft\Windows\Start Menu\Programs"),
+    (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs")
+  ) | Where-Object { $_ } | Select-Object -Unique
+
+  $filters = @("Autodarts*.exe", "*Autodarts*.exe", "Autodarts*.lnk", "*Autodarts*.lnk")
+  $exeHit = $null
+  $lnkHit = $null
+
+  foreach ($root in $roots) {
+    if ((Get-Date) -ge $deadline) { break }
+    if (-not (Test-Path -LiteralPath $root)) { continue }
+    foreach ($filter in $filters) {
+      if ((Get-Date) -ge $deadline) { break }
+      try {
+        $hits = @(Get-ChildItem -LiteralPath $root -Filter $filter -File -Recurse -Depth 5 -ErrorAction SilentlyContinue |
+          Select-Object -First 5)
+      } catch {
+        $hits = @()
+      }
+      foreach ($hit in $hits) {
+        if (-not $hit) { continue }
+        $name = $hit.Name
+        if ($name -notmatch '(?i)autodarts') { continue }
+        if ($name -match '\.exe$' -and -not $exeHit) { $exeHit = $hit.FullName }
+        elseif ($name -match '\.lnk$' -and -not $lnkHit) { $lnkHit = $hit.FullName }
+        if ($exeHit) { return $exeHit }
+      }
+    }
+  }
+
+  if ($exeHit) { return $exeHit }
+  if ($lnkHit) { return $lnkHit }
+  return $null
+}
+
+# Update autodarts.exe_path in config.yaml; leave every other key untouched.
+function Save-ExePathToConfig([string]$Path, [string]$ExePath) {
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $escaped = $ExePath.Replace('\', '\\')
+  $content = [IO.File]::ReadAllText($Path)
+  $pattern = '(?m)^([ \t]*exe_path:[ \t]*).*$'
+  if ($content -notmatch $pattern) {
+    Write-Host "Could not update exe_path in config.yaml (key missing) - using discovered path for this run only." -ForegroundColor Yellow
+    return
+  }
+  $updated = [regex]::Replace($content, $pattern, ('${1}"' + $escaped + '"'), 1)
+  [IO.File]::WriteAllText($Path, $updated, [Text.Encoding]::ASCII)
+  Write-Host "Saved exe_path into config.yaml for next run." -ForegroundColor Green
+}
+
+function Write-AutodartsMissingError([string]$AdHost, [int]$AdPort, [string]$ConfigPath) {
+  Write-Host ""
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host " ERROR: Autodarts Board Manager not available" -ForegroundColor Red
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host " autodarts.exe_path is empty / missing, and the Board Manager" -ForegroundColor Red
+  Write-Host " API is not responding at http://${AdHost}:${AdPort}/api/state" -ForegroundColor Red
+  Write-Host ""
+  Write-Host " What to do (bar operator):" -ForegroundColor Yellow
+  Write-Host "  1. Install / start Autodarts Board Manager on this PC"
+  Write-Host "  2. Confirm http://${AdHost}:${AdPort}/api/state opens in a browser"
+  Write-Host "  3. Re-run start-board.bat  (or set exe_path in config.yaml)"
+  Write-Host ""
+  Write-Host " Config file: $ConfigPath"
+  Write-Host " Example exe_path:"
+  Write-Host '   "C:\\Program Files\\Autodarts\\Autodarts.exe"'
+  Write-Host '   "C:\\Users\\Public\\Desktop\\Autodarts.lnk"'
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host ""
+}
+
+try {
+
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+  if (Test-Path -LiteralPath $Example) {
+    Copy-Item -LiteralPath $Example -Destination $ConfigPath
+    Write-Host "Created $ConfigPath from example - edit exe_path / no3.url / room_id before relying on it." -ForegroundColor Yellow
+  } else {
+    throw "Missing config.yaml and config.example.yaml in $Here"
+  }
+}
+
+# Resolve companion dir early (default) so we can use its venv + PyYAML for config
+$CompanionDirGuess = [System.IO.Path]::GetFullPath((Join-Path $Here "..\autodarts-companion"))
+$venvPy = Join-Path $CompanionDirGuess ".venv\Scripts\python.exe"
 
 $venvPy = Ensure-CompanionVenv $CompanionDirGuess
 
@@ -167,25 +275,50 @@ $ready = Test-AutodartsReady
 if ($ready) {
   Write-Host "Board Manager already responding on :$AdPort" -ForegroundColor Green
 } elseif ($StartIfMissing) {
-  if (-not $ExePath) {
-    Write-Host "exe_path is empty in config.yaml - start Autodarts Board Manager manually," -ForegroundColor Yellow
-    Write-Host "then re-run, or set autodarts.exe_path to the .exe / .lnk on this PC." -ForegroundColor Yellow
-  } elseif (-not (Test-Path -LiteralPath $ExePath)) {
-    Write-Host "exe_path not found: $ExePath" -ForegroundColor Red
-    Write-Host "Edit config.yaml autodarts.exe_path for this machine." -ForegroundColor Yellow
-  } else {
+  $exeUsable = $false
+  if ($ExePath) {
+    if (Test-Path -LiteralPath $ExePath) {
+      $exeUsable = $true
+    } else {
+      Write-Host "exe_path not found: $ExePath" -ForegroundColor Yellow
+      Write-Host "Searching common locations for Autodarts..." -ForegroundColor Yellow
+      $ExePath = ""
+    }
+  }
+
+  if (-not $exeUsable) {
+    Write-Host "exe_path empty or missing - searching for Autodarts Board Manager..." -ForegroundColor Yellow
+    $found = Find-AutodartsExe
+    if ($found) {
+      $ExePath = $found
+      $exeUsable = $true
+      Write-Host "Found Autodarts at $ExePath" -ForegroundColor Green
+      Save-ExePathToConfig -Path $ConfigPath -ExePath $ExePath
+    }
+  }
+
+  if ($exeUsable) {
     Write-Host "Starting Board Manager: $ExePath"
     Start-Process -FilePath $ExePath | Out-Null
-  }
-  $deadline = (Get-Date).AddSeconds($ReadyTimeout)
-  while ((Get-Date) -lt $deadline) {
-    if (Test-AutodartsReady) { $ready = $true; break }
-    Start-Sleep -Seconds 2
-  }
-  if ($ready) {
-    Write-Host "Board Manager ready." -ForegroundColor Green
+    $deadline = (Get-Date).AddSeconds($ReadyTimeout)
+    while ((Get-Date) -lt $deadline) {
+      if (Test-AutodartsReady) { $ready = $true; break }
+      Start-Sleep -Seconds 2
+    }
+    if ($ready) {
+      Write-Host "Board Manager ready." -ForegroundColor Green
+    } else {
+      Write-Host "Board Manager not ready after ${ReadyTimeout}s - bridge will retry." -ForegroundColor Yellow
+    }
   } else {
-    Write-Host "Board Manager not ready after ${ReadyTimeout}s - bridge will retry." -ForegroundColor Yellow
+    # Last chance: API may have come up while we searched
+    if (Test-AutodartsReady) {
+      $ready = $true
+      Write-Host "Board Manager already responding on :$AdPort" -ForegroundColor Green
+    } else {
+      Write-AutodartsMissingError -AdHost $AdHost -AdPort $AdPort -ConfigPath $ConfigPath
+      throw "Autodarts Board Manager not found and API not responding on :${AdPort} (AUTODARTS_MISSING)"
+    }
   }
 } else {
   Write-Host "start_if_missing=false and Board Manager not up - continuing anyway." -ForegroundColor Yellow
@@ -303,3 +436,17 @@ Write-Host "Keep the bridge window open while playing."
 Write-Host "Fix misreads on the iPad (tap dart -> pick segment) or in Autodarts Board Manager."
 Write-Host "Docs: docs/BOARD-STATION.md"
 Write-Host ""
+
+} catch {
+  Write-Host ""
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host " ERROR: Start-Board failed (uncaught)" -ForegroundColor Red
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host $_.Exception.Message -ForegroundColor Red
+  if ($_.ScriptStackTrace) {
+    Write-Host $_.ScriptStackTrace
+  }
+  Write-Host "============================================================" -ForegroundColor Red
+  Write-Host ""
+  exit 1
+}
