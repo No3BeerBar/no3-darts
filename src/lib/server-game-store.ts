@@ -7,9 +7,11 @@
 import type { DartDetectedEvent, GameState, SegmentKind } from "@/engine/types";
 import {
   applyDart,
+  canUndo,
   correctCurrentTurn,
   createDart,
   endTurn,
+  undo,
 } from "@/engine";
 import type { CameraHealth } from "@/lib/camera-health";
 
@@ -260,11 +262,50 @@ export function applyCameraCorrect(opts: {
   };
 }
 
+/**
+ * Step backward one dart (same engine undo as /play).
+ * Reverses camera or manual scores already applied on the server match.
+ */
+export function applyCameraUndo(opts: {
+  matchId?: string;
+  roomId?: string;
+}):
+  | { ok: true; state: GameState; callout?: string }
+  | { ok: false; error: string } {
+  const state = resolveMatch({ matchId: opts.matchId, roomId: opts.roomId });
+  if (!state) return { ok: false, error: "No active match found" };
+  if (
+    state.status !== "playing" &&
+    state.status !== "leg_won" &&
+    state.status !== "match_won"
+  ) {
+    return { ok: false, error: `Match status is ${state.status}` };
+  }
+  if (!canUndo(state)) {
+    return { ok: false, error: "Nothing to undo" };
+  }
+
+  const result = undo(state);
+  matches.set(result.state.id, result.state);
+  emit({
+    type: "dart_detected",
+    data: {
+      state: result.state,
+      callout: result.callout ?? "UNDO",
+      turnEnded: false,
+      undone: true,
+    },
+  });
+  emit({ type: "match_update", data: result.state });
+  return { ok: true, state: result.state, callout: result.callout };
+}
+
 export function setCameraHealth(health: CameraHealth): CameraHealth {
   const room = (health.roomId || "Board 1").trim() || "Board 1";
   const next: CameraHealth = {
     ...health,
     roomId: room,
+    takeout: Boolean(health.takeout),
     ts: health.ts || Date.now(),
   };
   cameraHealthByRoom.set(room, next);
@@ -272,6 +313,45 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   cameraHealthByRoom.set(room.toLowerCase(), next);
   emit({ type: "camera_health", data: next });
   return next;
+}
+
+/** Patron / staff ack: "darts pulled — ready for next visit" (bridge consumes). */
+const takeoutReadyByRoom = new Map<string, number>();
+
+function normRoom(roomId: string): string {
+  return (roomId || "Board 1").trim() || "Board 1";
+}
+
+export function requestTakeoutReady(roomId: string): { roomId: string; ts: number } {
+  const room = normRoom(roomId);
+  const ts = Date.now();
+  takeoutReadyByRoom.set(room, ts);
+  takeoutReadyByRoom.set(room.toLowerCase(), ts);
+  emit({ type: "takeout_ready", data: { roomId: room, ts } });
+  return { roomId: room, ts };
+}
+
+export function peekTakeoutReady(roomId: string): number | null {
+  const room = normRoom(roomId);
+  return (
+    takeoutReadyByRoom.get(room) ??
+    takeoutReadyByRoom.get(room.toLowerCase()) ??
+    null
+  );
+}
+
+/** Bridge poll: return pending ts and clear it when consume=true. */
+export function consumeTakeoutReady(
+  roomId: string,
+  consume: boolean
+): { pending: boolean; ts: number | null; roomId: string } {
+  const room = normRoom(roomId);
+  const ts = peekTakeoutReady(room);
+  if (ts != null && consume) {
+    takeoutReadyByRoom.delete(room);
+    takeoutReadyByRoom.delete(room.toLowerCase());
+  }
+  return { pending: ts != null, ts, roomId: room };
 }
 
 export function getCameraHealth(roomId?: string): CameraHealth | undefined {

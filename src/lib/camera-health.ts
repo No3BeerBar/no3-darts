@@ -5,7 +5,7 @@
 export type CameraHealth = {
   roomId: string;
   ok: boolean;
-  level: "ok" | "degraded" | "unhealthy" | string;
+  level: "ok" | "degraded" | "unhealthy" | "takeout" | string;
   message: string;
   reason?: string;
   fps?: number[];
@@ -15,5 +15,7 @@ export type CameraHealth = {
   status?: string;
   unhealthyForS?: number;
   restarting?: boolean;
+  /** Autodarts remove-darts / takeout mode — scoring paused on the bridge. */
+  takeout?: boolean;
   ts: number;
 };

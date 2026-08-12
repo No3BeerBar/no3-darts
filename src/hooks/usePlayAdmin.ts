@@ -4,7 +4,7 @@
  * Patron `/play` vs staff admin chrome.
  *
  * Default: kiosk / patron — big scores, thrower, mode banner, current visit
- * (tap-to-correct), recent visits, board. No Undo/Edit/End/Pause/Cancel/Home
+ * (tap-to-correct + Undo), recent visits, board. No Edit/End/Pause/Cancel/Home
  * or Keys/Pad tabs.
  *
  * Unlock staff tools via: `?admin=1`, long-press logo + PIN, or Admin link.

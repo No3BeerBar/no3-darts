@@ -11,10 +11,12 @@ An experimental DIY OpenCV stack still lives under [`detection/`](../detection/R
 1. Start a match on the tablet UI (or `POST /api/matches`) — pick any No3 game mode.
 2. The browser syncs match state to the server.
 3. Your detector calls `POST /api/camera/dart` when a dart is recognized.
-4. On takeout / visit end, call `POST /api/camera/end-turn` (Autodarts bridge does this automatically).
+4. On takeout / visit end, call `POST /api/camera/end-turn` (Autodarts bridge does this automatically). While Autodarts is in takeout, the bridge pauses dart/correct posts.
 5. On mid-visit correction (changed / removed throw), call `POST /api/camera/correct` with the full visit.
-6. Optional: `POST /api/camera/health` so iPad/TV can toast FPS / restart notices.
-7. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
+6. Optional: `POST /api/camera/health` so iPad/TV can toast FPS / restart / takeout notices (`takeout: true` / `level: "takeout"`).
+7. Optional: patron ack `POST /api/camera/takeout-ready` → bridge `GET …?consume=1` to reset/resume after remove-darts.
+8. Optional: `POST /api/camera/undo` steps the server match back one dart (same engine as `/play` Undo).
+9. Optional: subscribe to `GET /api/camera/stream` for confirmations / multi-display.
 
 Bar mini-PC wiring + one-script start: [`docs/BOARD-STATION.md`](./BOARD-STATION.md).
 
@@ -79,6 +81,34 @@ Content-Type: application/json
 
 Call this when the player pulls darts early (1–2 darts) or when the detector signals takeout. After a full 3-dart visit No3 usually auto-ends the turn; a redundant end-turn is safe (returns `READY`).
 
+## Takeout ready (patron ack)
+
+```http
+POST /api/camera/takeout-ready
+Content-Type: application/json
+
+{ "roomId": "Board 1" }
+```
+
+Open to the play kiosk (no camera API key). Bridge polls:
+
+```http
+GET /api/camera/takeout-ready?room=Board%201&consume=1
+```
+
+Used when Autodarts is stuck in remove-darts / takeout and the player confirms the board is clear (**Ready for next visit** on `/play`).
+
+## Undo one dart
+
+```http
+POST /api/camera/undo
+Content-Type: application/json
+
+{ "roomId": "Board 1" }
+```
+
+Reverses the last applied dart on the server match (camera or manual). Call repeatedly to walk backward through the open visit, then prior visits. `/play` Undo uses the same engine locally and syncs match state; this endpoint is for bridge/tools that need an immediate server-side step.
+
 ## Correct visit (Autodarts-style)
 
 When Board Manager **changes or removes** a prior throw in the current visit (not just appends), replace the open turn in one shot:
@@ -134,8 +164,11 @@ Bridge: poll GET http://127.0.0.1:3180/api/state
         → new dart → POST /api/camera/dart { kind, number, roomId }
         → corrected / shrunk visit → POST /api/camera/correct { darts[] }
         → takeout / throws cleared → POST /api/camera/end-turn
+          (dart/correct paused until takeout clears)
         → FPS / cam failure → POST /api/camera/health (+ restart Board Manager)
-UI:     SSE / poll merges camera darts + health toasts
+        → takeout banner → POST /api/camera/health { takeout: true }
+UI:     SSE / poll merges camera darts + health / takeout banners
+        patron Ready → POST /api/camera/takeout-ready
 ```
 
 Bar one-script start: [`docs/BOARD-STATION.md`](./BOARD-STATION.md)  

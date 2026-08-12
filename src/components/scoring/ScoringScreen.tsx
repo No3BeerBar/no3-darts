@@ -4,13 +4,13 @@
  * `/play` scoring UI.
  *
  * Patron (default): thrower, scores, mode banner, current visit (tap-to-correct),
- * recent visits, dartboard, How to play + Stats + End game. Match win auto-saves
- * (no Save dialog). Board sits in a fixed stage — visit history / seats scroll and
- * never shove it. No global AppShell nav — see docs/PLAY.md.
+ * Undo (dart-by-dart), recent visits, dartboard, How to play + Stats + End game.
+ * Match win auto-saves (no Save dialog). Board sits in a fixed stage — visit
+ * history / seats scroll and never shove it. No global AppShell nav — see docs/PLAY.md.
  *
- * Staff (admin unlocked): Undo / Edit / End turn / Pause / Home + Keys/Pad.
+ * Staff (admin unlocked): Edit / End turn / Pause / Home + Keys/Pad.
  * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
- * End game is patron-visible (not behind admin).
+ * Undo + End game are patron-visible (not behind admin).
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   baseballInning,
+  canUndo,
   dartPointsForMode,
   fortyOneBoardFocus,
   fortyOneDartPoints,
@@ -67,6 +68,7 @@ import { NumberPad } from "./NumberPad";
 import { PlayAdminPinModal } from "./PlayAdminPinModal";
 import { PlayerPanel } from "./PlayerPanel";
 import { ResumeAuthGate } from "./ResumeAuthGate";
+import { TakeoutBanner } from "./TakeoutBanner";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
 
@@ -219,7 +221,12 @@ function ScoringScreenInner() {
   useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  const { notice: cameraNotice } = useCameraHealth(
+  const {
+    notice: cameraNotice,
+    takeout: takeoutActive,
+    takeoutBusy,
+    acknowledgeTakeout,
+  } = useCameraHealth(
     state?.roomId,
     Boolean(state) && seatsOk && !botThrowing
   );
@@ -335,6 +342,10 @@ function ScoringScreenInner() {
   const isAdmin = admin.isAdmin;
   const modeInning = state.mode === "baseball" ? baseballInning(state) : undefined;
   const playing = state.status === "playing";
+  const undoEnabled =
+    seatsOk &&
+    !botThrowing &&
+    canUndo(state);
 
   const endGame = () => {
     // Read live store — avoid stale closure; never use window.confirm (iPad kiosk)
@@ -412,6 +423,11 @@ function ScoringScreenInner() {
     <div className="play-match flex flex-col">
       <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
+      <TakeoutBanner
+        active={takeoutActive}
+        busy={takeoutBusy}
+        onReady={() => void acknowledgeTakeout()}
+      />
 
       {!seatsOk && (
         <ResumeAuthGate
@@ -529,11 +545,21 @@ function ScoringScreenInner() {
             >
               End game
             </button>
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!undoEnabled}
+              className={cn(
+                "btn-ghost min-h-11 px-4 font-display text-xs tracking-wider",
+                undoEnabled
+                  ? "border border-zinc-600 text-white"
+                  : "text-zinc-700 opacity-50"
+              )}
+            >
+              Undo
+            </button>
             {isAdmin ? (
               <>
-                <button type="button" onClick={undo} className="btn-ghost min-h-10 px-3 text-xs">
-                  Undo
-                </button>
                 <button type="button" onClick={editLastTurn} className="btn-ghost min-h-10 px-3 text-xs">
                   Edit
                 </button>
@@ -595,8 +621,27 @@ function ScoringScreenInner() {
           {showCheckout && playing && <CheckoutBanner suggestion={checkout} />}
 
           <div className="rounded-xl border border-[rgb(225_6_0/0.28)] bg-[#0a0a0a] px-3 py-2">
-            <div className="mb-1 font-display text-[10px] tracking-[0.18em] text-zinc-500">
-              THIS VISIT
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <div className="font-display text-[10px] tracking-[0.18em] text-zinc-500">
+                THIS VISIT
+              </div>
+              {(playing ||
+                state.status === "leg_won" ||
+                state.status === "match_won") && (
+                <button
+                  type="button"
+                  onClick={undo}
+                  disabled={!undoEnabled}
+                  className={cn(
+                    "min-h-12 min-w-[7.5rem] rounded-lg px-5 font-display text-sm font-semibold tracking-wider",
+                    undoEnabled
+                      ? "bg-zinc-100 text-zinc-950 hover:bg-white"
+                      : "bg-zinc-800 text-zinc-600"
+                  )}
+                >
+                  Undo
+                </button>
+              )}
             </div>
             <TurnDarts
               darts={state.currentTurnDarts}
@@ -618,7 +663,7 @@ function ScoringScreenInner() {
             />
             {playing && (
               <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
-                Tap a dart to fix
+                Undo steps back one dart · tap a dart to fix
               </p>
             )}
           </div>

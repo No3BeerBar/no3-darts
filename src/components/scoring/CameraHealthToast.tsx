@@ -5,10 +5,10 @@ import type { CameraHealthNotice } from "@/hooks/useCameraHealth";
 
 /** Persistent banner for camera / detection health (iPad + TV). */
 export function CameraHealthToast({ notice }: { notice: CameraHealthNotice }) {
-  if (!notice || notice.level === "ok") {
-    // Recovery flash handled briefly by parent clearing notice
-    if (!notice) return null;
-  }
+  if (!notice) return null;
+
+  // Takeout has its own actionable banner (TakeoutBanner)
+  if (notice.level === "takeout" || notice.takeout) return null;
 
   const unhealthy =
     notice.level === "unhealthy" ||

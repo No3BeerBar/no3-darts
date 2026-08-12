@@ -26,6 +26,8 @@ health:
   fps_min: 5.0                 # treat below this as unhealthy when FPS is exposed
   unhealthy_seconds: 15.0      # how long degraded before restart attempt
   restart_cooldown_seconds: 60.0
-  between_games_recal: true    # probe Board Manager reset/calibrate when board empty
+  # Probe Board Manager reset/calibrate only at No3 game boundaries
+  # (no playing/paused match) when the board is empty - not every visit takeout.
+  between_games_recal: true
 
 logs_dir: "./logs"

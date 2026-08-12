@@ -105,7 +105,13 @@ export function TvDisplay() {
     <div className="tv-display shell-black relative overflow-hidden">
       {cameraNotice && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-50 flex justify-center px-4">
-          <div className="rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur">
+          <div
+            className={
+              /takeout|pull darts/i.test(cameraNotice)
+                ? "rounded-xl border border-sky-500/50 bg-sky-950/95 px-6 py-3 font-display text-lg tracking-wide text-sky-50 shadow-2xl backdrop-blur"
+                : "rounded-xl border border-amber-500/50 bg-amber-950/95 px-6 py-3 font-display text-lg tracking-wide text-amber-100 shadow-2xl backdrop-blur"
+            }
+          >
             {cameraNotice}
           </div>
         </div>
