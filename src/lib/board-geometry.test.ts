@@ -7,6 +7,7 @@ import {
   VB,
   boardNumberAtAngle,
   clientToSvg,
+  hitFromClient,
   hitFromSvg,
   normalizeAngleDeg,
   segmentCenter,
@@ -133,6 +134,74 @@ describe("board-geometry polar mapping", () => {
     expect(top!.x).toBeCloseTo(200, 5);
     expect(top!.y).toBeCloseTo(0, 5);
     expect(hitFromSvg(top!.x, CY - BOARD_R * 0.59).number).toBe(20);
+  });
+
+  it("clientToSvg + hitFromClient smoke: top treble is T20, right is T6 (not T5/S1)", () => {
+    // Square board rect (post-#52 wrapper) — production iPad path
+    const svg = {
+      getBoundingClientRect: () => ({
+        left: 40,
+        top: 80,
+        width: 360,
+        height: 360,
+        right: 400,
+        bottom: 440,
+        x: 40,
+        y: 80,
+        toJSON: () => ({}),
+      }),
+      viewBox: { baseVal: { x: 0, y: 0, width: VB, height: VB } },
+    } as unknown as SVGSVGElement;
+
+    const toClient = (angleDeg: number, radiusNorm: number) => {
+      const p = svgPointForPolar(angleDeg, radiusNorm);
+      const scale = 360 / VB;
+      return {
+        clientX: 40 + p.x * scale,
+        clientY: 80 + p.y * scale,
+      };
+    };
+
+    const topT = toClient(0, 0.59);
+    const topHit = hitFromClient(svg, topT.clientX, topT.clientY);
+    expect(topHit?.label).toBe("T20");
+
+    const rightT = toClient(90, 0.59);
+    const rightHit = hitFromClient(svg, rightT.clientX, rightT.clientY);
+    expect(rightHit?.label).toBe("T6");
+
+    // Neighbor of 20 must not steal top-center treble
+    const nearFive = toClient(348, 0.59);
+    expect(hitFromClient(svg, nearFive.clientX, nearFive.clientY)?.label).toBe(
+      "T5",
+    );
+  });
+
+  it("clientToSvg wide letterbox still maps top to 20 (not 5)", () => {
+    const svg = {
+      getBoundingClientRect: () => ({
+        left: 0,
+        top: 0,
+        width: 400,
+        height: 200, // wider than tall → vertical content, horizontal letterbox
+        right: 400,
+        bottom: 200,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+      viewBox: { baseVal: { x: 0, y: 0, width: VB, height: VB } },
+    } as unknown as SVGSVGElement;
+
+    // Content 200×200 meet, origin (100, 0); top of board at screen (200, 0)
+    const top = clientToSvg(svg, 200, 0);
+    expect(top).not.toBeNull();
+    expect(top!.x).toBeCloseTo(200, 5);
+    expect(top!.y).toBeCloseTo(0, 5);
+    const trebleY = CY - BOARD_R * 0.59;
+    const trebleScreenY = 0 + trebleY * (200 / VB);
+    const hit = hitFromClient(svg, 200, trebleScreenY);
+    expect(hit?.label).toBe("T20");
   });
 });
 

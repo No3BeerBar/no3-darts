@@ -462,6 +462,25 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
   });
 });
 
+describe("Board1 acceptance: play room label + start helper + no Σ banner", () => {
+  it("keeps room sticky and surfaces Board label; start helper when empty", () => {
+    const sync = readSrc("src/components/layout/RoomQuerySync.tsx");
+    expect(sync).toContain("router.replace(playHref(stored))");
+    expect(sync).toContain("router.replace(setupHref(stored))");
+
+    const scoring = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(scoring).toContain("settings.roomName");
+    expect(scoring).toContain("state.roomId || settings.roomName");
+    // John: no per-dart Σ banner — X01 path keeps showDartPoints off
+    expect(scoring).toMatch(/showDartPoints=\{baseball \|\| fortyOne\}/);
+    expect(scoring).not.toMatch(/showDartPoints=\{true\}/);
+
+    const setup = readSrc("src/components/setup/GameSetup.tsx");
+    expect(setup).toMatch(/Add at least one player to start/);
+    expect(setup).toContain("disabled={!canStart}");
+  });
+});
+
 describe("Board1 acceptance: camera multi-step undo", () => {
   it("applyCameraUndo walks a full visit and fails closed when idle", async () => {
     const { applyCameraUndo } = await import("@/lib/server-game-store");

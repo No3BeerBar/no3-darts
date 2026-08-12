@@ -30,6 +30,7 @@ function isBareRoute(pathname: string) {
 }
 
 function ShellBrand({ room }: { room?: string | null }) {
+  const lane = room?.trim();
   return (
     <Link href={playHref(room)} className="flex min-w-0 items-center gap-2">
       <Image
@@ -43,6 +44,11 @@ function ShellBrand({ room }: { room?: string | null }) {
         <div className="font-logo truncate text-base text-white">
           No.<span className="text-[var(--brand-red)]">3</span> Darts
         </div>
+        {lane ? (
+          <div className="truncate font-display text-[10px] tracking-wider text-zinc-500">
+            {lane}
+          </div>
+        ) : null}
       </div>
     </Link>
   );
