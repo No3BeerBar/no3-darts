@@ -449,6 +449,8 @@ describe("Board1 acceptance: Board1-FixMe recovery bat", () => {
     expect(bat).toContain("PHOTO THIS WINDOW");
     expect(bat).toContain("board-station\\config.yaml");
     expect(bat).toMatch(/Leave the bridge window open/i);
+    expect(bat).toMatch(/TV kiosk/i);
+    expect(bat).toMatch(/No3-Board1-\(Setup\|FixMe\)/);
     for (let i = 0; i < bat.length; i++) {
       expect(bat.charCodeAt(i)).toBeLessThanOrEqual(127);
     }

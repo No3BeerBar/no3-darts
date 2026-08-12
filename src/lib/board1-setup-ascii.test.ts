@@ -61,11 +61,42 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
   it("Board1-FixMe.bat / .ps1 are pure ASCII + recovery markers", () => {
     assertAsciiFile("public/Board1-FixMe.bat");
     assertAsciiFile("public/Board1-FixMe.ps1");
+    assertAsciiFile("public/Board1-FixMe.ps1.txt");
     const bat = readFileSync(join(ROOT, "public/Board1-FixMe.bat"), "utf8");
     expect(bat).toContain("___NO3_BOARD1_FIXME_PS1___");
     expect(bat).toContain("takeout-ready");
     expect(bat).toContain("PHOTO THIS WINDOW");
     expect(bat).toMatch(/\[Text\.Encoding\]::ASCII/);
+    // Zip-only fallback kill parity with embedded Fix Me
+    expect(bat).toMatch(/No3-Board1-\(Setup\|FixMe\)/);
+    expect(bat).toContain("companion\\\\__main__\\.py");
+    expect(bat).toMatch(/TV kiosk/i);
+  });
+
+  it("Board1-FixMe.bat embed matches Board1-FixMe.ps1 exactly", () => {
+    const bat = readFileSync(join(ROOT, "public/Board1-FixMe.bat"), "utf8");
+    const ps1 = readFileSync(join(ROOT, "public/Board1-FixMe.ps1"), "utf8");
+    const txt = readFileSync(join(ROOT, "public/Board1-FixMe.ps1.txt"), "utf8");
+    const marker = "___NO3_BOARD1_FIXME_PS1___";
+    const norm = (s: string) => {
+      let n = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      // Drop trailing empty lines from CRLF split artifacts
+      while (n.endsWith("\n\n")) n = n.slice(0, -1);
+      if (!n.endsWith("\n")) n += "\n";
+      return n;
+    };
+    const lines = norm(bat).split("\n");
+    // last element is "" because of final \n — ignore for marker search
+    const idx = lines.findIndex((l) => l === marker);
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const embedded = lines.slice(idx + 1).join("\n");
+    const embeddedNorm = embedded.endsWith("\n") ? embedded : embedded + "\n";
+    // slice after marker includes trailing "" from split → trim to single final \n
+    const embeddedClean = embeddedNorm.replace(/\n+$/, "\n");
+    expect(embeddedClean).toBe(norm(ps1));
+    expect(norm(txt)).toBe(norm(ps1));
+    expect(ps1).toContain("Test-No3LeftoverCommand");
+    expect(ps1).toContain("[/\\\\]tv(\\?|#|\\s|$)");
   });
 
   it("Board1-Setup.bat embeds PS 5.1 pre-parse + ASCII write markers", () => {

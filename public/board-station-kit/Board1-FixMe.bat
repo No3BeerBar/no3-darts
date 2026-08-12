@@ -74,14 +74,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ZipPath=Join-Path $env:TEMP 'board-station-board1.zip';" ^
   "$StartBat=Join-Path $KitRoot 'board-station\start-board.bat';" ^
   "$CfgPath=Join-Path $KitRoot 'board-station\config.yaml';" ^
-  "Write-Host '[fallback] Stopping leftover No3/companion/start-board...';" ^
+  "Write-Host '[fallback] Stopping leftover No3/companion/start-board/TV kiosk...';" ^
   "try {" ^
   "  $procs = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue);" ^
   "  foreach ($p in $procs) {" ^
   "    if (-not $p -or $p.ProcessId -eq $PID) { continue };" ^
   "    $cmd = ''; try { $cmd = [string]$p.CommandLine } catch { };" ^
   "    if (-not $cmd) { continue };" ^
-  "    if ($cmd -match '(?i)Start-Board\.ps1' -or $cmd -match '(?i)start-board\.bat' -or $cmd -match '(?i)-m(\s)+companion(\s)+bridge' -or ($cmd -match '(?i)autodarts-companion' -and $cmd -match '(?i)python')) {" ^
+  "    $hit = $false;" ^
+  "    if ($cmd -match '(?i)Start-Board\.ps1') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)start-board\.bat') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)No3-Board1-(Setup|FixMe)') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)-m(\s)+companion(\s)+bridge') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)companion\\__main__\.py') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)autodarts-companion' -and $cmd -match '(?i)python') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)Board1-FixMe\.ps1') { $hit = $true }" ^
+  "    elseif ($cmd -match '(?i)(msedge\.exe|chrome\.exe|microsoft-edge)' -and $cmd -match '(?i)[/\\]tv(\?|#|\s|$)' -and $cmd -match '(?i)(no3-darts|railway\.app|127\.0\.0\.1|localhost)') { $hit = $true };" ^
+  "    if ($hit) {" ^
   "      try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host ('  Stopped PID ' + $p.ProcessId) } catch { }" ^
   "    }" ^
   "  }" ^
@@ -197,9 +206,10 @@ ___NO3_BOARD1_FIXME_PS1___
 #Requires -Version 5.1
 # No.3 Board 1 Fix Me for the Windows mini-PC (embedded in Board1-FixMe.bat).
 # ASCII-only so Windows PowerShell 5.1 never hits UTF-8 / smart-quote parse errors.
-# Kills leftover No3/companion/start-board processes, refreshes kit if stale
-# (preserves board-station\config.yaml), starts Autodarts if needed, clears
-# stuck takeout/bridge state, launches start-board.bat.
+# Kills leftover No3/companion/start-board processes and stuck HDMI TV kiosk
+# browsers (/tv), refreshes kit if stale (preserves board-station\config.yaml),
+# starts Autodarts if needed, clears stuck takeout/bridge state, launches
+# start-board.bat (companion + TV via config open_tv).
 
 $ErrorActionPreference = "Stop"
 
@@ -252,8 +262,25 @@ function Test-Python {
   return $false
 }
 
+function Test-No3LeftoverCommand([string]$Cmd) {
+  if (-not $Cmd) { return $false }
+  if ($Cmd -match '(?i)Start-Board\.ps1') { return $true }
+  if ($Cmd -match '(?i)start-board\.bat') { return $true }
+  if ($Cmd -match '(?i)No3-Board1-(Setup|FixMe)') { return $true }
+  if ($Cmd -match '(?i)-m(\s)+companion(\s)+bridge') { return $true }
+  if ($Cmd -match '(?i)companion\\__main__\.py') { return $true }
+  if ($Cmd -match '(?i)autodarts-companion' -and $Cmd -match '(?i)python') { return $true }
+  if ($Cmd -match '(?i)Board1-FixMe\.ps1') { return $true }
+  # Stuck HDMI kiosk only: Edge/Chrome with No.3 /tv (not random browser tabs).
+  $isBrowser = $Cmd -match '(?i)(msedge\.exe|chrome\.exe|microsoft-edge)'
+  $isTv = $Cmd -match '(?i)[/\\]tv(\?|#|\s|$)'
+  $isNo3 = $Cmd -match '(?i)(no3-darts|railway\.app|127\.0\.0\.1|localhost)'
+  if ($isBrowser -and $isTv -and $isNo3) { return $true }
+  return $false
+}
+
 function Stop-No3Leftovers {
-  Write-Host "  Looking for leftover No3 / companion / start-board processes..."
+  Write-Host "  Looking for leftover No3 / companion / start-board / TV kiosk..."
   $killed = 0
   $procs = @()
   try {
@@ -266,16 +293,7 @@ function Stop-No3Leftovers {
     if ($p.ProcessId -eq $PID) { continue }
     $cmd = ""
     try { $cmd = [string]$p.CommandLine } catch { $cmd = "" }
-    if (-not $cmd) { continue }
-    $hit = $false
-    if ($cmd -match '(?i)Start-Board\.ps1') { $hit = $true }
-    elseif ($cmd -match '(?i)start-board\.bat') { $hit = $true }
-    elseif ($cmd -match '(?i)No3-Board1-(Setup|FixMe)') { $hit = $true }
-    elseif ($cmd -match '(?i)-m(\s)+companion(\s)+bridge') { $hit = $true }
-    elseif ($cmd -match '(?i)companion\\__main__\.py') { $hit = $true }
-    elseif ($cmd -match '(?i)autodarts-companion' -and $cmd -match '(?i)python') { $hit = $true }
-    elseif ($cmd -match '(?i)Board1-FixMe\.ps1') { $hit = $true }
-    if (-not $hit) { continue }
+    if (-not (Test-No3LeftoverCommand $cmd)) { continue }
     try {
       Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
       Write-Host ("  Stopped PID {0} ({1})" -f $p.ProcessId, $p.Name)
@@ -283,7 +301,7 @@ function Stop-No3Leftovers {
     } catch { }
   }
   if ($killed -eq 0) {
-    Write-Host "  No leftover No3/companion/start-board processes found."
+    Write-Host "  No leftover No3/companion/start-board/TV processes found."
   } else {
     Write-Host ("  Stopped {0} process(es)." -f $killed) -ForegroundColor Green
     Start-Sleep -Seconds 1
@@ -596,7 +614,7 @@ function Copy-FixMeToKit {
 
 Write-Banner "No.3 Darts - Board 1 Fix Me"
 
-Write-Host "[1/6] Stopping leftover No3 / companion / start-board..."
+Write-Host "[1/6] Stopping leftover No3 / companion / start-board / TV kiosk..."
 Stop-No3Leftovers
 
 Write-Host "[2/6] Checking Python..."
