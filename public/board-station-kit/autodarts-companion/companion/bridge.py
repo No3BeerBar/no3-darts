@@ -182,14 +182,16 @@ def run_bridge(
       takeout/end-turn, so a 3-dart AD visit never loses dart 3 to the next seat.
     - Takeout with fewer than 3 throws defers end-turn (wait for dart 3 or CLEARED)
       so a premature Takeout cannot seat-jump dart 3 onto the next player.
-    - Incomplete-visit early pull needs sustained empty polls (not a one-poll
-      Takeout-finished flicker) before end-turn.
+    - Incomplete visits never auto end-turn on empty/takeout-finished (dart 3
+      lag was seat-jumping every visit). Patron Ready / reset is the only
+      incomplete early-pull path.
     - While mirroring an open AD visit, lock the No3 seat and send
       expectedPlayerIndex on dart/correct/end-turn; refuse wrong-seat posts.
     - After No3 closes a visit (3rd dart / end-turn) OR AD status is Takeout*,
-      dart/correct posts freeze until throws are empty and AD leaves takeout.
+      dart/correct posts freeze until throws are empty and AD leaves takeout
+      (or patron Ready forces unlock on a clear board).
     - If AD re-shows the closed visit after unlock (late dart 3), refuse to
-      post onto the next seat (continuation guard).
+      post onto the next seat (continuation guard, label-aware).
     - Between-games recal only when No3 match is absent or at a leg/match
       boundary (never while status is playing / paused).
     """
@@ -213,7 +215,9 @@ def run_bridge(
     visit_closed = False
     closed_by_scoring = False
     saw_takeout_after_close = False
-    # Consecutive empty polls while in_takeout (early-pull confirm)
+    # Patron tapped Ready / Reset takeout on /play
+    patron_force_ready = False
+    # Consecutive empty polls while in_takeout (UI / diagnostics)
     empty_polls_in_takeout = 0
     # Hard seat lock for the open AD visit (No3 currentPlayerIndex)
     locked_seat: Optional[int] = None
@@ -573,14 +577,15 @@ def run_bridge(
     ) -> bool:
         nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
         nonlocal closed_by_scoring, saw_takeout_after_close, empty_polls_in_takeout
-        nonlocal locked_seat
+        nonlocal locked_seat, patron_force_ready, closed_visit_throws
+        ready = patron_force_ready
         if not should_unlock_next_visit(
             visit_closed=visit_closed,
             takeout=takeout,
             throws_empty=not throws,
             saw_takeout_after_close=saw_takeout_after_close,
             closed_by_scoring=closed_by_scoring,
-            patron_ready=patron_ready,
+            patron_ready=bool(ready or patron_ready),
         ):
             return False
         visit_closed = False
@@ -588,9 +593,15 @@ def run_bridge(
         in_takeout = False
         closed_by_scoring = False
         saw_takeout_after_close = False
+        patron_force_ready = False
         empty_polls_in_takeout = 0
         locked_seat = None
         prev_throws = []
+        # Intentional Ready reset: next seat's first dart is legitimate.
+        # Keep closed_visit_throws after auto takeout-unlock so residual
+        # late dart 3 (prefix / singleton) is still refused.
+        if ready:
+            closed_visit_throws = []
         console.print(
             "[bold green]next visit ready[/bold green] "
             "board clear - scoring resumed for current thrower"
@@ -598,20 +609,20 @@ def run_bridge(
         post_takeout_health(
             status,
             active=False,
-            message="Ready for next visit",
+            message="Takeout reset - ready for next visit",
         )
         return True
 
     def handle_takeout_ready_ack(status: str, throws: list[Any]) -> None:
         """
-        Patron Ready on /play: clear stuck takeout handshake (bridge + UI).
+        Patron Ready/Reset on /play: clear stuck takeout handshake (bridge + UI).
 
-        - Clears Pull-darts health immediately (no re-post takeout:true).
+        - Ends open visit (including incomplete early pull - patron confirms).
+        - Clears Pull-darts health immediately (no sticky takeout:true).
         - Probes Board Manager /api/reset (stuck takeout) - NOT between-games recal.
-        - Unlocks next-visit scoring when throws are empty.
-        - Does not end-turn an incomplete visit (avoids dart-3 seat jump).
+        - Unlocks next-visit scoring when throws are empty (even if AD status sticks).
         """
-        nonlocal visit_closed, saw_takeout_after_close, in_takeout
+        nonlocal visit_closed, saw_takeout_after_close, in_takeout, patron_force_ready
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -621,17 +632,15 @@ def run_bridge(
         if not data or not data.get("pending"):
             return
         console.print(
-            "[cyan]takeout-ready[/cyan] patron Ready - "
-            "clearing takeout handshake"
+            "[cyan]takeout-ready[/cyan] patron Ready/Reset - "
+            "ending open visit if needed, clearing handshake"
         )
-        # Handshake so empty board can unlock; leave incomplete visits open
+        maybe_end_turn("takeout-ready ack")
+        mark_visit_closed("takeout-ready ack")
+        # Ack = takeout handshake + force unlock once board is empty
         saw_takeout_after_close = True
         in_takeout = False
-        # Only end-turn a fully mirrored visit - never close mid-visit from Ready
-        if (not visit_closed) and len(throws) >= 3:
-            maybe_end_turn("takeout-ready ack full visit")
-        # Local Board Manager reset only (stuck remove-darts). Mid-match
-        # between-games recal stays gated separately via refresh_recal_gate.
+        patron_force_ready = True
         result = client.try_recalibrate()
         if result.get("ok"):
             console.print(
@@ -765,7 +774,7 @@ def run_bridge(
             else:
                 empty_polls_in_takeout = 0
 
-            # Patron "Ready for next visit" from /play (clears stuck handshake)
+            # Patron "Reset takeout / Ready for next visit" from /play
             handle_takeout_ready_ack(status or prev_status, throws)
 
             if status and status != prev_status:
@@ -945,7 +954,7 @@ def run_bridge(
                 takeout=takeout_now,
                 empty_polls=empty_polls_in_takeout,
             ):
-                # Confirmed early pull: empty board after takeout window
+                # Disabled for incomplete visits (always False) - kept for gate API
                 maybe_end_turn("left takeout empty")
                 mark_visit_closed("left takeout empty")
                 if visit_closed:

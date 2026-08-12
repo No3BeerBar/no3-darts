@@ -110,6 +110,10 @@ def test_fixture_three_darts() -> None:
         ("takeout", True),
         ("Hand", True),  # Detection State
         ("Partial Takeout", True),  # Detection State
+        ("Removing darts", True),
+        ("removing darts...", True),
+        ("Remove darts", True),
+        ("Pull darts", True),
         ("", False),
     ],
 )

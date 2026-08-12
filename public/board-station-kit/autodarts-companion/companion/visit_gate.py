@@ -9,21 +9,21 @@ local integrations such as ioBroker/HA):
     "Partial Takeout", "Takeout"
   - throws / numThrows: counted darts (often still present during Takeout)
 
-Active remove-darts = Takeout / Takeout started / Hand / Partial Takeout.
-"Takeout finished" means takeout completed - must NOT keep scoring frozen.
+Active remove-darts = Takeout / Takeout started / Hand / Partial Takeout /
+"Removing darts". "Takeout finished" means takeout completed - must NOT
+keep scoring frozen.
 
 Critical ordering (bar P0):
   1. Mirror AD throw growth into No3 for the *current* seat first.
   2. Only then end-turn / freeze on takeout.
-  3. Do not end-turn on takeout until 3 throws are visible (or board cleared
-     long enough to confirm an early pull).
+  3. Never auto end-turn an incomplete (1-2 dart) visit - dart 3 often lags
+     several seconds after a Takeout/empty flicker. Incomplete early pull is
+     confirmed only by the patron Ready / reset control on /play.
   4. While mirroring an open AD visit, lock the No3 seat; refuse dart/end-turn
      that would apply to a different seat than the visit started on.
-  Otherwise dart 3 of a visit can miss the current player or land on the next
-  after an empty-board unlock flicker.
-
-After No3 closes a visit, freeze dart/correct posts until the board is empty
-and AD has left active takeout (or patron Ready clears a stuck handshake).
+  5. After a visit closes, do not unlock on scored-close alone - require an AD
+     takeout handshake or patron Ready so residual dart 3 cannot start the
+     next seat. Freeze until board empty and AD left *active* takeout (or Ready).
 """
 
 from __future__ import annotations
@@ -31,10 +31,11 @@ from __future__ import annotations
 from typing import Any, Optional, Sequence
 
 from .client import extract_status, throw_identity
-from .mapping import is_takeout_finished_status, is_takeout_status
+from .mapping import format_segment_label, is_takeout_finished_status, is_takeout_status
 
-# Incomplete visit early-pull: require sustained empty polls so a late dart 3
-# (often 0.5-2s after a Takeout/clear flicker) cannot seat-jump.
+# Kept for tests / docs. Auto early-pull no longer ends incomplete visits;
+# patron Ready is the incomplete path. Value still describes "sustained empty"
+# windows used in historical regressions.
 INCOMPLETE_VISIT_MIN_EMPTY_POLLS = 4
 
 
@@ -72,7 +73,13 @@ def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
 
 
 def scoring_frozen(*, takeout: bool, visit_closed: bool) -> bool:
-    """No dart/correct posts while AD takeout OR No3 visit already closed."""
+    """
+    High-level freeze signal for UI / health.
+
+    Live bridge still allows APPEND of dart 3 while takeout is active and the
+    No3 visit is open (same-poll Takeout + 3 throws). Dart/correct freeze hard
+    once visit_closed.
+    """
     return bool(takeout or visit_closed)
 
 
@@ -88,9 +95,8 @@ def should_end_turn_on_takeout(
     arrives one poll later. Ending immediately advances the seat, then an empty
     flicker can unlock scoring so dart 3 posts onto the next player.
 
-    End-turn on takeout only when we already closed via scoring, or all 3 throws
-    are present (caller syncs APPEND first). Incomplete visits wait for dart 3
-    or CLEARED while in_takeout (confirmed early pull).
+    End-turn on takeout only when all 3 throws are present (caller syncs APPEND
+    first). Incomplete visits wait for dart 3 or patron Ready reset.
     """
     if visit_closed:
         return False
@@ -107,8 +113,8 @@ def should_clear_stale_takeout(
     """
     Drop sticky in_takeout when AD leaves takeout while throws remain.
 
-    If the board is empty, keep in_takeout latched so consecutive-empty
-    early-pull confirmation can still fire (do not clear on the first empty poll).
+    If the board is empty, keep in_takeout latched so takeout UI stays up until
+    Ready / real clear (do not clear on the first empty poll).
     """
     return bool(
         in_takeout and not takeout and not visit_closed and not throws_empty
@@ -126,16 +132,8 @@ def should_end_turn_on_clear(
     """
     CLEARED alone must not advance the seat mid-visit.
 
-    AD can flicker throws=[] between dart 2 and dart 3 (with or without a
-    Takeout blip), including a brief "Takeout finished" status while dart 3 is
-    still in flight. Only end-turn on clear when:
-    - the No3 visit is already closed (3rd dart / prior end-turn), or
-    - takeout is/was active AND we already mirrored a full 3-dart visit.
-
-    Incomplete visit + takeout + empty / takeout-finished flicker -> wait
-    (retain prev throws). Early 1-2 dart pulls confirm via sustained empty
-    polls (`should_end_turn_on_empty_takeout_finished` /
-    `should_end_turn_leaving_takeout_empty`), not this immediate clear edge.
+    Incomplete visit + takeout + empty / takeout-finished flicker -> wait.
+    Early 1-2 dart pulls confirm via patron Ready only (not auto empty polls).
     """
     if visit_closed:
         return True
@@ -158,16 +156,21 @@ def should_end_turn_on_empty_takeout_finished(
     min_empty_polls: int = INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
 ) -> bool:
     """
-    Early pull: board empty and AD reports takeout finished, visit still open.
+    P0: never auto end-turn on Takeout-finished + empty while visit still open.
 
-    Require sustained empty polls - a one-poll Takeout-finished + empty flicker
-    before late dart 3 must not seat-jump.
+    Dart 3 routinely lags >1-2s after AD flickers empty/takeout-finished.
+    Auto early-pull was seat-jumping every visit. Incomplete visits end only
+    via patron Ready (`handle_takeout_ready_ack` -> maybe_end_turn).
     """
-    if visit_closed or not throws_empty or not in_takeout:
-        return False
-    if not is_takeout_finished_status(status):
-        return False
-    return int(empty_polls) >= int(min_empty_polls)
+    _ = (
+        visit_closed,
+        throws_empty,
+        in_takeout,
+        status,
+        empty_polls,
+        min_empty_polls,
+    )
+    return False
 
 
 def should_end_turn_leaving_takeout_empty(
@@ -180,19 +183,19 @@ def should_end_turn_leaving_takeout_empty(
     min_empty_polls: int = INCOMPLETE_VISIT_MIN_EMPTY_POLLS,
 ) -> bool:
     """
-    Early pull without a Takeout-finished string: empty board + left takeout.
+    P0: never auto end-turn after leaving takeout with an empty board.
 
-    Require consecutive empty polls so a clear flicker between dart 2 and dart 3
-    (after a Takeout blip) cannot seat-jump. Must run before clearing sticky
-    in_takeout. Default min is intentionally >2 poll periods (~1s+ at 300ms).
+    Same dart-3 lag race as takeout-finished empty. Patron Ready only.
     """
-    return bool(
-        not visit_closed
-        and throws_empty
-        and in_takeout
-        and not takeout
-        and int(empty_polls) >= int(min_empty_polls)
+    _ = (
+        visit_closed,
+        throws_empty,
+        in_takeout,
+        takeout,
+        empty_polls,
+        min_empty_polls,
     )
+    return False
 
 
 def should_unlock_next_visit(
@@ -207,19 +210,20 @@ def should_unlock_next_visit(
     """
     Next thrower may score only after a closed visit sees a clean board.
 
-    Require empty throws, plus either:
-    - Autodarts not in *active* takeout AND (takeout handshake or scored close), or
-    - patron Ready on /play cleared a stuck takeout handshake (board empty).
-
+    Patron Ready may unlock even if AD takeout status is sticky.
+    Otherwise require empty throws, not in *active* takeout, and a real takeout
+    handshake after close. Scored-close alone is NOT enough - that unlocked
+    too early for residual / late dart 3 after an empty flicker.
     "Takeout finished" is not active takeout - callers pass takeout=False then.
     """
+    _ = closed_by_scoring
     if not visit_closed or not throws_empty:
         return False
     if patron_ready:
         return True
     if takeout:
         return False
-    return bool(saw_takeout_after_close or closed_by_scoring)
+    return bool(saw_takeout_after_close)
 
 
 def seat_matches_lock(
@@ -242,6 +246,10 @@ def seat_matches_lock(
         return False
 
 
+def _label_list(throws: Sequence[dict[str, Any]]) -> list[str]:
+    return [format_segment_label(d) for d in throws]
+
+
 def is_ad_visit_continuation(
     closed_throws: Sequence[dict[str, Any]],
     current_throws: Sequence[dict[str, Any]],
@@ -250,14 +258,41 @@ def is_ad_visit_continuation(
     True when current AD throws continue a visit we already closed/ended.
 
     After a premature end-turn + empty unlock, AD often re-shows the same
-    prefix plus late dart 3. Posting that onto the next seat is the P0 bleed.
+    prefix plus late dart 3 - sometimes with new tip coords. Posting that
+    onto the next seat is the P0 bleed.
     """
     if not closed_throws or not current_throws:
         return False
+
     last_ids = [throw_identity(d) for d in closed_throws]
     curr_ids = [throw_identity(d) for d in current_throws]
     if len(curr_ids) >= len(last_ids) and curr_ids[: len(last_ids)] == last_ids:
         return True
     if len(last_ids) >= len(curr_ids) and last_ids[: len(curr_ids)] == curr_ids:
         return True
+
+    # Coords often change on re-detect - match segment labels only
+    last_labels = _label_list(closed_throws)
+    curr_labels = _label_list(current_throws)
+    if (
+        len(curr_labels) >= len(last_labels)
+        and curr_labels[: len(last_labels)] == last_labels
+    ):
+        return True
+    if (
+        len(last_labels) >= len(curr_labels)
+        and last_labels[: len(curr_labels)] == curr_labels
+    ):
+        return True
+
+    # Residual last dart of a full visit reappearing alone after unlock
+    if len(closed_throws) >= 3 and len(current_throws) == 1:
+        if curr_labels[0] == last_labels[-1]:
+            return True
+
+    # Incomplete close: singleton re-detect of an already-mirrored dart
+    if len(closed_throws) < 3 and len(current_throws) == 1:
+        if curr_labels[0] in set(last_labels):
+            return True
+
     return False

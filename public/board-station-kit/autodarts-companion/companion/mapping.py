@@ -242,4 +242,7 @@ def is_takeout_status(status: str) -> bool:
     # Detection State "Hand" = board recognized hand (remove-darts)
     if s == "hand" or compact == "hand":
         return True
+    # Some Board Manager / UI strings
+    if "removing dart" in s or "remove dart" in s or "pull dart" in s:
+        return True
     return False

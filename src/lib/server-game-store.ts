@@ -222,6 +222,23 @@ function markVisitClosedForTakeout(state: GameState): void {
   gate.holdUntilTakeoutClear = true;
 }
 
+/**
+ * P0: while Autodarts takeout / remove-darts is active, the next seat must not
+ * start a visit. Late dart 3 used to land here as "first dart" for the next
+ * player after a premature end-turn. Incomplete visits (1-2 darts already on
+ * the open turn) still accept APPEND so dart 3 can finish the same seat.
+ */
+function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null {
+  if (state.currentTurnDarts.length > 0) return null;
+  const room = (roomId || state.roomId || "").trim();
+  if (!room) return null;
+  const health = getCameraHealth(room);
+  if (health?.takeout || health?.level === "takeout" || health?.reason === "takeout") {
+    return "Takeout active - scoring paused until reset";
+  }
+  return null;
+}
+
 export function applyCameraDart(
   event: DartDetectedEvent
 ): { ok: true; state: GameState; callout?: string; turnEnded: boolean } | { ok: false; error: string } {
@@ -235,6 +252,8 @@ export function applyCameraDart(
   }
   const seatErr = seatLockRejected(state, event.expectedPlayerIndex);
   if (seatErr) return { ok: false, error: seatErr };
+  const takeoutErr = takeoutBlocksNewVisit(state, event.roomId);
+  if (takeoutErr) return { ok: false, error: takeoutErr };
 
   const beforePlayer = state.currentPlayerIndex;
   const beforeTurnLen = state.currentTurnDarts.length;
@@ -370,6 +389,11 @@ export function applyCameraCorrect(opts: {
       ok: false,
       error: "No open visit — refusing correct onto next thrower",
     };
+  }
+
+  if (state.status === "playing" && darts.length > 0) {
+    const takeoutErr = takeoutBlocksNewVisit(state, opts.roomId);
+    if (takeoutErr) return { ok: false, error: takeoutErr };
   }
 
   // Empty list = clear open visit (undo all current-turn darts) without advancing

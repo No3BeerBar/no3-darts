@@ -168,7 +168,8 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: room }),
       });
-      // Clear stuck Pull-darts immediately (server also emits takeout_cleared)
+      // Clear stuck Pull-darts immediately (server also emits takeout_cleared).
+      // Bridge ends incomplete visit, probes AD reset, unlocks when board clear.
       if (r.ok) {
         setTakeout(false);
         setNotice({
