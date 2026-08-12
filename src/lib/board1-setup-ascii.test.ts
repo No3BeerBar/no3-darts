@@ -104,6 +104,8 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
       /if \(Test-KitOk\) \{\s*\n\s*Write-Host "  Kit looks OK/
     );
     expect(ps1).toContain("expectedPlayerIndex");
+    expect(ps1).toContain("Test-CompanionVenvHealthy");
+    expect(ps1).toContain("missing/broken");
   });
 
   it("Board1-Setup.bat embeds PS 5.1 pre-parse + ASCII write markers", () => {
@@ -118,6 +120,37 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
   it("board-station Start-Board.ps1 stays ASCII", () => {
     assertAsciiFile("tools/board-station/Start-Board.ps1");
     assertAsciiFile("tools/board-station/start-board.bat");
+  });
+
+  it("Start-Board recreates a dead companion venv before pip", () => {
+    const src = readFileSync(
+      join(ROOT, "tools/board-station/Start-Board.ps1"),
+      "utf8"
+    );
+    expect(src).toContain("function Test-VenvPythonRuns");
+    expect(src).toContain("function New-CompanionVenv");
+    expect(src).toContain("py -3 -m venv --clear .venv");
+    expect(src).toContain("python -m venv --clear .venv");
+    expect(src).toContain("print('ok')");
+    expect(src).toContain("import sys");
+    expect(src).toContain("Delete C:\\No3Darts\\Board1\\autodarts-companion\\.venv");
+    expect(src).toContain("re-run Board1-FixMe.bat");
+    expect(src).toMatch(/Assert-VenvPythonRunnable \$Py/);
+    // Must not create on a leftover tree without --clear
+    expect(src).not.toMatch(/python -m venv \.venv\s*$/m);
+  });
+
+  it("Board1-FixMe does not preserve a dead companion .venv", () => {
+    const ps1 = readFileSync(join(ROOT, "public/Board1-FixMe.ps1"), "utf8");
+    expect(ps1).toContain("function Test-CompanionVenvHealthy");
+    expect(ps1).toContain("Scripts\\python.exe");
+    expect(ps1).toContain("import sys");
+    expect(ps1).toContain(
+      "Companion .venv python.exe missing/broken - not preserving"
+    );
+    expect(ps1).toContain(
+      "Restored .venv python.exe is broken - deleting so start-board recreates it"
+    );
   });
 
   it("kit builder assertAsciiKitText still present", () => {

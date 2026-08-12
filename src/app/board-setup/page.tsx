@@ -16,7 +16,7 @@ export default function BoardSetupPage() {
       </p>
       <p style={{ marginTop: 16 }}>
         Something wrong?{" "}
-        <a href="/Board1-FixMe.bat?v=3">Double-click Fix Me</a>
+        <a href="/Board1-FixMe.bat?v=4">Double-click Fix Me</a>
         {" - kills leftovers, always refreshes the kit, brings Board 1 back."}
       </p>
       <p style={{ marginTop: 12, color: "#666", fontSize: 14 }}>

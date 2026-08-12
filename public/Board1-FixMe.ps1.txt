@@ -3,8 +3,10 @@
 # ASCII-only so Windows PowerShell 5.1 never hits UTF-8 / smart-quote parse errors.
 # Kills leftover No3/companion/start-board processes and stuck HDMI TV kiosk
 # browsers (/tv), ALWAYS refreshes kit from production zip (preserves
-# board-station\config.yaml + companion .venv), starts Autodarts if needed,
-# clears stuck takeout/bridge state, launches start-board.bat (companion + TV).
+# board-station\config.yaml; parks/restores companion .venv only if
+# Scripts\python.exe exists and runs). Dead leftover .venv is deleted so
+# start-board can recreate it. Starts Autodarts if needed, clears stuck
+# takeout/bridge state, launches start-board.bat (companion + TV).
 # Always-refresh avoids restarting a stale companion that omits expectedPlayerIndex.
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +58,22 @@ function Test-Python {
     } catch { }
   }
   return $false
+}
+
+function Test-CompanionVenvHealthy([string]$VenvDir) {
+  # Do not preserve a leftover .venv whose python.exe is missing or broken.
+  $py = Join-Path $VenvDir "Scripts\python.exe"
+  if (-not (Test-Path -LiteralPath $py)) { return $false }
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $py -c "import sys" 1>$null 2>$null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  } finally {
+    $ErrorActionPreference = $prev
+  }
 }
 
 function Test-No3LeftoverCommand([string]$Cmd) {
@@ -341,16 +359,23 @@ function Refresh-Kit {
   $venvBackup = Join-Path $env:TEMP "no3-board1-venv-fixme-backup"
   $hadVenv = $false
   if (Test-Path -LiteralPath $venvSrc) {
-    if (Test-Path -LiteralPath $venvBackup) {
-      Remove-Item -LiteralPath $venvBackup -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    try {
-      Move-Item -LiteralPath $venvSrc -Destination $venvBackup -Force
-      $hadVenv = $true
-      Write-Host "  Parked companion .venv so pip is not re-run."
-    } catch {
-      Write-Host "  Could not park .venv - will recreate if needed." -ForegroundColor Yellow
-      $hadVenv = $false
+    if (-not (Test-CompanionVenvHealthy $venvSrc)) {
+      Write-Host "  Companion .venv python.exe missing/broken - not preserving (start-board will recreate)." -ForegroundColor Yellow
+      try {
+        Remove-Item -LiteralPath $venvSrc -Recurse -Force -ErrorAction SilentlyContinue
+      } catch { }
+    } else {
+      if (Test-Path -LiteralPath $venvBackup) {
+        Remove-Item -LiteralPath $venvBackup -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      try {
+        Move-Item -LiteralPath $venvSrc -Destination $venvBackup -Force
+        $hadVenv = $true
+        Write-Host "  Parked companion .venv so pip is not re-run."
+      } catch {
+        Write-Host "  Could not park .venv - will recreate if needed." -ForegroundColor Yellow
+        $hadVenv = $false
+      }
     }
   }
 
@@ -369,7 +394,12 @@ function Refresh-Kit {
         Remove-Item -LiteralPath $venvDest -Recurse -Force -ErrorAction SilentlyContinue
       }
       Move-Item -LiteralPath $venvBackup -Destination $venvDest -Force
-      Write-Host "  Restored companion .venv." -ForegroundColor Green
+      if (Test-CompanionVenvHealthy $venvDest) {
+        Write-Host "  Restored companion .venv." -ForegroundColor Green
+      } else {
+        Write-Host "  Restored .venv python.exe is broken - deleting so start-board recreates it." -ForegroundColor Yellow
+        Remove-Item -LiteralPath $venvDest -Recurse -Force -ErrorAction SilentlyContinue
+      }
     } catch {
       Write-Host "  Could not restore .venv - start-board will recreate." -ForegroundColor Yellow
     }
