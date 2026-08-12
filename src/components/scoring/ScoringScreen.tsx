@@ -62,7 +62,6 @@ import { CameraHealthToast } from "./CameraHealthToast";
 import { CheckoutBanner } from "./CheckoutBanner";
 import { CorrectDartModal } from "./CorrectDartModal";
 import { DartQuickKeys } from "./DartQuickKeys";
-import { CalloutToast } from "./CalloutToast";
 import { KillerBanner } from "./KillerBanner";
 import { NumberPad } from "./NumberPad";
 import { PlayAdminPinModal } from "./PlayAdminPinModal";
@@ -421,7 +420,6 @@ function ScoringScreenInner() {
 
   return (
     <div className="play-match flex flex-col">
-      <CalloutToast message={lastCallout} />
       <CameraHealthToast notice={cameraNotice} />
       <TakeoutBanner
         active={takeoutActive}
