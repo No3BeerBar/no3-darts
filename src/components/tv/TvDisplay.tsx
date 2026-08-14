@@ -35,6 +35,7 @@ import { AttractMode } from "@/components/tv/AttractMode";
 import { TvTakeoutBanner } from "@/components/tv/TvTakeoutBanner";
 import { useTvMatchFeed } from "@/hooks/useTvMatchFeed";
 import { tvBoardSide } from "@/lib/board-stage-size";
+import { isMatchWinnerHold, matchWinnerLabel } from "@/lib/match-winner";
 import { takeoutVisitDisplay } from "@/lib/takeout-visit-display";
 
 /**
@@ -527,16 +528,36 @@ export function TvDisplay() {
         </div>
       </div>
 
-      {/* Match / leg win */}
-      {(state.status === "leg_won" || state.status === "match_won") && (
+      {/* Leg win — brief, not the 30s match-winner hold */}
+      {state.status === "leg_won" && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-sm">
           <div className="text-center">
             <div className="font-display text-sm tracking-[0.4em] text-[var(--brand-red-bright)]">
-              {state.status === "match_won" ? "MATCH" : "LEG"}
+              LEG
             </div>
             <div className="font-logo mt-2 text-7xl text-white drop-shadow-[0_0_40px_rgb(225_6_0/0.5)] lg:text-9xl">
-              {state.players.find((p) => p.id === (state.winnerId ?? state.legWinnerId))?.name}
+              {state.players.find((p) => p.id === (state.legWinnerId ?? state.winnerId))?.name}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Game over: winner stays obvious on HDMI for the 30s hold */}
+      {isMatchWinnerHold(state) && (
+        <div
+          className="pointer-events-none absolute inset-0 z-[90] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          data-testid="tv-winner-hold"
+        >
+          <div className="px-6 text-center">
+            <p className="font-display text-xl tracking-[0.55em] text-[var(--brand-red-bright)] sm:text-2xl lg:text-3xl">
+              WINNER
+            </p>
+            <p className="font-logo mt-3 text-7xl leading-none text-white drop-shadow-[0_0_48px_rgb(225_6_0/0.65)] sm:text-8xl lg:text-[9rem]">
+              {matchWinnerLabel(state) ?? "—"}
+            </p>
+            <p className="font-display mt-5 text-sm tracking-[0.28em] text-zinc-400 sm:text-base">
+              HOLDING · THEN IDLE
+            </p>
           </div>
         </div>
       )}

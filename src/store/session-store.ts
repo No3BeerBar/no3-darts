@@ -106,10 +106,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
       if (nextPlayer) {
         rememberTabletSessionPlayer({ id: nextPlayer.id, name: nextPlayer.name });
-      } else {
-        // No cookie → cold start (Saved players picker); clear quick-add roster
-        clearTabletSessionPlayers();
       }
+      // Do not wipe the tablet roster when the cookie is empty — every PIN
+      // seat from the last match must stay on idle / next-game setup.
+      // Logout and the once-per-document play-entry gate still clear.
       set({
         player: nextPlayer,
         tabletPlayers: getTabletSessionPlayers(),

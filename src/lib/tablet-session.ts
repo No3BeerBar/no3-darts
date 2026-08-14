@@ -61,6 +61,43 @@ export function rememberTabletSessionPlayer(player: {
   return next;
 }
 
+/**
+ * Keep every registered (PIN) seat on the tablet lobby after a match.
+ * Guests / bots are ephemeral and are not added.
+ */
+export function rememberRegisteredSeats(
+  players: Array<{ id: string; name: string; isGuest?: boolean; isBot?: boolean }>
+): TabletSessionPlayer[] {
+  let roster = getTabletSessionPlayers();
+  for (const p of players) {
+    if (p.isGuest === true || p.isBot === true) continue;
+    roster = [
+      { id: p.id, name: p.name },
+      ...roster.filter((x) => x.id !== p.id),
+    ];
+  }
+  setTabletSessionPlayers(roster);
+  return roster;
+}
+
+/** Session cookie + tablet roster, unique, for idle / no-active-match chrome. */
+export function signedInLobbyPlayers(
+  sessionPlayer: { id: string; name: string } | null | undefined,
+  roster: TabletSessionPlayer[] = getTabletSessionPlayers()
+): TabletSessionPlayer[] {
+  const seen = new Set<string>();
+  const out: TabletSessionPlayer[] = [];
+  for (const p of roster) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push({ id: p.id, name: p.name });
+  }
+  if (sessionPlayer && !seen.has(sessionPlayer.id)) {
+    out.unshift({ id: sessionPlayer.id, name: sessionPlayer.name });
+  }
+  return out;
+}
+
 export function clearTabletSessionPlayers(): void {
   setTabletSessionPlayers([]);
 }
