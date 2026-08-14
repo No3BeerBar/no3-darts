@@ -68,6 +68,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/acknowledgeTakeout/);
+    expect(screen).toMatch(/Next visit/);
     // Reset must stay reachable even during PIN gate / bot turns
     expect(screen).toMatch(
       /useCameraHealth\(state\?\.roomId,\s*Boolean\(state\)\)/
@@ -76,7 +77,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);
     expect(hook).toMatch(/Optimistic clear/);
-    expect(hook).toMatch(/isLiveTakeoutSignal/);
+    expect(hook).toMatch(/shouldShowTakeoutUi/);
   });
 
   it("TV shows prominent takeout / Reset status gated on live AD signal", () => {
@@ -91,7 +92,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(tv).toMatch(/takeoutActive/);
     expect(tv).toMatch(/takeoutVisitDisplay/);
     const feed = readSrc("src/hooks/useTvMatchFeed.ts");
-    expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/takeoutActive/);
   });
 

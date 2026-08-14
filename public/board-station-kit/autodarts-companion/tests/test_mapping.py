@@ -114,6 +114,11 @@ def test_fixture_three_darts() -> None:
         ("removing darts...", True),
         ("Remove darts", True),
         ("Pull darts", True),
+        ("Reset", True),
+        ("reset", True),
+        ("Board reset", True),
+        ("Resetting", True),
+        ("Board reset between games", False),
         ("", False),
     ],
 )

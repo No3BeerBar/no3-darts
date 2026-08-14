@@ -691,8 +691,28 @@ function ScoringScreenInner() {
             {playing && (
               <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
                 Undo steps back one dart · tap a dart to fix
+                {state.currentTurnDarts.length > 0 && !visitView.holdingLastVisit
+                  ? " · Next visit ends this throw"
+                  : ""}
               </p>
             )}
+            {playing &&
+              !visitView.holdingLastVisit &&
+              state.currentTurnDarts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={!seatsOk || botThrowing}
+                  className={cn(
+                    "mt-2 min-h-12 w-full rounded-lg font-display text-sm font-semibold tracking-wider",
+                    seatsOk && !botThrowing
+                      ? "bg-[var(--brand-red)] text-white hover:brightness-110"
+                      : "bg-zinc-800 text-zinc-600"
+                  )}
+                >
+                  Next visit
+                </button>
+              )}
           </div>
 
           <VisitHistory state={state} limit={12} size="md" className="shrink-0" />
@@ -787,13 +807,27 @@ function ScoringScreenInner() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={endGame}
-            className="btn-ghost mt-auto min-h-12 w-full border border-[rgb(225_6_0/0.35)] font-display text-sm tracking-wider text-red-300"
-          >
-            End game
-          </button>
+          <div className="mt-auto flex flex-col gap-2">
+            {playing &&
+              !visitView.holdingLastVisit &&
+              state.currentTurnDarts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={!seatsOk || botThrowing}
+                  className="btn-primary min-h-12 w-full font-display text-sm tracking-wider"
+                >
+                  Next visit
+                </button>
+              )}
+            <button
+              type="button"
+              onClick={endGame}
+              className="btn-ghost min-h-12 w-full border border-[rgb(225_6_0/0.35)] font-display text-sm tracking-wider text-red-300"
+            >
+              End game
+            </button>
+          </div>
         </section>
 
         {/* Reserved board cell — fills leftover space; chrome never shoves it */}

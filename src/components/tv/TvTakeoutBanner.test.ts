@@ -59,9 +59,9 @@ describe("TvTakeoutBanner", () => {
     expect(play).not.toMatch(/tvBoardSide/);
   });
 
-  it("TV feed gates takeout on isLiveTakeoutSignal (no sandbox spam)", () => {
+  it("TV feed gates takeout on shouldShowTakeoutUi (no sandbox spam)", () => {
     const feed = readSrc("src/hooks/useTvMatchFeed.ts");
-    expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/setTakeoutActive\(true\)/);
     expect(feed).toMatch(/setTakeoutActive\(false\)/);
     expect(feed).toMatch(/\/api\/camera\/health/);

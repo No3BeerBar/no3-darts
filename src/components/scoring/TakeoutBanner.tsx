@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
  * Bridge pauses camera scoring while this is active; Reset takeout clears so
  * the next visit can start clean (bartender-proof — not a passive banner only).
  *
- * Only mount when there is a *live* Autodarts takeout signal (see
- * isLiveTakeoutSignal). Sandbox / no bridge must never show this.
+ * Mount when shouldShowTakeoutUi (live Autodarts takeout OR server hold).
+ * Sandbox / no bridge / stale leftover must never show this.
  */
 export function TakeoutBanner({
   active,

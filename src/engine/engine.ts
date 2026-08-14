@@ -354,7 +354,10 @@ export function correctTurnDartAt(
   } else {
     return { state, events: [], callout: "Fill earlier darts first" };
   }
-  return correctCurrentTurn(state, list, { autoEnd: false });
+  // 3-dart rewrite must finalize (same as camera /correct). Leaving a full
+  // visit open after Fix dart is the iPad deadlock: board taps no-op, End
+  // turn is staff-only, only End game remains.
+  return correctCurrentTurn(state, list, { autoEnd: list.length >= 3 });
 }
 
 /**

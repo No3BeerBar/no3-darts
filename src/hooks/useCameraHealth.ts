@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   isCameraBridgeOffline,
-  isLiveTakeoutSignal,
+  shouldShowTakeoutUi,
   type CameraHealth,
 } from "@/lib/camera-health";
 
@@ -40,8 +40,9 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     let lastOkToastTs: number | null = null;
 
     const showNotice = (h: CameraHealth) => {
-      // Live Autodarts takeout only — never from stale/offline leftover rows.
-      if (isLiveTakeoutSignal(h)) {
+      // Live Autodarts takeout OR server next-seat hold (silent hold after
+      // undo/correct while AD sits in yellow reset with takeout:false).
+      if (shouldShowTakeoutUi(h)) {
         setTakeout(true);
         setNotice({
           level: "takeout",

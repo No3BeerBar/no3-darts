@@ -208,7 +208,7 @@ describe("sandbox takeout hold / banner", () => {
         join(ROOT, "src/hooks/useCameraHealth.ts"),
         "utf8"
       );
-      expect(hook).toMatch(/isLiveTakeoutSignal/);
+      expect(hook).toMatch(/shouldShowTakeoutUi/);
       expect(hook).toMatch(/lastOkToastTs/);
     } finally {
       removeServerMatch(state.id);
@@ -355,9 +355,8 @@ describe("bridge AD-offline clears takeout (source)", () => {
     expect(bridge).toContain('"connected": False');
     expect(bridge).toContain('handle_takeout_ready_ack(prev_status or "", [])');
     expect(bridge).toContain("ad_takeout: bool = False");
-    expect(bridge).toContain(
-      "if active and (not ad_ok or not ad_takeout):"
-    );
+    expect(bridge).toContain("if active and not ad_ok:");
+    expect(bridge).toContain("if active and not ad_takeout and not frozen_visit:");
   });
 });
 
@@ -374,7 +373,7 @@ describe("TV takeout prominence (John watches /tv)", () => {
       join(ROOT, "src/hooks/useTvMatchFeed.ts"),
       "utf8"
     );
-    expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/setTakeoutActive\(false\)/);
     const tv = readFileSync(
       join(ROOT, "src/components/tv/TvDisplay.tsx"),

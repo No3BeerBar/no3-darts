@@ -245,4 +245,12 @@ def is_takeout_status(status: str) -> bool:
     # Some Board Manager / UI strings
     if "removing dart" in s or "remove dart" in s or "pull dart" in s:
         return True
+    # Autodarts yellow reset (board reset after a visit) - same freeze as takeout.
+    # Do not treat between-games recal copy as visit takeout.
+    if "between" in s:
+        return False
+    if compact in {"reset", "boardreset", "resetting", "yellowreset"}:
+        return True
+    if s in {"reset", "board reset", "resetting"} or s.startswith("reset "):
+        return True
     return False

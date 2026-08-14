@@ -17,6 +17,12 @@ export type CameraHealth = {
   restarting?: boolean;
   /** Autodarts remove-darts / takeout mode — scoring paused on the bridge. */
   takeout?: boolean;
+  /**
+   * Server next-seat hold (visit closed, camera paused). Stamped by
+   * getCameraHealth so /play and /tv can show Reset after undo/correct
+   * even when Autodarts is in yellow reset and takeout:true was not posted.
+   */
+  holdUntilTakeoutClear?: boolean;
   ts: number;
 };
 
@@ -73,4 +79,20 @@ export function isConnectedForTakeout(
   h: CameraHealth | null | undefined
 ): boolean {
   return Boolean(h) && h!.connected !== false;
+}
+
+/**
+ * Show Reset takeout on /play and /tv when Autodarts is in live takeout
+ * OR the server is holding the next seat (silent hold after undo/correct).
+ * Sandbox / offline / stale leftover still hide the banner.
+ */
+export function shouldShowTakeoutUi(
+  h: CameraHealth | null | undefined,
+  now = Date.now()
+): boolean {
+  if (isLiveTakeoutSignal(h, now)) return true;
+  if (!h) return false;
+  if (isCameraBridgeOffline(h)) return false;
+  if (isStaleCameraHealth(h, now)) return false;
+  return Boolean(h.holdUntilTakeoutClear);
 }

@@ -26,6 +26,7 @@ export {
   isCameraBridgeOffline,
   isLiveTakeoutSignal,
   isStaleCameraHealth,
+  shouldShowTakeoutUi,
   CAMERA_HEALTH_FRESH_MS,
 } from "@/lib/camera-health";
 
@@ -382,12 +383,11 @@ function markVisitOpen(state: GameState): void {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
   gate.openVisitSeat = state.currentPlayerIndex;
-  // Do not clear a takeout-armed hold while health still says takeout -
-  // empty-visit reject must stay fail-closed even mid-APPEND of dart 3.
-  const health = getCameraHealth(room);
-  if (!isLiveTakeoutSignal(health)) {
-    gate.holdUntilTakeoutClear = false;
-  }
+  // Undo / correct reopened this visit — never leave a silent next-seat hold
+  // that blocks scoring while Autodarts sits in yellow reset with no banner.
+  // Live takeout health will re-arm the hold on the next companion heartbeat
+  // and /play will show Reset takeout.
+  gate.holdUntilTakeoutClear = false;
 }
 
 /**
@@ -445,14 +445,23 @@ function realignCameraGateFromMatch(
   if (!next.roomId) return;
   const gate = getCameraGate(next.roomId);
   if (next.currentTurnDarts.length > 0) {
+    // Open visit (undo / mid-visit correct) — scoring must resume
     gate.openVisitSeat = next.currentPlayerIndex;
     gate.holdUntilTakeoutClear = false;
     return;
   }
-  if (prev && countProgress(next) < countProgress(prev)) {
-    // Progress went backward (Undo) with empty open visit - allow rescoring
-    gate.holdUntilTakeoutClear = false;
-    gate.openVisitSeat = null;
+  if (prev && prev.currentTurnDarts.length > 0 && next.currentTurnDarts.length === 0) {
+    if (countProgress(next) < countProgress(prev)) {
+      // Undo walked back to an empty visit — allow rescoring
+      gate.holdUntilTakeoutClear = false;
+      gate.openVisitSeat = null;
+      return;
+    }
+    if (next.status === "playing") {
+      // Tablet Fix dart / End visit finalized the turn — arm hold so Reset
+      // takeout is visible instead of a silent camera pause.
+      markVisitClosedForTakeout(next);
+    }
   }
 }
 
@@ -807,8 +816,9 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
     // (Do not clear on ordinary "Cameras healthy" heartbeats.)
     gate.holdUntilTakeoutClear = false;
   }
-  emit({ type: "camera_health", data: next });
-  return next;
+  const stamped = stampHoldOnHealth(next, room);
+  emit({ type: "camera_health", data: stamped });
+  return stamped;
 }
 
 /** Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes). */
@@ -865,16 +875,24 @@ export function consumeTakeoutReady(
   return { pending: ts != null, ts, roomId: room };
 }
 
+function stampHoldOnHealth(health: CameraHealth, roomId: string): CameraHealth {
+  const gate = getCameraGate(roomId);
+  return {
+    ...health,
+    holdUntilTakeoutClear: gate.holdUntilTakeoutClear,
+  };
+}
+
 export function getCameraHealth(roomId?: string): CameraHealth | undefined {
   if (roomId) {
     reconcileStaleTakeout(roomId);
     const exact = cameraHealthByRoom.get(roomId);
-    if (exact) return exact;
+    if (exact) return stampHoldOnHealth(exact, normRoom(roomId));
     const lower = cameraHealthByRoom.get(roomId.trim().toLowerCase());
-    if (lower) return lower;
+    if (lower) return stampHoldOnHealth(lower, normRoom(roomId));
     for (const h of cameraHealthByRoom.values()) {
       if ((h.roomId || "").trim().toLowerCase() === roomId.trim().toLowerCase()) {
-        return h;
+        return stampHoldOnHealth(h, normRoom(h.roomId || roomId));
       }
     }
     return undefined;
@@ -885,9 +903,12 @@ export function getCameraHealth(roomId?: string): CameraHealth | undefined {
     if (!latest || (h.ts ?? 0) > (latest.ts ?? 0)) latest = h;
   }
   if (latest?.roomId) reconcileStaleTakeout(latest.roomId);
-  return latest?.roomId
+  const resolved = latest?.roomId
     ? cameraHealthByRoom.get(normRoom(latest.roomId)) ?? latest
     : latest;
+  return resolved?.roomId
+    ? stampHoldOnHealth(resolved, normRoom(resolved.roomId))
+    : resolved;
 }
 
 export function subscribe(listener: Listener): () => void {

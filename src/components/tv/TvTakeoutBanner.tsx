@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
  * takeover. Last visit (player + 3 darts) stays visible underneath and is
  * also echoed here so the score is unmissable from across the bar.
  *
- * Only mount for a *live* Autodarts takeout signal (see isLiveTakeoutSignal).
+ * Mount when shouldShowTakeoutUi (live Autodarts takeout OR server hold).
  * Sandbox / no bridge must never show this.
  */
 export function TvTakeoutBanner({

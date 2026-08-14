@@ -322,10 +322,10 @@ def run_bridge(
     prev_status = ""
     end_turn_sent = False
 
-    def fetch_no3_seat() -> Optional[int]:
-        """Best-effort No3 currentPlayerIndex for the room (seat lock)."""
+    def fetch_no3_match() -> Optional[dict[str, Any]]:
+        """Best-effort live No3 match for this room (seat + open visit)."""
         if dry_run:
-            return locked_seat if locked_seat is not None else 0
+            return None
         data = _get_json(
             active_match_url,
             headers,
@@ -335,13 +335,48 @@ def run_bridge(
         if not data:
             return None
         match = data.get("match")
-        if not isinstance(match, dict):
+        return match if isinstance(match, dict) else None
+
+    def fetch_no3_seat() -> Optional[int]:
+        """Best-effort No3 currentPlayerIndex for the room (seat lock)."""
+        if dry_run:
+            return locked_seat if locked_seat is not None else 0
+        match = fetch_no3_match()
+        if not match:
             return None
         idx = match.get("currentPlayerIndex")
         try:
             return int(idx) if idx is not None else None
         except (TypeError, ValueError):
             return None
+
+    def reopen_visit_if_no3_undid() -> None:
+        """
+        Tablet Undo / Fix dart can reopen a visit while the bridge still has
+        visit_closed. Unfreeze so camera scoring resumes and Reset is not the
+        only (missing) control.
+        """
+        nonlocal visit_closed, end_turn_sent, locked_seat, closed_by_scoring
+        if not visit_closed:
+            return
+        match = fetch_no3_match()
+        if not match:
+            return
+        darts = match.get("currentTurnDarts") or []
+        if not isinstance(darts, list) or len(darts) == 0:
+            return
+        visit_closed = False
+        end_turn_sent = False
+        closed_by_scoring = False
+        idx = match.get("currentPlayerIndex")
+        try:
+            if idx is not None:
+                locked_seat = int(idx)
+        except (TypeError, ValueError):
+            pass
+        console.print(
+            "[cyan]visit reopened[/cyan] No3 undo/correct - scoring resumed"
+        )
 
     def ensure_visit_seat_lock() -> Optional[int]:
         """Lock No3 seat for the open AD visit; None if unknown (fail closed)."""
@@ -533,16 +568,21 @@ def run_bridge(
         active: bool,
         message: str,
         ad_takeout: bool = False,
+        frozen_visit: bool = False,
     ) -> None:
         """
         Post takeout / clear health to No3.
 
         Never arm takeout:true without a fresh AD takeout read this poll
-        (ad_takeout=True) while Board Manager is reachable. Clears
-        (active=False) are always allowed so Ready/Reset can unblock.
+        (ad_takeout=True) while Board Manager is reachable - unless the
+        visit is already frozen (frozen_visit). That silent hold after
+        undo/correct left Autodarts yellow and /play with no Reset.
+        Clears (active=False) are always allowed so Ready/Reset can unblock.
         """
         nonlocal last_takeout_post_at
-        if active and (not ad_ok or not ad_takeout):
+        if active and not ad_ok:
+            return
+        if active and not ad_takeout and not frozen_visit:
             return
         now = time.time()
         # Heartbeat takeout banner while active; always post on edge transitions
@@ -914,6 +954,8 @@ def run_bridge(
             throws = extract_throws(state)
             status = extract_status(state)
             takeout_now = is_takeout_state(state)
+            # Tablet Undo / Fix dart may have reopened the No3 visit
+            reopen_visit_if_no3_undid()
             # Idle-timer / leftover Stop: start this board only. Never reset.
             if kacfg.enabled:
                 maybe_keep_alive(client, ka_tracker, state)
@@ -1152,11 +1194,17 @@ def run_bridge(
                         active=False,
                         message="Ready for next visit",
                     )
-            elif visit_closed and not takeout_now and throws:
-                # Board left active takeout but darts still listed - keep local
-                # freeze (visit_closed). Do NOT post takeout:true without a
-                # fresh AD takeout read (would sticky-loop sandbox/UI).
-                pass
+            elif visit_closed and not takeout_now:
+                # Frozen after correct/end-turn while AD is in yellow reset
+                # (or Throw with leftover darts). Must still arm /play Reset -
+                # silent hold was the Board 1 deadlock.
+                post_takeout_health(
+                    status or prev_status,
+                    active=True,
+                    message="Pull darts - takeout",
+                    ad_takeout=False,
+                    frozen_visit=True,
+                )
 
             unlock_if_ready(status, throws, takeout=takeout_now)
 

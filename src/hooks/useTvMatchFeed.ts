@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameState } from "@/engine/types";
 import {
-  isLiveTakeoutSignal,
+  shouldShowTakeoutUi,
   type CameraHealth,
 } from "@/lib/camera-health";
 import {
@@ -213,8 +213,8 @@ export function useTvMatchFeed(room: string) {
       const got = (h.roomId || "").trim().toLowerCase();
       if (got && want && got !== want) return;
 
-      // Live Autodarts takeout only — never sticky sandbox / offline spam.
-      if (isLiveTakeoutSignal(h)) {
+      // Live Autodarts takeout OR server hold (silent freeze after undo/correct).
+      if (shouldShowTakeoutUi(h)) {
         setTakeoutActive(true);
         setTakeoutMessage(h.message || "Pull darts — takeout");
         // Takeout has its own TV banner; don't also use the small toast.

@@ -12,6 +12,8 @@ def test_takeout_status_pauses_scoring_signals() -> None:
     assert is_takeout_status("Takeout started")
     assert is_takeout_status("Hand")
     assert is_takeout_status("Partial Takeout")
+    assert is_takeout_status("Reset")
+    assert is_takeout_status("Board reset")
     # Finished means board clear - not active remove-darts
     assert not is_takeout_status("Takeout finished")
     assert not is_takeout_status("Throw")
@@ -68,6 +70,8 @@ def test_ad_offline_clears_sticky_takeout_health() -> None:
     assert "in_takeout = False" in text
     # Ready/Reset ack must still run while AD is offline
     assert "handle_takeout_ready_ack(prev_status or \"\", [])" in text
-    # Never arm takeout:true without a fresh AD takeout read
+    # Never arm takeout:true without a fresh AD takeout read, unless the
+    # visit is already frozen (silent hold after undo/correct).
     assert "ad_takeout: bool = False" in text
-    assert "if active and (not ad_ok or not ad_takeout):" in text
+    assert "if active and not ad_ok:" in text
+    assert "if active and not ad_takeout and not frozen_visit:" in text

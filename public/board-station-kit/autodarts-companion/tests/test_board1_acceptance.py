@@ -33,6 +33,8 @@ def test_board1_p0_recognize_takeout_and_removing_darts() -> None:
     assert is_takeout_status("Partial Takeout")
     assert is_takeout_status("Removing darts")
     assert is_takeout_status("removing darts")
+    assert is_takeout_status("Reset")
+    assert is_takeout_status("Board reset")
     # Takeout finished = complete (must not leave Pull-darts stuck)
     assert not is_takeout_status("Takeout finished")
     assert scoring_frozen(takeout=True, visit_closed=False) is True
@@ -142,3 +144,13 @@ def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
     ).read_text(encoding="utf-8")
     assert 'reason"] = "board_stopped"' in health
     assert 'reason") == "board_stopped"' in health
+
+
+def test_board1_undo_correct_unfreezes_and_posts_frozen_banner() -> None:
+    """Silent takeout after undo/correct: reopen No3 visit + arm Reset banner."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    assert "def reopen_visit_if_no3_undid" in src
+    assert "reopen_visit_if_no3_undid()" in src
+    assert "frozen_visit" in src
+    assert "No3 undo/correct - scoring resumed" in src
+    assert "silent hold was the Board 1 deadlock" in src
