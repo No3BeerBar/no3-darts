@@ -142,6 +142,47 @@ class AutodartsClient:
         """PUT to Board Manager. Empty-body PUT is the community start/stop hook."""
         return self._request("PUT", path, body, send_json=body is not None)
 
+    def try_start_detection(self) -> dict[str, Any]:
+        """
+        Press Autodarts Start on this local Board Manager.
+
+        Community contract (darts-caller): PUT /api/detection/start, then
+        PUT /api/start if that 404s. Start only -- never stop or reset.
+        """
+        tried: list[dict[str, Any]] = []
+        for path in ("/api/detection/start", "/api/start"):
+            try:
+                code, data = self.put(path)
+            except ConnectionError as e:
+                return {"ok": False, "error": str(e), "tried": tried}
+            entry = {
+                "path": path,
+                "method": "PUT",
+                "code": code,
+                "preview": str(data)[:120],
+            }
+            tried.append(entry)
+            if 200 <= int(code) < 300:
+                return {
+                    "ok": True,
+                    "path": path,
+                    "method": "PUT",
+                    "code": code,
+                    "detail": data,
+                    "tried": tried,
+                }
+            # Only fall through to /api/start on 404 (or 405 on some builds)
+            if int(code) not in (404, 405):
+                return {
+                    "ok": False,
+                    "path": path,
+                    "method": "PUT",
+                    "code": code,
+                    "detail": data,
+                    "tried": tried,
+                }
+        return {"ok": False, "tried": tried}
+
     def try_recalibrate(self) -> dict[str, Any]:
         """
         Attempt between-games reset/recal via local HTTP only.

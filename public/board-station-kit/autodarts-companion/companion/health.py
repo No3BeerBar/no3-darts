@@ -16,6 +16,7 @@ from typing import Any, Optional
 from rich.console import Console
 
 from .client import AutodartsClient, extract_camera_health
+from .keepalive import is_board_stopped
 
 console = Console()
 
@@ -67,6 +68,10 @@ class HealthTracker:
         else:
             self.consecutive_offline = 0
             snap = extract_camera_health(state)
+            # :3180 HTTP 200 is not detecting. Idle-timer Stop is not healthy.
+            if is_board_stopped(state):
+                snap["ok"] = False
+                snap["reason"] = "board_stopped"
             # Apply configured FPS floor when telemetry exists
             min_fps = snap.get("min_fps")
             if (
@@ -109,6 +114,9 @@ class HealthTracker:
         if not self.config.enabled:
             return False
         if self.last_status != "unhealthy":
+            return False
+        # Stopped board needs PUT start, not taskkill + relaunch (leaves Stopped).
+        if self.last_payload.get("reason") == "board_stopped":
             return False
         now = time.time()
         if now - self.last_restart_at < self.config.restart_cooldown_seconds:
@@ -189,6 +197,7 @@ def no3_match_allows_between_games_recal(
 def _message_for(reason: str) -> str:
     mapping = {
         "board_manager_offline": "Detection offline - restarting...",
+        "board_stopped": "Board stopped - starting detection...",
         "camera_disconnected": "Cameras unhealthy",
         "fps_zero": "Cameras unhealthy (0 FPS)",
         "fps_low": "Cameras unhealthy (low FPS)",

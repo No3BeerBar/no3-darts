@@ -9,9 +9,8 @@ autodarts:
   # Editable install path (used for health auto-restart). Leave blank to skip Start.
   # Example: "C:\\Program Files\\Autodarts\\Autodarts.exe"
   exe_path: ""
-  # Autodarts board UUID from Board Manager Config (Board1 only).
-  # Leave blank on a one-board mini-PC. If more than one board is visible,
-  # keep-alive will not start any board until this id is set.
+  # Optional Autodarts board UUID. One Board Manager per Board1 mini-PC;
+  # leave blank. Fighting a bartender Stop on :3180 is the default.
   board_id: ""
   process_names:
     - "Autodarts"
@@ -39,6 +38,7 @@ health:
 keep_alive:
   enabled: true
   interval_s: 10.0
+  start_cooldown_s: 30.0
   # Same as autodarts.board_id when set here
   board_id: ""
 

@@ -21,6 +21,7 @@ DEFAULTS = {
         "exe_path": "",
         "process_names": ["Autodarts", "autodarts", "AutodartsDesktop"],
         "start_if_missing": True,
+        "start_board_if_stopped": True,
         "ready_timeout_s": 45,
         "board_id": "",
     },
@@ -53,6 +54,7 @@ DEFAULTS = {
     "keep_alive": {
         "enabled": True,
         "interval_s": 10.0,
+        "start_cooldown_s": 30.0,
         "board_id": "",
     },
 }

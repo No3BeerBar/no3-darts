@@ -76,6 +76,8 @@ autodarts:
     - "autodarts"
     - "AutodartsDesktop"
   start_if_missing: true
+  # :3180 HTTP 200 is not detecting. Press Autodarts Start if Stopped.
+  start_board_if_stopped: true
   ready_timeout_s: 45
   # Autodarts board UUID from Board Manager Config (Board1 only).
   # Leave blank on this one-board mini-PC.
@@ -115,6 +117,7 @@ health:
 keep_alive:
   enabled: true
   interval_s: 10.0
+  start_cooldown_s: 30.0
   board_id: ""
 `;
 

@@ -474,6 +474,7 @@ $AdHost = if ($ad.host) { [string]$ad.host } else { "127.0.0.1" }
 $AdPort = if ($ad.port) { [int]$ad.port } else { 3180 }
 $ExePath = if ($ad.exe_path) { [string]$ad.exe_path } else { $env:AUTODARTS_EXE }
 $StartIfMissing = if ($null -ne $ad.start_if_missing) { [bool]$ad.start_if_missing } else { $true }
+$StartBoardIfStopped = if ($null -ne $ad.start_board_if_stopped) { [bool]$ad.start_board_if_stopped } else { $true }
 $ReadyTimeout = if ($ad.ready_timeout_s) { [int]$ad.ready_timeout_s } else { 45 }
 
 Set-Step "companion-dir"
@@ -497,6 +498,106 @@ function Test-AutodartsReady {
     return $r.StatusCode -eq 200
   } catch {
     return $false
+  }
+}
+
+function Get-AutodartsState {
+  try {
+    $r = Invoke-WebRequest -Uri "http://${AdHost}:${AdPort}/api/state" -UseBasicParsing -TimeoutSec 2
+    if ($r.StatusCode -ne 200) { return $null }
+    return ($r.Content | ConvertFrom-Json)
+  } catch {
+    return $null
+  }
+}
+
+function Test-BoardCalibrating($State) {
+  if (-not $State) { return $false }
+  $blob = ([string]$State.status) + " " + ([string]$State.event)
+  return ($blob -match '(?i)calibrat')
+}
+
+function Test-BoardDetecting($State) {
+  # :3180 HTTP 200 is not detecting. Ready = status not Stopped.
+  if (-not $State) { return $false }
+  if (Test-BoardCalibrating $State) { return $false }
+  $status = [string]$State.status
+  $event = [string]$State.event
+  if ($status -match '(?i)stopped') { return $false }
+  if ($event -match '(?i)stopped' -and $status -notmatch '(?i)throw|takeout') { return $false }
+  if ($status -match '(?i)throw|takeout|started') { return $true }
+  if ($event -match '(?i)wait|stable|empty|dart|hand|takeout') { return $true }
+  return $false
+}
+
+function Invoke-BoardStartPut {
+  $uris = @(
+    "http://${AdHost}:${AdPort}/api/detection/start",
+    "http://${AdHost}:${AdPort}/api/start"
+  )
+  foreach ($uri in $uris) {
+    try {
+      $r = Invoke-WebRequest -Uri $uri -Method PUT -UseBasicParsing -TimeoutSec 3
+      if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) {
+        Write-Host ("  PUT {0} -> {1}" -f $uri, $r.StatusCode) -ForegroundColor Green
+        return $true
+      }
+    } catch {
+      $code = 0
+      try {
+        if ($_.Exception.Response) {
+          $code = [int]$_.Exception.Response.StatusCode
+        }
+      } catch { }
+      if ($code -eq 404 -or $code -eq 405) {
+        Write-Host ("  PUT {0} -> {1} (trying fallback)" -f $uri, $code) -ForegroundColor Yellow
+        continue
+      }
+      Write-Host ("  PUT {0} failed: {1}" -f $uri, $_.Exception.Message) -ForegroundColor Yellow
+    }
+  }
+  return $false
+}
+
+function Ensure-BoardDetecting {
+  # :3180 up != board detecting. Press Autodarts Start if Stopped.
+  if (-not $StartBoardIfStopped) {
+    Write-Host "start_board_if_stopped=false - not pressing Autodarts Start"
+    return
+  }
+  $state = Get-AutodartsState
+  if (-not $state) {
+    Write-Host "Board Manager API not readable - cannot press Start" -ForegroundColor Yellow
+    return
+  }
+  $status = [string]$state.status
+  $event = [string]$state.event
+  if (Test-BoardCalibrating $state) {
+    Write-Host ("Board Manager is calibrating (status={0} event={1}) - skip Start" -f $status, $event) -ForegroundColor Yellow
+    return
+  }
+  if (Test-BoardDetecting $state) {
+    Write-Host ("Board detecting (status={0} event={1})" -f $status, $event) -ForegroundColor Green
+    return
+  }
+  Write-Host ("Board Manager responding on :{0} but board is Stopped (status={1} event={2})" -f $AdPort, $status, $event) -ForegroundColor Yellow
+  Write-Host "Pressing Autodarts Start (PUT /api/detection/start)..."
+  if (Invoke-BoardStartPut) {
+    Start-Sleep -Seconds 1
+    $state = Get-AutodartsState
+    if ($state) {
+      $status = [string]$state.status
+      $event = [string]$state.event
+      if (Test-BoardDetecting $state) {
+        Write-Host ("Board detecting (status={0} event={1})" -f $status, $event) -ForegroundColor Green
+      } else {
+        Write-Host ("Start sent; status={0} event={1} (companion will retry if still Stopped)" -f $status, $event) -ForegroundColor Yellow
+      }
+    } else {
+      Write-Host "Start sent; companion will retry if still Stopped" -ForegroundColor Yellow
+    }
+  } else {
+    Write-Host "Could not PUT start - companion keep-alive will retry while the bridge is up" -ForegroundColor Yellow
   }
 }
 
@@ -573,6 +674,13 @@ if ($ready) {
   Write-Host "start_if_missing=false and Board Manager not up - continuing anyway." -ForegroundColor Yellow
 }
 
+if ($ready) {
+  Set-Step "autodarts-board-detecting"
+  Ensure-BoardDetecting
+} else {
+  Write-Host "Board Manager not responding - :$AdPort up is required before Start. Companion will retry." -ForegroundColor Yellow
+}
+
 # --- 2) Companion bridge ---
 Set-Step "companion-bridge"
 Write-Banner "2/3 Companion bridge"
@@ -591,11 +699,13 @@ $recal = if ($null -ne $health.between_games_recal) { [bool]$health.between_game
 $ka = $cfg.keep_alive
 $keepAliveEnabled = $true
 $keepAliveInterval = 10.0
+$keepAliveCooldown = 30.0
 $boardId = ""
 if ($ad.board_id) { $boardId = [string]$ad.board_id }
 if ($null -ne $ka) {
   if ($null -ne $ka.enabled) { $keepAliveEnabled = [bool]$ka.enabled }
   if ($null -ne $ka.interval_s) { $keepAliveInterval = $ka.interval_s }
+  if ($null -ne $ka.start_cooldown_s) { $keepAliveCooldown = $ka.start_cooldown_s }
   if (-not $boardId -and $ka.board_id) { $boardId = [string]$ka.board_id }
 }
 $boardIdEsc = $boardId.Replace('"', '')
@@ -625,6 +735,7 @@ health:
 keep_alive:
   enabled: $($keepAliveEnabled.ToString().ToLower())
   interval_s: $keepAliveInterval
+  start_cooldown_s: $keepAliveCooldown
   board_id: "$boardIdEsc"
 
 logs_dir: "./logs"

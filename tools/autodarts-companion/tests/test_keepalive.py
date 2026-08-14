@@ -10,7 +10,9 @@ from companion.keepalive import (
     KeepAliveTracker,
     collect_board_ids,
     extract_board_id,
+    is_board_detecting,
     is_board_stopped,
+    is_calibrating,
     maybe_keep_alive,
     should_start_this_board,
     start_board_detection,
@@ -62,6 +64,28 @@ class FakeClient:
             return self.start_code, {"ok": True}
         return 404, ""
 
+    def try_start_detection(self) -> dict[str, Any]:
+        code, data = self.put("/api/detection/start")
+        if 200 <= int(code) < 300:
+            return {
+                "ok": True,
+                "path": "/api/detection/start",
+                "method": "PUT",
+                "code": code,
+                "detail": data,
+            }
+        if int(code) in (404, 405):
+            code2, data2 = self.put("/api/start")
+            if 200 <= int(code2) < 300:
+                return {
+                    "ok": True,
+                    "path": "/api/start",
+                    "method": "PUT",
+                    "code": code2,
+                    "detail": data2,
+                }
+        return {"ok": False, "code": code}
+
 
 def test_stopped_status_is_detected() -> None:
     assert is_board_stopped({"status": "Stopped"}) is True
@@ -81,11 +105,19 @@ def test_running_states_are_not_stopped() -> None:
         "Started",
         "Wait",
         "Removing darts",
-        "Calibration finished",
     ):
         assert is_board_stopped({"status": status}) is False
     assert is_board_stopped({"status": "Stopped", "running": True}) is False
     assert is_board_stopped({"status": "Throw", "throws": [{"segment": {"name": "T20"}}]}) is False
+
+
+def test_calibration_is_not_stopped_and_not_detecting() -> None:
+    assert is_calibrating({"status": "Calibration"}) is True
+    assert is_calibrating({"event": "Calibration finished"}) is True
+    assert is_board_stopped({"status": "Calibration"}) is False
+    assert is_board_detecting({"status": "Calibration"}) is False
+    assert is_board_detecting({"status": "Throw", "event": "Wait"}) is True
+    assert is_board_detecting({"status": "Stopped"}) is False
 
 
 def test_empty_or_unknown_status_is_not_stopped() -> None:
@@ -106,13 +138,14 @@ def test_board_id_extract_and_collect() -> None:
     assert ids == ["board-1", "board-2"]
 
 
-def test_should_start_this_board_fail_closed_on_other_boards() -> None:
+def test_should_start_this_board_local_bm_default() -> None:
     other = {"boards": [{"id": "other"}, {"id": "also-other"}]}
+    # Configured id that is not on this BM -> refuse
     assert should_start_this_board("board-1", other) is False
-    assert should_start_this_board("", other) is False
+    # One BM per mini-PC: empty id still starts local :3180 (bartender Stop)
+    assert should_start_this_board("", other) is True
     assert should_start_this_board("board-1", {"boardId": "board-1"}) is True
     assert should_start_this_board("board-1", {"boards": [{"id": "board-1"}]}) is True
-    # Typical Board1: no id configured, local BM has zero or one board
     assert should_start_this_board("", {"status": "Stopped"}) is True
     assert should_start_this_board("", {"boardId": "only-one"}) is True
 
@@ -124,7 +157,28 @@ def test_start_uses_detection_start_not_reset() -> None:
     assert result["method"] == "PUT"
     assert "/start" in result["path"]
     assert not any("reset" in p or "calibrat" in p for p in client.puts + client.posts)
-    assert "/api/boards/board-1/start" in client.puts or "/api/detection/start" in client.puts
+    assert client.puts[0] == "/api/detection/start"
+
+
+def test_client_try_start_detection_fallback_on_404() -> None:
+    from companion.client import AutodartsClient
+
+    c = AutodartsClient()
+    calls: list[str] = []
+
+    def fake_put(path: str, body: Optional[dict] = None) -> tuple[int, Any]:
+        calls.append(path)
+        if path == "/api/detection/start":
+            return 404, "no"
+        return 200, {"ok": True}
+
+    c.put = fake_put  # type: ignore[method-assign]
+    result = c.try_start_detection()
+    assert result["ok"] is True
+    assert result["path"] == "/api/start"
+    assert calls == ["/api/detection/start", "/api/start"]
+    assert "reset" not in "".join(calls)
+    assert "stop" not in "".join(calls)
 
 
 def test_start_paths_are_start_only() -> None:
@@ -174,6 +228,26 @@ def test_maybe_keep_alive_refuses_other_board_id() -> None:
     assert result["action"] == "skip"
     assert result["reason"] == "board_id_mismatch"
     assert client.puts == []
+
+
+def test_maybe_keep_alive_skips_calibration_and_start_cooldown() -> None:
+    client = FakeClient()
+    tracker = KeepAliveTracker(
+        KeepAliveConfig(interval_s=1.0, start_cooldown_s=30.0)
+    )
+    cal = maybe_keep_alive(
+        client, tracker, {"status": "Calibration"}, now=10.0
+    )
+    assert cal["reason"] == "calibrating"
+    assert client.puts == []
+    first = maybe_keep_alive(
+        client, tracker, {"status": "Stopped"}, now=20.0
+    )
+    assert first["action"] == "start"
+    cool = maybe_keep_alive(
+        client, tracker, {"status": "Stopped"}, now=25.0
+    )
+    assert cool["reason"] == "start_cooldown"
 
 
 def test_maybe_keep_alive_disabled() -> None:

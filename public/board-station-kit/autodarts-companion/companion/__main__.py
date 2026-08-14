@@ -204,6 +204,11 @@ def main(argv: list[str] | None = None) -> None:
                 or ad.get("keep_alive_interval_s")
                 or 10.0
             ),
+            start_cooldown_s=float(
+                ka_raw.get("start_cooldown_s")
+                or ad.get("keep_alive_start_cooldown_s")
+                or 30.0
+            ),
             board_id=str(
                 ka_raw.get("board_id")
                 or ad.get("board_id")

@@ -23,8 +23,14 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
    C:\No3Darts\Board1\autodarts-companion\.venv\Scripts\python.exe -c "print('ok')"
    C:\No3Darts\Board1\autodarts-companion\.venv\Scripts\python.exe C:\No3Darts\Board1\board-station\load-config.py C:\No3Darts\Board1\board-station\config.yaml
    ```
-3. Board Manager detecting at `http://127.0.0.1:3180`.
+3. Board Manager **detecting** -- `:3180` HTTP 200 is **not** enough.
+   Start-Board / Fix Me must print `Board detecting (status=Throw ...)`
+   (or Takeout / event Wait). If status is **Stopped**, nothing scores;
+   the companion keep-alive should PUT `/api/detection/start` while the
+   bridge window is open. Do not treat "Board Manager responding" as ready.
 4. Companion bridge window stays open (`python -m companion bridge`).
+   Companion-up is the on-switch: if you quit the bridge, the board can
+   idle-timer Stop again.
 5. iPad: `/play?room=Board%201`. TV: `/tv`.
 
 ## 1. Takeout / removing darts + Reset - 60s

@@ -37,10 +37,11 @@ On the mini-PC (repo checked out, e.g. `C:\No3Darts\no3-darts`):
 What it does:
 
 1. Loads `config.yaml` via companion PyYAML (`load-config.py`) — editable, not hardcoded paths
-2. Starts / waits for Autodarts Board Manager (`exe_path` + `/api/state` ready check)
-3. Writes companion `config.yaml` and launches `python -m companion bridge` (new window)
-4. Optionally opens Edge/Chrome **kiosk** to the TV match URL on the mini-PC HDMI/TV
-5. Prints the **iPad play URL** (and ASCII QR when possible) — iPad is a separate device; URL only
+2. Starts / waits for Autodarts Board Manager (`exe_path` + `/api/state` HTTP 200)
+3. **Presses Autodarts Start** if the board is Stopped (`Ensure-BoardDetecting` -- `:3180` up is not detecting). Prints `Board detecting (status=Throw ...)`
+4. Writes companion `config.yaml` and launches `python -m companion bridge` (new window)
+5. Optionally opens Edge/Chrome **kiosk** to the TV match URL on the mini-PC HDMI/TV
+6. Prints the **iPad play URL** (and ASCII QR when possible) — iPad is a separate device; URL only
 
 ### Config knobs (`tools/board-station/config.yaml`)
 
@@ -52,7 +53,8 @@ What it does:
 | `kiosk.open_tv` / `browser` / `tv_url` | TV kiosk window |
 | `kiosk.open_play` | Usually `false` — use the iPad |
 | `health.*` | FPS floor, unhealthy duration, restart cooldown, between-games recal |
-| `autodarts.board_id` / `keep_alive.*` | Idle-timer keep-alive (start Stopped Board1 only) |
+| `autodarts.start_board_if_stopped` | After BM ready, PUT Start if Stopped (default true) |
+| `autodarts.board_id` / `keep_alive.*` | Companion keep-alive (start Stopped Board1; companion-up is the on-switch) |
 
 Bridge-only knobs also live in `tools/autodarts-companion/config.example.yaml` (overwritten by the start script when you use board-station).
 
@@ -102,15 +104,23 @@ When unhealthy longer than `health.unhealthy_seconds`:
 1. Notify No3 → `POST /api/camera/health` → SSE `camera_health`
 2. iPad / TV show **“Detection restarting…”** / **“Cameras unhealthy”**
 3. Restart Board Manager process (`exe_path` + `process_names`) after cooldown
-4. Wait for `/api/state` again and report recovery
+4. Wait for `/api/state` again, then **PUT Start** (relaunch leaves the board Stopped)
+5. Report recovery
+
+`Stopped` is health reason `board_stopped`. That does **not** taskkill/relaunch the exe (that would leave the board Stopped again). The companion PUTs `/api/detection/start` instead.
 
 Disable with `health.enabled: false` or `python -m companion bridge --no-health`.
 
 ### Keep the board started (idle timer)
 
-Board Manager can still be up on `:3180` after its Config idle timer (or a leftover Stop) has **Stopped** the board. Starting the Board Manager process at boot is not enough -- John should not have to click Start.
+**`:3180` up is not detecting.** Board Manager can answer `GET /api/state` HTTP 200 after its Config idle timer (or a leftover / bartender Stop) has **Stopped** the board. No scores until Start.
 
-While the companion bridge is running it polls `/api/state` and, about every 10s, starts **this** board if it is Stopped (`PUT /api/detection/start`, Board1 `board_id` only). Quitting the companion stops the loop. This path is start-only: it does not reset or recalibrate (that stays gated on a real between-games boundary).
+Two layers (Board1 mini-PC, `127.0.0.1:3180`, one BM):
+
+1. **Start-Board / Fix Me** (`autodarts.start_board_if_stopped: true`): after BM ready, `Ensure-BoardDetecting` PUTs `/api/detection/start` (fallback `/api/start`) if status/event is Stopped. Loud print `Board detecting (status=Throw ...)`. Skips Calibration.
+2. **Companion** (required overnight): on bridge start, whenever status/event is Stopped (~10s check, ~30s start cooldown), and after `restart_board_manager` + wait. `PUT /api/detection/start` only. Quitting the companion stops the loop.
+
+This path is start-only: it does not reset, stop, or recalibrate (that stays gated on a real between-games boundary). Fighting a bartender Stop on this PC is the desired default.
 
 `keep_alive.enabled: false` or `python -m companion bridge --no-keep-alive` disables it.
 

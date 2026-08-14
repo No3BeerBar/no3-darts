@@ -102,9 +102,24 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(ka).toMatch(/is_board_stopped/);
     expect(ka).not.toMatch(/\/api\/reset/);
     expect(ka).not.toMatch(/try_recalibrate/);
+    const client = readSrc("tools/autodarts-companion/companion/client.py");
+    expect(client).toMatch(/def try_start_detection/);
+    expect(client).toMatch(/\/api\/detection\/start/);
+    expect(client).toMatch(/\/api\/start/);
+    const health = readSrc("tools/autodarts-companion/companion/health.py");
+    expect(health).toMatch(/board_stopped/);
+    expect(health).toMatch(/is_board_stopped/);
     const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
     expect(bridge).toMatch(/maybe_keep_alive/);
+    expect(bridge).toMatch(/ensure_board_detecting/);
+    expect(bridge).toMatch(/after Board Manager restart/);
     expect(bridge).toMatch(/Idle-timer \/ leftover Stop/);
+    const start = readSrc("tools/board-station/Start-Board.ps1");
+    expect(start).toMatch(/function Ensure-BoardDetecting/);
+    expect(start).toMatch(/start_board_if_stopped/);
+    expect(start).toMatch(/Board detecting \(status=/);
+    expect(start).toMatch(/-Method PUT/);
+    expect(start).toMatch(/\/api\/detection\/start/);
   });
 
   it("takeout UI keeps last visit visible; iPad Reset + stay-put board stay isolated", () => {
