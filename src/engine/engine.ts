@@ -318,6 +318,21 @@ export function correctCurrentTurn(
       callout = r.callout ?? callout;
       // If raw apply already won match mid-list, stop
       if (next.status !== "playing") break;
+      // Exact-41 / X01-style bust: finalize even on a 1-2 dart rewrite.
+      // Leaving T19 (57) open on 41 was letting darts 2 and 3 still throw.
+      const handler = getHandler(next.mode);
+      if (handler.shouldEndTurn(next)) {
+        const beforeFin = next.turns.length;
+        const baselineForFin = next.turnBaseline ?? baseline;
+        const fin = FINALIZERS[next.mode](next);
+        tagNewTurnsWithLeg(fin.state, beforeFin);
+        attachBaselineToNewTurns(fin.state, beforeFin, baselineForFin);
+        fin.state.turnBaseline = structuredClone(fin.state.playerStates);
+        next = fin.state;
+        events.push(...fin.events);
+        callout = fin.callout ?? callout;
+        break;
+      }
     }
   }
 

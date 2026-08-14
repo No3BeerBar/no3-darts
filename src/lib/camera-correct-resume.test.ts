@@ -396,5 +396,89 @@ describe("play UI continue path after correct", () => {
     expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
     expect(screen).toMatch(/armTakeoutUi/);
     expect(screen).toMatch(/afterLen >= 3/);
+    expect(screen).toMatch(/scoreAndArmTakeout/);
+    expect(screen).toMatch(/youreDone/);
+    expect(screen).toMatch(/data-testid="play-board-reset"/);
+  });
+});
+
+describe("41 exact bust ends visit and holds next seat", () => {
+  it("T19 on remaining 41 auto-ends, arms takeout, blocks dart 2 until green", () => {
+    const room = `${ROOM} Bust41`;
+    let state = fortyOneMatch(room);
+    for (let r = 0; r < 8; r++) {
+      for (let p = 0; p < 2; p++) {
+        for (let i = 0; i < 3; i++) {
+          state = applyDart(state, createDart("miss", 0)).state;
+        }
+      }
+    }
+    expect(fortyOneTarget(state).type).toBe("exact_41");
+    expect(state.currentPlayerIndex).toBe(0);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    setCameraHealth({
+      roomId: room,
+      ok: true,
+      level: "ok",
+      message: "Cameras healthy",
+      takeout: false,
+      connected: true,
+      ts: Date.now(),
+    });
+    try {
+      const bust = applyCameraDart({
+        kind: "triple",
+        number: 19,
+        roomId: room,
+        expectedPlayerIndex: 0,
+      });
+      expect(bust.ok).toBe(true);
+      if (!bust.ok) throw new Error(bust.error);
+      expect(bust.turnEnded).toBe(true);
+      expect(bust.callout).toBe("BUST");
+      expect(bust.state.currentTurnDarts).toHaveLength(0);
+      expect(bust.state.currentPlayerIndex).toBe(1);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(true);
+      expect(shouldShowTakeoutUi(getCameraHealth(room))).toBe(true);
+
+      const blocked = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) {
+        expect(blocked.error).toMatch(/Takeout/i);
+      }
+
+      requestTakeoutReady(room);
+      clearTakeoutHold(room);
+      setCameraHealth({
+        roomId: room,
+        ok: true,
+        level: "ok",
+        message: "Ready for next visit",
+        reason: "takeout_cleared",
+        takeout: false,
+        connected: true,
+        ts: Date.now(),
+      });
+
+      const next = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(next.ok).toBe(true);
+      if (!next.ok) throw new Error(next.error);
+      expect(next.state.currentPlayerIndex).toBe(1);
+      expect(next.state.currentTurnDarts).toHaveLength(1);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
   });
 });

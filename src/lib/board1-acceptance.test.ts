@@ -73,6 +73,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
     expect(screen).toMatch(/data-testid="play-board-reset"/);
     expect(screen).toMatch(/function BoardResetButton/);
+    expect(screen).toMatch(/scoreAndArmTakeout/);
     expect(screen).not.toMatch(/takeoutActive && \(/);
     const hook = readSrc("src/hooks/useCameraHealth.ts");
     expect(hook).toMatch(/takeout-ready/);

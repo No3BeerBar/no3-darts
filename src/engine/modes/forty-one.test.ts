@@ -5,6 +5,7 @@ import {
   FORTY_ONE_START_SCORE,
   fortyOneDartPoints,
   fortyOneExact41DartContributes,
+  fortyOneExact41GoneOver,
   fortyOneExact41VisitOk,
   fortyOneHalve,
   fortyOneRoundNumber,
@@ -149,6 +150,14 @@ describe("fortyOneVisitResult", () => {
       fortyOneVisitResult([createDart("single", 20), createDart("single", 20)], t)
     ).toEqual({ kind: "halved" });
   });
+
+  it("exact_41 gone over is a bust (T19 / 57)", () => {
+    expect(fortyOneExact41GoneOver([createDart("triple", 19)])).toBe(true);
+    expect(fortyOneExact41GoneOver([createDart("single", 20)])).toBe(false);
+    expect(
+      fortyOneExact41GoneOver([createDart("single", 20), createDart("triple", 19)])
+    ).toBe(true);
+  });
 });
 
 describe("forty_one engine play", () => {
@@ -290,6 +299,49 @@ describe("forty_one engine play", () => {
     expect(state.playerStates[0].score).toBe(fortyOneHalve(before));
     expect(state.playerStates[0].extra?.lastVisitHalved).toBe(true);
     expect(state.turns[state.turns.length - 1]?.bust).toBe(true);
+  });
+
+  it("exact-41: T19 first dart (57) busts and ends the visit immediately", () => {
+    let state = start();
+    for (let r = 0; r < 8; r++) {
+      for (let p = 0; p < 2; p++) {
+        if (state.status !== "playing") break;
+        state = throwThree(state, ["miss", 0], ["miss", 0], ["miss", 0]);
+      }
+    }
+    expect(fortyOneTarget(state).type).toBe("exact_41");
+    expect(state.currentPlayerIndex).toBe(0);
+    const before = state.playerStates[0].score;
+
+    const r = applyDart(state, createDart("triple", 19));
+    state = r.state;
+    expect(r.callout).toBe("BUST");
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.playerStates[0].score).toBe(fortyOneHalve(before));
+    expect(state.turns[state.turns.length - 1]?.bust).toBe(true);
+    expect(state.turns[state.turns.length - 1]?.darts).toHaveLength(1);
+  });
+
+  it("exact-41: S20 then T19 (20+57) busts on dart 2", () => {
+    let state = start();
+    for (let r = 0; r < 8; r++) {
+      for (let p = 0; p < 2; p++) {
+        if (state.status !== "playing") break;
+        state = throwThree(state, ["miss", 0], ["miss", 0], ["miss", 0]);
+      }
+    }
+    expect(fortyOneTarget(state).type).toBe("exact_41");
+    state = applyDart(state, createDart("single", 20)).state;
+    expect(state.currentTurnDarts).toHaveLength(1);
+    expect(state.currentPlayerIndex).toBe(0);
+
+    const r = applyDart(state, createDart("triple", 19));
+    state = r.state;
+    expect(r.callout).toBe("BUST");
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.turns[state.turns.length - 1]?.darts).toHaveLength(2);
   });
 
   it("plays all rounds; highest score wins", () => {

@@ -16,6 +16,7 @@ from companion.visit_gate import (
     should_end_turn_on_clear,
     should_end_turn_on_empty_takeout_finished,
     should_end_turn_on_takeout,
+    no3_visit_already_ended,
     should_end_turn_leaving_takeout_empty,
     should_unlock_next_visit,
 )
@@ -162,6 +163,51 @@ def test_takeout_defers_end_turn_until_three_throws() -> None:
     )
     assert (
         should_end_turn_on_takeout(visit_closed=True, throws_count=3) is False
+    )
+    # 41 / exact-out bust: No3 already ended after dart 1
+    assert (
+        should_end_turn_on_takeout(
+            visit_closed=False, throws_count=1, no3_visit_done=True
+        )
+        is True
+    )
+
+
+def test_no3_bust_closes_incomplete_ad_visit() -> None:
+    assert (
+        no3_visit_already_ended(
+            visit_closed=False,
+            no3_open_darts=0,
+            no3_seat=1,
+            locked_seat=0,
+            last_turn_bust=True,
+            ad_throw_count=1,
+        )
+        is True
+    )
+    # Idle between visits: do not re-close
+    assert (
+        no3_visit_already_ended(
+            visit_closed=False,
+            no3_open_darts=0,
+            no3_seat=0,
+            locked_seat=None,
+            last_turn_bust=True,
+            ad_throw_count=0,
+        )
+        is False
+    )
+    # Live 1-2 dart visit still open on No3
+    assert (
+        no3_visit_already_ended(
+            visit_closed=False,
+            no3_open_darts=1,
+            no3_seat=0,
+            locked_seat=0,
+            last_turn_bust=False,
+            ad_throw_count=1,
+        )
+        is False
     )
 
 

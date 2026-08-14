@@ -43,6 +43,7 @@ export {
   fortyOneBoardFocus,
   fortyOneDartPoints,
   fortyOneExact41DartContributes,
+  fortyOneExact41GoneOver,
   fortyOneExact41VisitOk,
   fortyOneHalve,
   fortyOneRoundNumber,

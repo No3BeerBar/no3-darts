@@ -262,6 +262,14 @@ function ScoringScreenInner() {
     armTakeoutUi,
   } = useCameraHealth(cameraRoom, true);
 
+  const scoreAndArmTakeout: typeof throwDart = (...args) => {
+    throwDart(...args);
+    const after = useGameStore.getState().state;
+    if (after?.status === "playing" && after.currentTurnDarts.length === 0) {
+      armTakeoutUi();
+    }
+  };
+
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
   const showCheckout =
     Boolean(checkout) &&
@@ -423,25 +431,25 @@ function ScoringScreenInner() {
   const submitPad = () => {
     const dart = parseDartLabel(pad);
     if (dart) {
-      throwDart(dart.kind, dart.number);
+      scoreAndArmTakeout(dart.kind, dart.number);
       setPad("");
       return;
     }
     const n = parseInt(pad, 10);
     if (!Number.isNaN(n) && n >= 0 && n <= 60) {
-      if (n === 0) throwDart("miss", 0);
-      else if (n === 25) throwDart("outer_bull", 25);
-      else if (n === 50) throwDart("bull", 50);
-      else if (n <= 20) throwDart("single", n);
+      if (n === 0) scoreAndArmTakeout("miss", 0);
+      else if (n === 25) scoreAndArmTakeout("outer_bull", 25);
+      else if (n === 50) scoreAndArmTakeout("bull", 50);
+      else if (n <= 20) scoreAndArmTakeout("single", n);
       else {
         for (let i = 20; i >= 1; i--) {
           if (i * 3 === n) {
-            throwDart("triple", i);
+            scoreAndArmTakeout("triple", i);
             setPad("");
             return;
           }
           if (i * 2 === n) {
-            throwDart("double", i);
+            scoreAndArmTakeout("double", i);
             setPad("");
             return;
           }
@@ -465,7 +473,7 @@ function ScoringScreenInner() {
         showLiveLabel
         onScore={(kind, number, meta) => {
           if (botThrowing) return;
-          throwDart(kind, number, {
+          scoreAndArmTakeout(kind, number, {
             angle: meta?.angle,
             radius: meta?.radius,
             source: "manual",
@@ -480,6 +488,7 @@ function ScoringScreenInner() {
       <TakeoutBanner
         active={takeoutActive}
         busy={takeoutBusy}
+        youreDone={Boolean(state.turns[state.turns.length - 1]?.bust)}
         onReady={() => void acknowledgeTakeout()}
       />
 
@@ -847,7 +856,7 @@ function ScoringScreenInner() {
 
           {playing && isAdmin && tab === "keys" && (
             <div className="w-full max-w-lg md:hidden">
-              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+              <DartQuickKeys onDart={(k, n) => scoreAndArmTakeout(k, n)} />
             </div>
           )}
           {playing && isAdmin && tab === "pad" && (
@@ -904,7 +913,7 @@ function ScoringScreenInner() {
           </div>
           {playing && isAdmin && tab === "keys" && (
             <div className="hidden w-full max-w-lg md:block">
-              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+              <DartQuickKeys onDart={(k, n) => scoreAndArmTakeout(k, n)} />
             </div>
           )}
           {playing && isAdmin && tab === "pad" && (

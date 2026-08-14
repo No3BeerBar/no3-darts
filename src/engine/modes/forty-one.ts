@@ -134,6 +134,11 @@ export function fortyOneExact41VisitOk(darts: DartThrow[]): boolean {
   return darts.reduce((a, d) => a + d.value, 0) === 41;
 }
 
+/** Exact-41: visit sum already over 41 — cannot recover; turn is done. */
+export function fortyOneExact41GoneOver(darts: DartThrow[]): boolean {
+  return darts.reduce((a, d) => a + d.value, 0) > 41;
+}
+
 export function fortyOneVisitRawSum(darts: DartThrow[], target: FortyOneTarget): number {
   return darts.reduce((sum, d) => sum + fortyOneDartPoints(d, target), 0);
 }
@@ -213,7 +218,14 @@ export const fortyOneHandler: GameModeHandler = {
   },
 
   shouldEndTurn(state: GameState): boolean {
-    return state.status === "playing" && state.currentTurnDarts.length >= 3;
+    if (state.status !== "playing") return false;
+    if (state.currentTurnDarts.length >= 3) return true;
+    // Exact 41: over remaining 41 (e.g. T19 first dart) ends the visit now.
+    // Do not wait for darts 2 and 3 — same as X01 bust.
+    return (
+      fortyOneTarget(state).type === "exact_41" &&
+      fortyOneExact41GoneOver(state.currentTurnDarts)
+    );
   },
 
   getStatusLine(state: GameState): string {
@@ -238,7 +250,10 @@ export function finalizeFortyOneTurn(state: GameState): ApplyDartResult {
   if (result.kind === "halved") {
     ps.score = fortyOneHalve(ps.score);
     ps.extra = { ...ps.extra, lastVisitPoints: 0, lastVisitHalved: true };
-    callout = "HALVED";
+    callout =
+      target.type === "exact_41" && fortyOneExact41GoneOver(next.currentTurnDarts)
+        ? "BUST"
+        : "HALVED";
   } else {
     ps.score += result.points;
     ps.totalScore += result.points;

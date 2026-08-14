@@ -547,8 +547,8 @@ export function applyCameraDart(
   const result = applyDart(state, dart);
   matches.set(result.state.id, result.state);
   const turnEnded =
+    result.state.currentTurnDarts.length === 0 ||
     result.state.currentPlayerIndex !== beforePlayer ||
-    (beforeTurnLen + 1 >= 3 && result.state.currentTurnDarts.length === 0) ||
     result.state.status !== "playing";
 
   if (turnEnded) {
@@ -695,7 +695,7 @@ export function applyCameraCorrect(opts: {
   const turnEnded =
     result.state.currentPlayerIndex !== beforePlayer ||
     result.state.status !== "playing" ||
-    (darts.length >= 3 && result.state.currentTurnDarts.length === 0);
+    (darts.length > 0 && result.state.currentTurnDarts.length === 0);
 
   if (state.status === "playing") {
     if (turnEnded) {

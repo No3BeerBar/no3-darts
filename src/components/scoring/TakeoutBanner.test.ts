@@ -32,4 +32,10 @@ describe("TakeoutBanner", () => {
     expect(SRC).toMatch(/Pull your darts/);
     expect(SRC).toMatch(/tap Reset/);
   });
+
+  it("bust copy tells the thrower they are done and to wait for green", () => {
+    expect(SRC).toMatch(/youreDone/);
+    expect(SRC).toMatch(/You're done/);
+    expect(SRC).toMatch(/board is green/);
+  });
 });

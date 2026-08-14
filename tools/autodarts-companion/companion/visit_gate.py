@@ -101,6 +101,7 @@ def should_end_turn_on_takeout(
     *,
     visit_closed: bool,
     throws_count: int,
+    no3_visit_done: bool = False,
 ) -> bool:
     """
     Takeout must not advance the No3 seat before a full 3-dart visit is mirrored.
@@ -110,11 +111,47 @@ def should_end_turn_on_takeout(
     flicker can unlock scoring so dart 3 posts onto the next player.
 
     End-turn on takeout only when all 3 throws are present (caller syncs APPEND
-    first). Incomplete visits wait for dart 3 or patron Ready reset.
+    first). Incomplete visits wait for dart 3 or patron Next visit.
+
+    Exception: No3 already finalized (41 / exact-out bust). Then end now even
+    with 1-2 AD throws so takeout can run and the next seat waits for green.
     """
     if visit_closed:
         return False
+    if no3_visit_done:
+        return True
     return int(throws_count) >= 3
+
+
+def no3_visit_already_ended(
+    *,
+    visit_closed: bool,
+    no3_open_darts: int,
+    no3_seat: Optional[int],
+    locked_seat: Optional[int],
+    last_turn_bust: bool,
+    ad_throw_count: int,
+) -> bool:
+    """
+    True when No3 already closed the visit (bust / end-turn) while AD still
+    shows 1-2 throws. Idle between visits must not match.
+    """
+    if visit_closed:
+        return False
+    if int(no3_open_darts) > 0:
+        return False
+    in_flight = locked_seat is not None or int(ad_throw_count) > 0
+    if not in_flight:
+        return False
+    if last_turn_bust:
+        return True
+    if (
+        locked_seat is not None
+        and no3_seat is not None
+        and int(locked_seat) != int(no3_seat)
+    ):
+        return True
+    return False
 
 
 def should_clear_stale_takeout(

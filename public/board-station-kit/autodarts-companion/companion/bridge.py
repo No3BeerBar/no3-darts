@@ -53,6 +53,7 @@ from .mapping import (
 from .visit_gate import (
     is_ad_visit_continuation,
     is_takeout_state,
+    no3_visit_already_ended,
     seat_matches_lock,
     should_clear_stale_takeout,
     should_end_turn_on_clear,
@@ -378,6 +379,39 @@ def run_bridge(
         console.print(
             "[cyan]visit reopened[/cyan] No3 undo/correct - scoring resumed"
         )
+
+    def close_visit_if_no3_already_ended() -> bool:
+        """
+        41 / exact-out bust: No3 already finalized after dart 1 (or 2).
+        Treat the AD visit as closed and go to takeout even with <3 throws.
+        """
+        nonlocal visit_closed
+        if visit_closed:
+            return False
+        match = fetch_no3_match()
+        if not match:
+            return False
+        darts = match.get("currentTurnDarts") or []
+        open_n = len(darts) if isinstance(darts, list) else 0
+        turns = match.get("turns") or []
+        last = turns[-1] if isinstance(turns, list) and turns else None
+        last_bust = bool(isinstance(last, dict) and last.get("bust"))
+        seat = match.get("currentPlayerIndex")
+        try:
+            no3_seat = int(seat) if seat is not None else None
+        except (TypeError, ValueError):
+            no3_seat = None
+        if not no3_visit_already_ended(
+            visit_closed=visit_closed,
+            no3_open_darts=open_n,
+            no3_seat=no3_seat,
+            locked_seat=locked_seat,
+            last_turn_bust=last_bust,
+            ad_throw_count=len(prev_throws),
+        ):
+            return False
+        mark_visit_closed("no3 already ended (bust)")
+        return True
 
     def ensure_visit_seat_lock() -> Optional[int]:
         """Lock No3 seat for the open AD visit; None if unknown (fail closed)."""
@@ -936,14 +970,14 @@ def run_bridge(
                     by_scoring=True,
                     throws_snapshot=full_throws,
                 )
-                # Only arm banner when this AD poll shows takeout
-                if is_takeout_status(status or ""):
-                    post_takeout_health(
-                        status,
-                        active=True,
-                        message="Pull darts - takeout",
-                        ad_takeout=True,
-                    )
+                # Bust / 3-dart auto-end: show Removing darts now. Next seat
+                # waits until the board is green (takeout clear).
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="You are done - pull darts",
+                    ad_takeout=is_takeout_status(status or ""),
+                )
                 break
 
     try:
@@ -995,6 +1029,15 @@ def run_bridge(
             takeout_now = is_takeout_state(state)
             # Tablet Undo / Fix dart may have reopened the No3 visit
             reopen_visit_if_no3_undid()
+            # 41 bust: No3 already ended after dart 1 - close even if AD
+            # still shows 1-2 throws and takeout has not flipped yet.
+            if close_visit_if_no3_already_ended():
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="You are done - pull darts",
+                    ad_takeout=takeout_now,
+                )
             # After undo, if AD is still yellow / takeout, keep the banner.
             # Do not treat a reopened visit as "play is live, hide Reset".
             if takeout_now:

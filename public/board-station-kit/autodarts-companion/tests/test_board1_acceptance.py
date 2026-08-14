@@ -71,6 +71,12 @@ def test_board1_p0_incomplete_never_auto_end_turn() -> None:
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=2) is False
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=3) is True
     assert (
+        should_end_turn_on_takeout(
+            visit_closed=False, throws_count=1, no3_visit_done=True
+        )
+        is True
+    )
+    assert (
         should_end_turn_on_empty_takeout_finished(
             visit_closed=False,
             throws_empty=True,
@@ -161,6 +167,10 @@ def test_board1_patron_reset_starts_board_clears_takeout_only() -> None:
     assert "stuck_takeout" in ack
     assert "is_takeout_status" in ack
     assert "already detecting, not in takeout" in ack
+    assert "close_visit_if_no3_already_ended" in src
+    assert "no3 already ended (bust)" in src
+    assert "You are done - pull darts" in src
+    assert "no3_visit_already_ended" in src
 
 
 def test_board1_undo_correct_unfreezes_and_posts_frozen_banner() -> None:

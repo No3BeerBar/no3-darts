@@ -13,10 +13,13 @@ import { cn } from "@/lib/utils";
 export function TakeoutBanner({
   active,
   busy,
+  youreDone,
   onReady,
 }: {
   active: boolean;
   busy?: boolean;
+  /** Exact-41 / X01 bust — visit already over; wait for green. */
+  youreDone?: boolean;
   onReady: () => void;
 }) {
   if (!active) return null;
@@ -31,11 +34,14 @@ export function TakeoutBanner({
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-wide">
-            Removing darts - takeout
+            {youreDone
+              ? "You're done — removing darts"
+              : "Removing darts - takeout"}
           </p>
           <p className="text-xs text-amber-100/90">
-            Camera scoring paused. Pull your darts, then tap Reset so the
-            next visit can start. Clears a stuck takeout from /play.
+            {youreDone
+              ? "Visit over. Pull your darts and wait until the Autodarts board is green. Tap Reset if it stays yellow."
+              : "Camera scoring paused. Pull your darts, then tap Reset so the next visit can start. Clears a stuck takeout from /play."}
           </p>
         </div>
         <button
