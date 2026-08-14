@@ -232,6 +232,7 @@ function ScoringScreenInner() {
     takeout: takeoutActive,
     takeoutBusy,
     acknowledgeTakeout,
+    armTakeoutUi,
   } = useCameraHealth(state?.roomId, Boolean(state));
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
@@ -469,8 +470,21 @@ function ScoringScreenInner() {
           focusRing={fortyOneFocus?.focusRing ?? null}
           focusBull={fortyOneFocus?.focusBull ?? false}
           onPick={(kind, number) => {
+            const before = useGameStore.getState().state;
+            const beforeLen = before?.currentTurnDarts.length ?? 0;
             correctDartAt(correctSlot, kind, number);
             setCorrectSlot(null);
+            const after = useGameStore.getState().state;
+            const afterLen = after?.currentTurnDarts.length ?? 0;
+            // Empty-slot Fix that completes dart 3 auto-ends. Show Reset
+            // immediately so the iPad is never only End game.
+            if (
+              after &&
+              after.status === "playing" &&
+              (afterLen >= 3 || (beforeLen < 3 && afterLen === 0))
+            ) {
+              armTakeoutUi();
+            }
           }}
           onClear={() => {
             correctDartAt(correctSlot, null);
@@ -697,8 +711,9 @@ function ScoringScreenInner() {
               </p>
             )}
             {playing &&
-              !visitView.holdingLastVisit &&
-              state.currentTurnDarts.length > 0 && (
+              (state.currentTurnDarts.length >= 3 ||
+                (!visitView.holdingLastVisit &&
+                  state.currentTurnDarts.length > 0)) && (
                 <button
                   type="button"
                   onClick={endTurn}
@@ -808,9 +823,20 @@ function ScoringScreenInner() {
           )}
 
           <div className="mt-auto flex flex-col gap-2">
+            {takeoutActive && (
+              <button
+                type="button"
+                onClick={() => void acknowledgeTakeout()}
+                disabled={takeoutBusy}
+                className="btn-primary min-h-14 w-full font-display text-base font-semibold tracking-wider"
+              >
+                {takeoutBusy ? "Resetting…" : "Reset takeout"}
+              </button>
+            )}
             {playing &&
-              !visitView.holdingLastVisit &&
-              state.currentTurnDarts.length > 0 && (
+              (state.currentTurnDarts.length >= 3 ||
+                (!visitView.holdingLastVisit &&
+                  state.currentTurnDarts.length > 0)) && (
                 <button
                   type="button"
                   onClick={endTurn}

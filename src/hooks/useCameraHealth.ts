@@ -227,5 +227,17 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     }
   }, [roomId]);
 
-  return { health, notice, takeout, takeoutBusy, acknowledgeTakeout };
+  const armTakeoutUi = useCallback(() => {
+    // Immediate Reset after tablet Fix ends a visit — do not wait for the
+    // 4s health poll while Autodarts is already in yellow takeout.
+    setTakeout(true);
+    setNotice({
+      level: "takeout",
+      message: "Pull darts — takeout",
+      takeout: true,
+      ts: Date.now(),
+    });
+  }, []);
+
+  return { health, notice, takeout, takeoutBusy, acknowledgeTakeout, armTakeoutUi };
 }

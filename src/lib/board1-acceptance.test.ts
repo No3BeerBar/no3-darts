@@ -78,6 +78,8 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(hook).toMatch(/acknowledgeTakeout/);
     expect(hook).toMatch(/Optimistic clear/);
     expect(hook).toMatch(/shouldShowTakeoutUi/);
+    expect(hook).toMatch(/armTakeoutUi/);
+    expect(screen).toMatch(/armTakeoutUi/);
   });
 
   it("TV shows prominent takeout / Reset status gated on live AD signal", () => {
