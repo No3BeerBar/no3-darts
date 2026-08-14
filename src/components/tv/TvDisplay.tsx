@@ -82,21 +82,36 @@ export function TvDisplay() {
   }, [liveMatch, state?.id]);
 
   const held = state ? takeoutVisitDisplay(state, takeoutActive) : null;
-
-  const takeoutTurnTotal =
-    held && state
-      ? held.darts.reduce((a, d) => a + d.value, 0)
-      : null;
+  const latchedTakeoutVisit = useRef<{
+    playerName: string | null;
+    darts: NonNullable<typeof held>["darts"];
+    turnTotal: number;
+  } | null>(null);
+  if (takeoutActive && held && state && held.darts.length > 0) {
+    latchedTakeoutVisit.current = {
+      playerName: state.players[held.playerIndex]?.name ?? null,
+      darts: held.darts,
+      turnTotal: held.darts.reduce((a, d) => a + d.value, 0),
+    };
+  } else if (!takeoutActive) {
+    latchedTakeoutVisit.current = null;
+  }
+  const bannerVisit =
+    held && state && held.darts.length > 0
+      ? {
+          playerName: state.players[held.playerIndex]?.name ?? null,
+          darts: held.darts,
+          turnTotal: held.darts.reduce((a, d) => a + d.value, 0),
+        }
+      : latchedTakeoutVisit.current;
 
   const takeoutBanner = (
     <TvTakeoutBanner
       active={takeoutActive}
       message={takeoutMessage}
-      playerName={
-        held && state ? state.players[held.playerIndex]?.name ?? null : null
-      }
-      darts={held?.darts}
-      turnTotal={takeoutTurnTotal}
+      playerName={bannerVisit?.playerName ?? null}
+      darts={bannerVisit?.darts}
+      turnTotal={bannerVisit?.turnTotal ?? null}
     />
   );
 

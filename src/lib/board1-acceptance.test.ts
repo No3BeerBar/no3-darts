@@ -75,8 +75,9 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     const hook = readSrc("src/hooks/useCameraHealth.ts");
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);
-    expect(hook).toMatch(/Optimistic clear/);
+    expect(hook).toMatch(/shouldShowTakeoutUi/);
     expect(hook).toMatch(/isLiveTakeoutSignal/);
+    expect(hook).not.toMatch(/Optimistic clear/);
   });
 
   it("TV shows prominent takeout / Reset status gated on live AD signal", () => {
@@ -92,6 +93,7 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(tv).toMatch(/takeoutVisitDisplay/);
     const feed = readSrc("src/hooks/useTvMatchFeed.ts");
     expect(feed).toMatch(/isLiveTakeoutSignal/);
+    expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/takeoutActive/);
   });
 
@@ -147,6 +149,8 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
     expect(banner).toMatch(/"Reset takeout"/);
     expect(banner).toMatch(/bg-amber-950/);
+    expect(banner).toMatch(/play-takeout-last-visit/);
+    expect(banner).toMatch(/last visit/);
     const tv = readSrc("src/components/tv/TvDisplay.tsx");
     expect(tv).toMatch(/tv-board-stage/);
     expect(tv).toMatch(/tvBoardSide/);

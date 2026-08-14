@@ -4,15 +4,17 @@
  * Subscribe to Board Manager / camera health from the companion bridge.
  * SSE `camera_health` + lightweight poll of GET /api/camera/health.
  *
- * Takeout / Pull-darts UI only follows a *live* Autodarts takeout signal.
+ * Takeout / Pull-darts UI only follows a *live* Autodarts takeout signal
+ * (shouldShowTakeoutUi → isLiveTakeoutSignal). Never hide the banner on a
+ * missed poll while Autodarts is still in yellow takeout/Reset.
  * Sandbox (no bridge), AD offline, and stale leftover health must not
  * sticky-loop "Ready for next visit" or Removing-darts.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isCameraBridgeOffline,
-  isLiveTakeoutSignal,
+  shouldShowTakeoutUi,
   type CameraHealth,
 } from "@/lib/camera-health";
 
@@ -29,6 +31,7 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
   const [notice, setNotice] = useState<CameraHealthNotice>(null);
   const [takeout, setTakeout] = useState(false);
   const [takeoutBusy, setTakeoutBusy] = useState(false);
+  const takeoutRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -40,8 +43,13 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     let lastOkToastTs: number | null = null;
 
     const showNotice = (h: CameraHealth) => {
-      // Live Autodarts takeout only — never from stale/offline leftover rows.
-      if (isLiveTakeoutSignal(h)) {
+      // Live Autodarts takeout / yellow Reset — never hide while still active.
+      const showTakeout = shouldShowTakeoutUi({
+        health: h,
+        currentlyShowing: takeoutRef.current,
+      });
+      takeoutRef.current = showTakeout;
+      if (showTakeout) {
         setTakeout(true);
         setNotice({
           level: "takeout",
@@ -126,7 +134,7 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     const apply = (h: CameraHealth | null) => {
       if (!h) {
         setHealth(null);
-        setTakeout(false);
+        // Missed poll must not hide a live takeout / yellow Reset banner.
         return;
       }
       const want = room.toLowerCase();
@@ -201,17 +209,8 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
   const acknowledgeTakeout = useCallback(async () => {
     const room = (roomId || "Board 1").trim() || "Board 1";
     setTakeoutBusy(true);
-    // Optimistic clear so stuck Removing-darts is never trapped behind a
-    // slow/failed bridge poll; server still owns hold + takeout_cleared.
-    setTakeout(false);
-    setNotice({
-      level: "ok",
-      message: "Ready for next visit",
-      ts: Date.now(),
-    });
-    window.setTimeout(() => {
-      setNotice((n) => (n?.message === "Ready for next visit" ? null : n));
-    }, 1800);
+    // Do not hide the banner until health confirms takeout/Reset is gone.
+    // Optimistic hide left HDMI/iPad blank while Autodarts stayed yellow.
     try {
       await fetch("/api/camera/takeout-ready", {
         method: "POST",

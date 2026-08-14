@@ -441,6 +441,8 @@ function ScoringScreenInner() {
         active={takeoutActive}
         busy={takeoutBusy}
         onReady={() => void acknowledgeTakeout()}
+        playerName={current?.name ?? null}
+        darts={visitDarts}
       />
 
       {!seatsOk && (
