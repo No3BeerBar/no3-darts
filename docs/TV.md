@@ -13,7 +13,7 @@ Switching is automatic:
 
 1. Tablet heartbeats the match to `POST /api/matches` while playing.
 2. TV polls `GET /api/matches/active?room=…` (~1.5s) and listens to SSE `/api/camera/stream`.
-3. When a match appears → live scoring. When it is cleared / times out after finish → attract.
+3. When a match appears → live scoring. After match end (win or End game) the last result holds ~30s, then attract. A new match skips the hold.
 
 Room name comes from **Admin → room** (must match the iPad / board-station `room_id`, e.g. `Board 1`).
 

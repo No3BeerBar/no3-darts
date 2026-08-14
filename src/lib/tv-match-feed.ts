@@ -12,13 +12,19 @@ export { isLiveMatchStatus as isLiveTvStatus };
 export const TV_ACTIVE_POLL_MS = 1500;
 
 /**
- * After the last live sighting, wait this long before attract.
- * Must be ≤ a couple of poll cycles so End game flips HDMI within ~3–5s.
+ * After a true idle (no result to hold), wait this long before attract.
+ * Must stay short so a board that never had a match does not look stuck.
  */
 export const IDLE_GRACE_MS = 2500;
 
-/** Brief winner linger, then attract even if the same match_won is still polled. */
-export const MATCH_WON_ATTRACT_MS = 3500;
+/**
+ * Keep the last result on HDMI (~30s) after match_won or End game, then attract.
+ * A new live match skips this immediately. Not configurable.
+ */
+export const MATCH_RESULT_HOLD_MS = 30_000;
+
+/** @deprecated use MATCH_RESULT_HOLD_MS — same 30s winner/result linger. */
+export const MATCH_WON_ATTRACT_MS = MATCH_RESULT_HOLD_MS;
 
 export function remainingIdleGraceMs(
   lastSeenLiveAt: number | null,
@@ -29,6 +35,16 @@ export function remainingIdleGraceMs(
   return Math.max(0, graceMs - (now - lastSeenLiveAt));
 }
 
+/** Time left on the post-match result hold (0 if none / expired). */
+export function resultHoldRemainingMs(
+  endedAt: number | null,
+  now: number,
+  holdMs = MATCH_RESULT_HOLD_MS
+): number {
+  if (endedAt == null) return 0;
+  return Math.max(0, holdMs - (now - endedAt));
+}
+
 /**
  * Empty / non-live active poll. Delay is remaining grace from last live
  * sighting — never a fresh full grace (that would never fire while polling).
@@ -37,7 +53,17 @@ export function idleAfterEmptyActivePoll(opts: {
   lastSeenLiveAt: number | null;
   now: number;
   graceMs?: number;
+  /** First time we noticed match_won / End game on this feed. */
+  resultEndedAt?: number | null;
+  resultHoldMs?: number;
 }): { goIdle: true } | { goIdle: false; delayMs: number } {
+  const holdMs = resultHoldRemainingMs(
+    opts.resultEndedAt ?? null,
+    opts.now,
+    opts.resultHoldMs
+  );
+  if (holdMs > 0) return { goIdle: false, delayMs: holdMs };
+
   const delayMs = remainingIdleGraceMs(
     opts.lastSeenLiveAt,
     opts.now,
@@ -89,4 +115,41 @@ export function nextIdleDeadline(
 ): number | null {
   if (existingDeadline == null) return proposedFireAt;
   return Math.min(existingDeadline, proposedFireAt);
+}
+
+/**
+ * A new in-progress match skips the 30s result hold immediately.
+ * Persist / leftover updates of the same finished match must not reset it.
+ */
+export function shouldCancelResultHold(opts: {
+  matchStatus: GameState["status"];
+  matchId: string;
+  lingerMatchId: string | null;
+}): boolean {
+  if (opts.matchStatus === "match_won") return false;
+  if (opts.matchStatus === "playing") return true;
+  if (opts.lingerMatchId != null && opts.matchId !== opts.lingerMatchId) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * `match_removed` starts/continues the result hold only for the match on
+ * screen. A new live match must not be idled by the previous game's DELETE.
+ */
+export function shouldHoldOnMatchRemoved(opts: {
+  removedMatchId?: string | null;
+  currentMatchId: string | null;
+  lastSeenLiveAt: number | null;
+}): boolean {
+  if (opts.lastSeenLiveAt == null) return false;
+  if (
+    opts.removedMatchId &&
+    opts.currentMatchId &&
+    opts.removedMatchId !== opts.currentMatchId
+  ) {
+    return false;
+  }
+  return true;
 }

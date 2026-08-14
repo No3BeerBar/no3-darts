@@ -1,13 +1,19 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGame, type GameState } from "@/engine";
 import {
   IDLE_GRACE_MS,
+  MATCH_RESULT_HOLD_MS,
   MATCH_WON_ATTRACT_MS,
   TV_ACTIVE_POLL_MS,
   idleAfterEmptyActivePoll,
   nextIdleDeadline,
   remainingIdleGraceMs,
+  resultHoldRemainingMs,
   shouldApplyLiveMatch,
+  shouldCancelResultHold,
+  shouldHoldOnMatchRemoved,
   shouldRefreshLiveSighting,
   shouldStartMatchWonAttractTimer,
 } from "./tv-match-feed";
@@ -117,6 +123,84 @@ describe("TV live vs attract", () => {
     expect(shouldApplyLiveMatch(won, won.id)).toBe(false);
     expect(shouldApplyLiveMatch(match("playing"), won.id)).toBe(true);
     expect(shouldApplyLiveMatch(match("finished"), null)).toBe(false);
-    expect(MATCH_WON_ATTRACT_MS).toBeLessThanOrEqual(5_000);
+    expect(MATCH_RESULT_HOLD_MS).toBe(30_000);
+    expect(MATCH_WON_ATTRACT_MS).toBe(MATCH_RESULT_HOLD_MS);
+  });
+
+  it("holds the last result ~30s after match end before idle", () => {
+    const endedAt = 5_000_000;
+    const mid = idleAfterEmptyActivePoll({
+      lastSeenLiveAt: endedAt,
+      now: endedAt + 10_000,
+      resultEndedAt: endedAt,
+    });
+    expect(mid.goIdle).toBe(false);
+    if (!mid.goIdle) {
+      expect(mid.delayMs).toBe(MATCH_RESULT_HOLD_MS - 10_000);
+    }
+    expect(
+      idleAfterEmptyActivePoll({
+        lastSeenLiveAt: endedAt,
+        now: endedAt + MATCH_RESULT_HOLD_MS,
+        resultEndedAt: endedAt,
+      })
+    ).toEqual({ goIdle: true });
+    expect(resultHoldRemainingMs(endedAt, endedAt + 1_000)).toBe(29_000);
+  });
+
+  it("skips the result hold when a new live match can apply", () => {
+    const won = match("match_won");
+    const next = match("playing");
+    expect(shouldApplyLiveMatch(next, won.id)).toBe(true);
+    expect(shouldApplyLiveMatch(won, won.id)).toBe(false);
+    expect(
+      shouldCancelResultHold({
+        matchStatus: "playing",
+        matchId: next.id,
+        lingerMatchId: won.id,
+      })
+    ).toBe(true);
+    expect(
+      shouldCancelResultHold({
+        matchStatus: "match_won",
+        matchId: won.id,
+        lingerMatchId: won.id,
+      })
+    ).toBe(false);
+  });
+
+  it("does not idle a new match when the previous game is removed", () => {
+    expect(
+      shouldHoldOnMatchRemoved({
+        removedMatchId: "old",
+        currentMatchId: "new",
+        lastSeenLiveAt: 1,
+      })
+    ).toBe(false);
+    expect(
+      shouldHoldOnMatchRemoved({
+        removedMatchId: "old",
+        currentMatchId: "old",
+        lastSeenLiveAt: 1,
+      })
+    ).toBe(true);
+    expect(
+      shouldHoldOnMatchRemoved({
+        removedMatchId: "old",
+        currentMatchId: "old",
+        lastSeenLiveAt: null,
+      })
+    ).toBe(false);
+  });
+
+  it("TV feed holds last result 30s and does not idle on 1.5s match_removed", () => {
+    const hook = readFileSync(join(__dirname, "../hooks/useTvMatchFeed.ts"), "utf8");
+    expect(hook).toMatch(/MATCH_RESULT_HOLD_MS/);
+    expect(hook).toMatch(/beginResultHold/);
+    expect(hook).toMatch(/resultEndedAt/);
+    expect(hook).toMatch(/shouldHoldOnMatchRemoved/);
+    expect(hook).toMatch(/shouldCancelResultHold/);
+    expect(hook).not.toMatch(/scheduleIdle\(1_500/);
+    expect(hook).not.toMatch(/scheduleIdle\(1500/);
   });
 });

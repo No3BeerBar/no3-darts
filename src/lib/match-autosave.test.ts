@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGame } from "@/engine";
-import { shouldAutoSaveMatch } from "./match-autosave";
+import { MATCH_WON_AUTOSAVE_MS, shouldAutoSaveMatch } from "./match-autosave";
+import { MATCH_RESULT_HOLD_MS } from "./tv-match-feed";
 
 describe("match autosave", () => {
   it("triggers only on match_won", () => {
@@ -16,5 +17,7 @@ describe("match autosave", () => {
     expect(shouldAutoSaveMatch({ ...base, status: "leg_won" })).toBe(false);
     expect(shouldAutoSaveMatch({ ...base, status: "match_won" })).toBe(true);
     expect(shouldAutoSaveMatch({ ...base, status: "finished" })).toBe(false);
+    expect(MATCH_WON_AUTOSAVE_MS).toBe(MATCH_RESULT_HOLD_MS);
+    expect(MATCH_WON_AUTOSAVE_MS).toBe(30_000);
   });
 });

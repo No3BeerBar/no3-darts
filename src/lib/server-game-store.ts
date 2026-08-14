@@ -41,8 +41,8 @@ const matchWonAt = new Map<string, number>();
 
 /** Ignore resurrecting a cleared match for this long (in-flight POST). */
 export const CLEARED_MATCH_TOMBSTONE_MS = 45_000;
-/** Winner screen may stay "active" briefly, then attract. */
-export const MATCH_WON_ACTIVE_MS = 15_000;
+/** Winner stays on GET /active for the HDMI result hold, then attract. */
+export const MATCH_WON_ACTIVE_MS = 30_000;
 
 type RoomTombstone = { matchId: string; updatedAt: number; removedAt: number };
 const removedRooms = new Map<string, RoomTombstone>();
