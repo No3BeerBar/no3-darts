@@ -202,6 +202,24 @@ body {
 .tv-display {
   cursor: none;
 }
+
+/*
+ * HDMI /tv board: grow into leftover landscape space.
+ * /play iPad must use .play-board-stage only — never these classes
+ * (stay-put / no jump when visit chrome reflows).
+ */
+.tv-board-stage {
+  container-type: size;
+}
+.tv-board-fill {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+}
+
+/* /play reserved board cell — size comes from JS playBoardSide (cap 440). */
+.play-board-stage {
+  /* stay-put: do not flex-grow the board with leftover viewport */
+}
 .tv-display * {
   user-select: none;
 }

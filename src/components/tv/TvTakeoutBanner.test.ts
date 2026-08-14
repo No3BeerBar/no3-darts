@@ -24,6 +24,10 @@ describe("TvTakeoutBanner", () => {
     expect(banner).toMatch(/data-testid=["']tv-takeout-banner["']/);
     expect(banner).toMatch(/text-4xl|text-5xl|text-6xl/);
     expect(banner).toMatch(/animate-pulse/);
+    // Banner, not a full-screen takeover that unmounts the last visit
+    expect(banner).not.toMatch(/fixed inset-0/);
+    expect(banner).toMatch(/last visit/);
+    expect(banner).toMatch(/tv-takeout-last-visit/);
   });
 
   it("TvDisplay mounts the banner from live takeout feed state", () => {
@@ -33,6 +37,26 @@ describe("TvTakeoutBanner", () => {
     expect(tv).toMatch(/takeoutMessage/);
     // Attract + live match both show the banner (TV watched more than iPad)
     expect(tv).toMatch(/takeoutBanner/);
+    expect(tv).toMatch(/takeoutVisitDisplay/);
+    expect(tv).toMatch(/holdingLastVisit/);
+  });
+
+  it("TV board fills leftover HDMI space; iPad stay-put cannot leak", () => {
+    const tv = readSrc("src/components/tv/TvDisplay.tsx");
+    expect(tv).toMatch(/tv-board-stage/);
+    expect(tv).toMatch(/tv-board-fill/);
+    expect(tv).toMatch(/tvBoardSide/);
+    expect(tv).toMatch(/fillParent/);
+    expect(tv).not.toMatch(/0\.58,\s*720/);
+    expect(tv).not.toMatch(/play-board-stage/);
+    expect(tv).not.toMatch(/playBoardSide/);
+
+    const play = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(play).toMatch(/play-board-stage/);
+    expect(play).toMatch(/playBoardSide/);
+    expect(play).not.toMatch(/tv-board-stage/);
+    expect(play).not.toMatch(/tvBoardSide/);
+    expect(play).not.toMatch(/fillParent/);
   });
 
   it("TV feed gates takeout on isLiveTakeoutSignal (no sandbox spam)", () => {

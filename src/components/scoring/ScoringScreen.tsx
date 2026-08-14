@@ -55,7 +55,9 @@ import { useCameraSync } from "@/hooks/useCameraSync";
 import { useMatchHeartbeat } from "@/hooks/useMatchHeartbeat";
 import { usePlayAdmin } from "@/hooks/usePlayAdmin";
 import { setupHref, statsHrefFromPlay } from "@/lib/play-kiosk";
+import { playBoardSide } from "@/lib/board-stage-size";
 import { stopMatchSync } from "@/lib/sync-server";
+import { takeoutVisitDisplay } from "@/lib/takeout-visit-display";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
 import { FortyOneBanner } from "./FortyOneBanner";
@@ -130,8 +132,8 @@ function ScoringScreenInner() {
     if (!el || typeof ResizeObserver === "undefined") return;
     const fit = () => {
       const { width, height } = el.getBoundingClientRect();
-      const side = Math.floor(Math.min(width, height) - 20);
-      if (side > 0) setBoardSize(Math.max(200, Math.min(side, 440)));
+      const next = playBoardSide(width, height);
+      if (next > 0) setBoardSize(next);
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -336,12 +338,14 @@ function ScoringScreenInner() {
 
   const handler = getHandler(state.mode);
   const statusLine = handler.getStatusLine?.(state) ?? state.mode;
-  const current = state.players[state.currentPlayerIndex];
+  const display = takeoutVisitDisplay(state, takeoutActive);
+  const current = state.players[display.playerIndex];
   const remaining = current ? getRemaining(state, current.id) : 0;
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const killerFocus = state.mode === "killer" ? killerBoardFocus(state) : null;
+  const visitDarts = display.darts;
   const slotDart =
-    correctSlot != null ? state.currentTurnDarts[correctSlot] : undefined;
+    correctSlot != null ? visitDarts[correctSlot] : undefined;
   const fortyOne = state.mode === "forty_one";
   const fortyOneFocus = fortyOne ? fortyOneBoardFocus(fortyOneTarget(state)) : null;
   const baseball = state.mode === "baseball";
@@ -410,7 +414,7 @@ function ScoringScreenInner() {
   const boardNode =
     playing && (!isAdmin || tab === "board") ? (
       <Dartboard
-        marks={state.currentTurnDarts}
+        marks={visitDarts}
         focusNumber={boardFocusNumber}
         focusNumbers={killerFocus?.secondary ?? null}
         focusKind={killerFocus?.focusKind ?? "wedge"}
@@ -521,7 +525,11 @@ function ScoringScreenInner() {
                 </span>
               )}
               <span className="ml-2 font-normal text-zinc-500">
-                {botThrowing ? "throwing…" : "throws"}
+                {botThrowing
+                  ? "throwing…"
+                  : display.holdingLastVisit
+                    ? "scored"
+                    : "throws"}
               </span>
               {(state.mode === "x01" || state.mode === "random_checkout") && (
                 <span className="ml-3 tabular-nums text-[var(--brand-red-bright)]">{remaining}</span>
@@ -627,7 +635,11 @@ function ScoringScreenInner() {
       >
         {/* Chrome column — seats, banners, visit, actions (scrolls) */}
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain md:order-1 md:pr-1">
-          <PlayerPanel state={state} compact />
+          <PlayerPanel
+            state={state}
+            compact
+            highlightPlayerIndex={display.playerIndex}
+          />
 
           {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
           {state.mode === "killer" && <KillerBanner state={state} size="sm" />}
@@ -638,7 +650,7 @@ function ScoringScreenInner() {
           <div className="rounded-xl border border-[rgb(225_6_0/0.28)] bg-[#0a0a0a] px-3 py-2">
             <div className="mb-1 flex items-center justify-between gap-2">
               <div className="font-display text-[10px] tracking-[0.18em] text-zinc-500">
-                THIS VISIT
+                {display.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
               </div>
               {(playing ||
                 state.status === "leg_won" ||
@@ -659,8 +671,8 @@ function ScoringScreenInner() {
               )}
             </div>
             <TurnDarts
-              darts={state.currentTurnDarts}
-              interactive={playing && !botThrowing}
+              darts={visitDarts}
+              interactive={playing && !botThrowing && !display.holdingLastVisit}
               onSlotClick={(i) => setCorrectSlot(i)}
               showDartPoints={baseball || fortyOne}
               pointsForDart={
@@ -673,7 +685,7 @@ function ScoringScreenInner() {
               totalVoided={
                 fortyOne &&
                 fortyOneTarget(state).type === "exact_41" &&
-                state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d))
+                visitDarts.some((d) => !fortyOneExact41DartContributes(d))
               }
             />
             {playing && (
@@ -788,7 +800,7 @@ function ScoringScreenInner() {
         <section
           ref={boardStageRef}
           className={cn(
-            "flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl border border-[rgb(225_6_0/0.2)] bg-black px-2 py-2 md:order-2",
+            "play-board-stage flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl border border-[rgb(225_6_0/0.2)] bg-black px-2 py-2 md:order-2",
             !playing && "opacity-80"
           )}
         >

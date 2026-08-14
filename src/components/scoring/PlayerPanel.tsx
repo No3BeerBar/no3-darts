@@ -27,6 +27,8 @@ function BotBadge({ difficulty }: { difficulty?: Parameters<typeof getBotProfile
 interface PlayerPanelProps {
   state: GameState;
   compact?: boolean;
+  /** Takeout freeze: keep last thrower selected until the board is ready. */
+  highlightPlayerIndex?: number;
 }
 
 /** Live MPR / PPR line for a seat (mode-aware; multi-leg → current / overall). */
@@ -65,14 +67,29 @@ function RoundStatsLine({
   );
 }
 
-export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
+export function PlayerPanel({
+  state,
+  compact = false,
+  highlightPlayerIndex,
+}: PlayerPanelProps) {
   const isCricket = state.mode === "cricket";
   const cricketNums = isCricket ? getCricketNumbers(state) : [];
   const teams = isTeamGame(state);
+  const focusIndex = highlightPlayerIndex ?? state.currentPlayerIndex;
+  const focusId = state.players[focusIndex]?.id;
 
   // Team games: one card per team — larger names & thrower callout
   if (teams && state.mode !== "killer") {
-    const rows = teamScoreRows(state);
+    const rows = teamScoreRows(state).map((row) => {
+      if (highlightPlayerIndex == null) return row;
+      const throwerId =
+        focusId && row.team.playerIds.includes(focusId) ? focusId : null;
+      return {
+        ...row,
+        throwerId,
+        active: Boolean(throwerId) && state.status === "playing",
+      };
+    });
     return (
       <div
         className={cn(
@@ -240,7 +257,7 @@ export function PlayerPanel({ state, compact = false }: PlayerPanelProps) {
     >
       {state.players.map((p, idx) => {
         const ps = state.playerStates.find((s) => s.playerId === p.id)!;
-        const active = idx === state.currentPlayerIndex && state.status === "playing";
+        const active = idx === focusIndex && state.status === "playing";
         const remaining = getRemaining(state, p.id);
         const avg = threeDartAverage(ps);
         const k = state.mode === "killer" ? getKillerExtra(ps) : null;

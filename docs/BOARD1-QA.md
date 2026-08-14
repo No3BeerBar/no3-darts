@@ -34,7 +34,9 @@ Full wiring: `docs/BOARD-STATION.md`. Automated net: `npm run test:board1`.
 3. iPad shows **Removing darts - takeout** with a working **Reset takeout** button.
 4. **TV (`/tv`)** shows a big yellow **Removing darts** banner telling patrons
    to pull darts and tap **Reset** on the scoring tablet — impossible to miss
-   from across the bar. Banner clears when takeout clears.
+   from across the bar. Last visit (player + 3 darts + score) stays visible
+   until the board is ready. Banner clears when takeout clears.
+   HDMI board should fill leftover landscape space (iPad board stay-put).
 5. Camera scoring stays paused (no late dart onto the next seat).
 6. Pull darts, tap **Reset** - iPad + TV banners clear; next visit can start.
 7. Companion log: `takeout` / `takeout-ready` / `end-turn ... seat=` / `next visit ready`.

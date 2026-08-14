@@ -41,6 +41,11 @@ export interface DartboardProps {
   /** Light outer + inner bull (e.g. 41 bull round). */
   focusBull?: boolean;
   size?: number;
+  /**
+   * HDMI /tv only: fill the parent square. Default (iPad /play) keeps
+   * `maxWidth: size` stay-put — do not pass this from ScoringScreen.
+   */
+  fillParent?: boolean;
   className?: string;
   interactive?: boolean;
   onScore?: (kind: SegmentKind, number: number, meta?: { angle: number; radius: number }) => void;
@@ -56,6 +61,7 @@ export function Dartboard({
   focusRing = null,
   focusBull = false,
   size = 360,
+  fillParent = false,
   className,
   interactive = false,
   onScore,
@@ -164,8 +170,15 @@ export function Dartboard({
         clientToSvg now uses getBoundingClientRect + viewBox meet instead.
       */}
       <div
-        className="relative w-full drop-shadow-[0_8px_32px_rgba(0,0,0,0.55)]"
-        style={{ maxWidth: size, aspectRatio: "1 / 1" }}
+        className={cn(
+          "relative drop-shadow-[0_8px_32px_rgba(0,0,0,0.55)]",
+          fillParent ? "h-full w-full" : "w-full"
+        )}
+        style={
+          fillParent
+            ? { width: "100%", height: "100%", maxWidth: "none", aspectRatio: "1 / 1" }
+            : { maxWidth: size, aspectRatio: "1 / 1" }
+        }
       >
         <svg
           ref={svgRef}

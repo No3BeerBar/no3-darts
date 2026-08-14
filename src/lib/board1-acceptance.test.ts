@@ -84,9 +84,12 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(tvBanner).toMatch(/Removing darts/);
     expect(tvBanner).toMatch(/Reset/);
     expect(tvBanner).toMatch(/scoring tablet/);
+    expect(tvBanner).toMatch(/last visit/);
+    expect(tvBanner).not.toMatch(/fixed inset-0/);
     const tv = readSrc("src/components/tv/TvDisplay.tsx");
     expect(tv).toMatch(/TvTakeoutBanner/);
     expect(tv).toMatch(/takeoutActive/);
+    expect(tv).toMatch(/takeoutVisitDisplay/);
     const feed = readSrc("src/hooks/useTvMatchFeed.ts");
     expect(feed).toMatch(/isLiveTakeoutSignal/);
     expect(feed).toMatch(/takeoutActive/);
@@ -102,6 +105,23 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
     expect(bridge).toMatch(/maybe_keep_alive/);
     expect(bridge).toMatch(/Idle-timer \/ leftover Stop/);
+  });
+
+  it("takeout UI keeps last visit visible; iPad Reset + stay-put board stay isolated", () => {
+    const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(screen).toMatch(/takeoutVisitDisplay/);
+    expect(screen).toMatch(/holdingLastVisit/);
+    expect(screen).toMatch(/play-board-stage/);
+    expect(screen).toMatch(/playBoardSide/);
+    expect(screen).not.toMatch(/tv-board-stage/);
+    expect(screen).not.toMatch(/fillParent/);
+    const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
+    expect(banner).toMatch(/"Reset takeout"/);
+    expect(banner).toMatch(/bg-amber-950/);
+    const tv = readSrc("src/components/tv/TvDisplay.tsx");
+    expect(tv).toMatch(/tv-board-stage/);
+    expect(tv).toMatch(/tvBoardSide/);
+    expect(tv).not.toMatch(/0\.58,\s*720/);
   });
 
   it("bridge maybe_end_turn fail-closed without expectedPlayerIndex", () => {
