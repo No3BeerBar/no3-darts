@@ -7,7 +7,7 @@ HDMI TV above the board opens **`/tv`** (board-station kiosk default).
 | State | What you see |
 |-------|----------------|
 | **Idle** (no active match for the room) | Attract loop — weekly + all-time leaderboards, available games, “start on iPad” CTA |
-| **Live** | Existing match TV UI (scores + board + callouts) |
+| **Live** | Match TV UI (scores + large leftover-column board + takeout banner) |
 
 Switching is automatic:
 

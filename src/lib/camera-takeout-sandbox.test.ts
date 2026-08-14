@@ -382,5 +382,8 @@ describe("TV takeout prominence (John watches /tv)", () => {
     );
     expect(tv).toMatch(/TvTakeoutBanner/);
     expect(tv).toMatch(/takeoutActive/);
+    expect(tv).toMatch(/takeoutVisitDisplay/);
+    expect(banner).toMatch(/last visit/);
+    expect(banner).not.toMatch(/fixed inset-0/);
   });
 });

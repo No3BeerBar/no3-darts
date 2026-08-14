@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   baseballDartPoints,
@@ -34,6 +34,8 @@ import { useSettingsStore } from "@/store/settings-store";
 import { AttractMode } from "@/components/tv/AttractMode";
 import { TvTakeoutBanner } from "@/components/tv/TvTakeoutBanner";
 import { useTvMatchFeed } from "@/hooks/useTvMatchFeed";
+import { tvBoardSide } from "@/lib/board-stage-size";
+import { takeoutVisitDisplay } from "@/lib/takeout-visit-display";
 
 /**
  * Cinematic full-screen TV layout:
@@ -42,7 +44,8 @@ import { useTvMatchFeed } from "@/hooks/useTvMatchFeed";
 export function TvDisplay() {
   const settings = useSettingsStore();
   const [hydrated, setHydrated] = useState(false);
-  const [boardSize, setBoardSize] = useState(520);
+  const [boardSize, setBoardSize] = useState(720);
+  const boardStageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     settings.hydrate();
@@ -61,19 +64,40 @@ export function TvDisplay() {
     lastSyncAt,
   } = useTvMatchFeed(hydrated ? room : "");
 
+  const liveMatch = Boolean(hydrated && !idle && state);
+
+  // HDMI leftover column — no 720 stay-put cap (that rule is iPad /play only).
   useEffect(() => {
+    const el = boardStageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
     const fit = () => {
-      const h = window.innerHeight;
-      const w = window.innerWidth;
-      setBoardSize(Math.round(Math.min(h * 0.88, w * 0.58, 720)));
+      const { width, height } = el.getBoundingClientRect();
+      const next = tvBoardSide(width, height);
+      if (next > 0) setBoardSize(next);
     };
     fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [liveMatch, state?.id]);
+
+  const held = state ? takeoutVisitDisplay(state, takeoutActive) : null;
+
+  const takeoutTurnTotal =
+    held && state
+      ? held.darts.reduce((a, d) => a + d.value, 0)
+      : null;
 
   const takeoutBanner = (
-    <TvTakeoutBanner active={takeoutActive} message={takeoutMessage} />
+    <TvTakeoutBanner
+      active={takeoutActive}
+      message={takeoutMessage}
+      playerName={
+        held && state ? state.players[held.playerIndex]?.name ?? null : null
+      }
+      darts={held?.darts}
+      turnTotal={takeoutTurnTotal}
+    />
   );
 
   // Idle / attract (leaderboards + games) when no live match
@@ -92,7 +116,8 @@ export function TvDisplay() {
 
   const handler = getHandler(state.mode);
   const statusLine = handler.getStatusLine?.(state) ?? state.mode;
-  const current = state.players[state.currentPlayerIndex];
+  const display = held ?? takeoutVisitDisplay(state, takeoutActive);
+  const current = state.players[display.playerIndex];
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const baseball = state.mode === "baseball";
   const killer = state.mode === "killer";
@@ -101,7 +126,8 @@ export function TvDisplay() {
   const killerFocus = killer ? killerBoardFocus(state) : null;
   const f41Target = fortyOne ? fortyOneTarget(state) : null;
   const f41Focus = f41Target ? fortyOneBoardFocus(f41Target) : null;
-  const turnTotal = state.currentTurnDarts.reduce((a, d) => {
+  const visitDarts = display.darts;
+  const turnTotal = visitDarts.reduce((a, d) => {
     if (baseball) return a + baseballDartPoints(d, inn);
     if (fortyOne && f41Target) {
       return a + (f41Target.type === "exact_41" ? d.value : fortyOneDartPoints(d, f41Target));
@@ -110,7 +136,7 @@ export function TvDisplay() {
   }, 0);
   const exact41Voided =
     Boolean(f41Target?.type === "exact_41") &&
-    state.currentTurnDarts.some((d) => !fortyOneExact41DartContributes(d));
+    visitDarts.some((d) => !fortyOneExact41DartContributes(d));
   const checkout = suggestCheckout(state);
   const teamMode = isTeamGame(state) && state.mode !== "killer";
   const boardFocusNumber = baseball
@@ -203,19 +229,25 @@ export function TvDisplay() {
                   state.mode === "x01"
                     ? getRemaining(state, row.team.playerIds[0])
                     : row.score;
-                const thrower = row.throwerId
-                  ? state.players.find((p) => p.id === row.throwerId)
-                  : null;
+                const heldId = current?.id;
+                const rowActive = takeoutActive
+                  ? Boolean(heldId && row.team.playerIds.includes(heldId))
+                  : row.active;
+                const thrower = takeoutActive
+                  ? current
+                  : row.throwerId
+                    ? state.players.find((p) => p.id === row.throwerId)
+                    : null;
                 return (
                   <div
                     key={row.team.id}
                     className={`relative overflow-hidden rounded-2xl border px-5 py-4 transition-all duration-300 lg:px-6 lg:py-5 ${
-                      row.active
+                      rowActive
                         ? "border-[var(--brand-red)] bg-[rgb(225_6_0/0.18)] shadow-[0_0_48px_rgb(225_6_0/0.25)]"
                         : "border-[var(--panel-border)] bg-[var(--panel)]"
                     }`}
                   >
-                    {row.active && (
+                    {rowActive && (
                       <div className="absolute left-0 top-0 h-full w-1 bg-[var(--brand-red)] shadow-[0_0_12px_var(--brand-red)]" />
                     )}
                     <div className="flex items-end justify-between gap-4">
@@ -226,7 +258,7 @@ export function TvDisplay() {
                         <div className="mt-1 truncate font-semibold text-base text-zinc-400 lg:text-lg">
                           {row.playerNames.join("  ·  ")}
                         </div>
-                        {row.active && thrower && (
+                        {rowActive && thrower && (
                           <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[var(--brand-red)] px-4 py-1.5 shadow-[0_0_20px_rgb(225_6_0/0.35)]">
                             <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
                             <span className="font-display text-base font-bold tracking-wide text-white lg:text-lg">
@@ -269,7 +301,7 @@ export function TvDisplay() {
                       </div>
                       <div
                         className={`shrink-0 font-black tabular-nums leading-none tracking-tighter ${
-                          row.active
+                          rowActive
                             ? "text-[clamp(3.5rem,9vw,7.5rem)] text-[var(--brand-red-bright)] drop-shadow-[0_0_30px_rgb(225_6_0/0.45)]"
                             : "text-[clamp(2.5rem,6vw,5rem)] text-white/90"
                         }`}
@@ -284,7 +316,8 @@ export function TvDisplay() {
               state.players.map((p, idx) => {
                 const ps = state.playerStates.find((s) => s.playerId === p.id)!;
                 const active =
-                  idx === state.currentPlayerIndex && state.status === "playing";
+                  idx === display.playerIndex &&
+                  (state.status === "playing" || takeoutActive);
                 const rem = getRemaining(state, p.id);
                 const avg = threeDartAverage(ps);
                 const k = killer ? getKillerExtra(ps) : null;
@@ -391,18 +424,20 @@ export function TvDisplay() {
           {/* Visit strip + history */}
           <div className="mt-6 border-t border-white/5 pt-5">
             <div className="font-display text-xs tracking-[0.25em] text-zinc-500">
-              THIS VISIT
+              {display.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
               {currentTeam && currentTeam.playerIds.length > 1
                 ? ` · ${currentTeam.name}`
                 : ""}
             </div>
             <div className="mt-1 font-display text-lg font-bold text-white lg:text-xl">
               {current?.name}
-              <span className="ml-2 font-normal text-zinc-500">throws</span>
+              <span className="ml-2 font-normal text-zinc-500">
+                {display.holdingLastVisit ? "scored" : "throws"}
+              </span>
             </div>
             <div className="mt-3 flex items-center gap-3">
               {[0, 1, 2].map((i) => {
-                const d = state.currentTurnDarts[i];
+                const d = visitDarts[i];
                 const pts =
                   d && baseball
                     ? baseballDartPoints(d, inn)
@@ -450,24 +485,28 @@ export function TvDisplay() {
           </div>
         </aside>
 
-        {/* RIGHT — board, oversized, bleeds left slightly */}
-        <div className="relative flex min-w-0 flex-1 items-center justify-end pr-2 lg:pr-6">
+        {/* RIGHT — HDMI board fills leftover space (not iPad stay-put). */}
+        <div
+          ref={boardStageRef}
+          className="tv-board-stage relative flex min-h-0 min-w-0 flex-1 items-center justify-center px-2 lg:px-4"
+        >
           <div
-            className="relative -ml-16 origin-right scale-100 lg:-ml-28"
+            className="tv-board-fill relative"
             style={{
               filter: "drop-shadow(0 24px 80px rgba(0,0,0,0.85))",
             }}
           >
             <Dartboard
-              marks={state.currentTurnDarts}
+              marks={visitDarts}
               focusNumber={boardFocusNumber}
               focusNumbers={killerFocus?.secondary ?? null}
               focusKind={killerFocus?.focusKind ?? "wedge"}
               focusRing={f41Focus?.focusRing ?? null}
               focusBull={f41Focus?.focusBull ?? false}
               size={boardSize}
+              fillParent
               showLiveLabel={false}
-              className="relative z-10"
+              className="relative z-10 h-full w-full"
             />
           </div>
         </div>

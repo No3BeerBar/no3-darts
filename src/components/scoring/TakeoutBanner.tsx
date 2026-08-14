@@ -26,14 +26,14 @@ export function TakeoutBanner({
       <div
         className={cn(
           "pointer-events-auto flex max-w-lg flex-col items-center gap-2 rounded-xl border px-4 py-3 text-center shadow-lg backdrop-blur sm:flex-row sm:text-left",
-          "border-sky-500/45 bg-sky-950/95 text-sky-50"
+          "border-amber-400/80 bg-amber-950/95 text-amber-50"
         )}
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-wide">
             Removing darts - takeout
           </p>
-          <p className="text-xs text-sky-200/90">
+          <p className="text-xs text-amber-100/90">
             Camera scoring paused. Pull your darts, then tap Reset takeout so
             the next visit can start. Clears a stuck takeout from /play.
           </p>
@@ -43,8 +43,8 @@ export function TakeoutBanner({
           disabled={busy}
           onClick={onReady}
           className={cn(
-            "min-h-11 shrink-0 rounded-lg bg-sky-400 px-4 text-sm font-semibold text-sky-950",
-            "hover:bg-sky-300 disabled:opacity-60"
+            "min-h-11 shrink-0 rounded-lg bg-amber-300 px-4 text-sm font-semibold text-amber-950",
+            "hover:bg-amber-200 disabled:opacity-60"
           )}
         >
           {busy ? "Resetting…" : "Reset takeout"}
