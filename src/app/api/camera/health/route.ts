@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import type { CameraHealth } from "@/lib/camera-health";
+import {
+  isAutodartsRemoveDartsStatus,
+  type CameraHealth,
+} from "@/lib/camera-health";
 import {
   checkCameraAuth,
   getCameraHealth,
@@ -54,7 +57,11 @@ export async function POST(request: Request) {
     status: body.status,
     unhealthyForS: body.unhealthyForS,
     restarting: body.restarting,
-    takeout: Boolean(body.takeout) || body.level === "takeout" || body.reason === "takeout",
+    takeout:
+      Boolean(body.takeout) ||
+      body.level === "takeout" ||
+      body.reason === "takeout" ||
+      isAutodartsRemoveDartsStatus(body.status),
     ts: typeof body.ts === "number" ? body.ts : Date.now(),
   });
 

@@ -14,6 +14,7 @@ import {
   undo,
 } from "@/engine";
 import {
+  healthIndicatesTakeout,
   isCameraBridgeOffline,
   isLiveTakeoutSignal,
   isStaleCameraHealth,
@@ -402,10 +403,7 @@ function reconcileStaleTakeout(roomId: string, now = Date.now()): void {
   const stale = isStaleCameraHealth(health, now);
   if (!offline && !stale) return;
 
-  const hadTakeout =
-    Boolean(health.takeout) ||
-    health.level === "takeout" ||
-    health.reason === "takeout";
+  const hadTakeout = healthIndicatesTakeout(health);
   const gate = getCameraGate(room);
   if (!hadTakeout && !gate.holdUntilTakeoutClear) return;
 
@@ -759,10 +757,7 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   const room = normRoom(health.roomId || "Board 1");
   const offline = isCameraBridgeOffline(health);
   // Never persist sticky takeout:true while AD/bridge is unreachable or stale.
-  const rawTakeout =
-    Boolean(health.takeout) ||
-    health.level === "takeout" ||
-    health.reason === "takeout";
+  const rawTakeout = healthIndicatesTakeout(health);
   const candidate: CameraHealth = {
     ...health,
     roomId: room,

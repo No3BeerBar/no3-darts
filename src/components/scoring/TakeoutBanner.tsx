@@ -1,11 +1,15 @@
 "use client";
 
+import { segmentLabel, type DartThrow } from "@/engine";
 import { cn } from "@/lib/utils";
 
 /**
- * Patron-visible Autodarts takeout / remove-darts state.
+ * Patron-visible Autodarts takeout / remove-darts / yellow Reset.
  * Bridge pauses camera scoring while this is active; Reset takeout clears so
  * the next visit can start clean (bartender-proof — not a passive banner only).
+ *
+ * Last visit (player + 3 darts) stays in this banner so a yellow AD reset
+ * never looks like a blank /play. Never hide while `active` is true.
  *
  * Only mount when there is a *live* Autodarts takeout signal (see
  * isLiveTakeoutSignal). Sandbox / no bridge must never show this.
@@ -14,12 +18,19 @@ export function TakeoutBanner({
   active,
   busy,
   onReady,
+  playerName,
+  darts,
 }: {
   active: boolean;
   busy?: boolean;
   onReady: () => void;
+  playerName?: string | null;
+  darts?: DartThrow[];
 }) {
   if (!active) return null;
+
+  const slots = [0, 1, 2] as const;
+  const showVisit = Boolean(playerName) || (darts && darts.length > 0);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-14 z-[60] flex justify-center px-3">
@@ -33,7 +44,37 @@ export function TakeoutBanner({
           <p className="text-sm font-semibold tracking-wide">
             Removing darts - takeout
           </p>
-          <p className="text-xs text-amber-100/90">
+          {showVisit ? (
+            <div className="mt-1.5" data-testid="play-takeout-last-visit">
+              {playerName ? (
+                <p className="text-xs font-semibold text-amber-50">
+                  {playerName}
+                  <span className="ml-1 font-normal text-amber-200/80">
+                    last visit
+                  </span>
+                </p>
+              ) : null}
+              <div className="mt-1 flex items-center justify-center gap-1.5 sm:justify-start">
+                {slots.map((i) => {
+                  const d = darts?.[i];
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex h-9 w-12 items-center justify-center rounded-md border font-logo text-sm",
+                        d
+                          ? "border-amber-300/70 bg-amber-900/80 text-amber-50"
+                          : "border-dashed border-amber-200/30 text-amber-200/40"
+                      )}
+                    >
+                      {d ? segmentLabel(d.kind, d.number) : "—"}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <p className="mt-1 text-xs text-amber-100/90">
             Camera scoring paused. Pull your darts, then tap Reset takeout so
             the next visit can start. Clears a stuck takeout from /play.
           </p>
