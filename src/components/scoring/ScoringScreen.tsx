@@ -338,12 +338,12 @@ function ScoringScreenInner() {
 
   const handler = getHandler(state.mode);
   const statusLine = handler.getStatusLine?.(state) ?? state.mode;
-  const display = takeoutVisitDisplay(state, takeoutActive);
-  const current = state.players[display.playerIndex];
+  const visitView = takeoutVisitDisplay(state, takeoutActive);
+  const current = state.players[visitView.playerIndex];
   const remaining = current ? getRemaining(state, current.id) : 0;
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const killerFocus = state.mode === "killer" ? killerBoardFocus(state) : null;
-  const visitDarts = display.darts;
+  const visitDarts = visitView.darts;
   const slotDart =
     correctSlot != null ? visitDarts[correctSlot] : undefined;
   const fortyOne = state.mode === "forty_one";
@@ -527,7 +527,7 @@ function ScoringScreenInner() {
               <span className="ml-2 font-normal text-zinc-500">
                 {botThrowing
                   ? "throwing…"
-                  : display.holdingLastVisit
+                  : visitView.holdingLastVisit
                     ? "scored"
                     : "throws"}
               </span>
@@ -638,7 +638,7 @@ function ScoringScreenInner() {
           <PlayerPanel
             state={state}
             compact
-            highlightPlayerIndex={display.playerIndex}
+            highlightPlayerIndex={visitView.playerIndex}
           />
 
           {state.mode === "baseball" && <BaseballBanner state={state} size="sm" />}
@@ -650,7 +650,7 @@ function ScoringScreenInner() {
           <div className="rounded-xl border border-[rgb(225_6_0/0.28)] bg-[#0a0a0a] px-3 py-2">
             <div className="mb-1 flex items-center justify-between gap-2">
               <div className="font-display text-[10px] tracking-[0.18em] text-zinc-500">
-                {display.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
+                {visitView.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
               </div>
               {(playing ||
                 state.status === "leg_won" ||
@@ -672,7 +672,7 @@ function ScoringScreenInner() {
             </div>
             <TurnDarts
               darts={visitDarts}
-              interactive={playing && !botThrowing && !display.holdingLastVisit}
+              interactive={playing && !botThrowing && !visitView.holdingLastVisit}
               onSlotClick={(i) => setCorrectSlot(i)}
               showDartPoints={baseball || fortyOne}
               pointsForDart={

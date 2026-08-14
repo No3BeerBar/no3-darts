@@ -116,8 +116,8 @@ export function TvDisplay() {
 
   const handler = getHandler(state.mode);
   const statusLine = handler.getStatusLine?.(state) ?? state.mode;
-  const display = held ?? takeoutVisitDisplay(state, takeoutActive);
-  const current = state.players[display.playerIndex];
+  const visitView = held ?? takeoutVisitDisplay(state, takeoutActive);
+  const current = state.players[visitView.playerIndex];
   const currentTeam = current ? getTeamForPlayer(state, current.id) : null;
   const baseball = state.mode === "baseball";
   const killer = state.mode === "killer";
@@ -126,7 +126,7 @@ export function TvDisplay() {
   const killerFocus = killer ? killerBoardFocus(state) : null;
   const f41Target = fortyOne ? fortyOneTarget(state) : null;
   const f41Focus = f41Target ? fortyOneBoardFocus(f41Target) : null;
-  const visitDarts = display.darts;
+  const visitDarts = visitView.darts;
   const turnTotal = visitDarts.reduce((a, d) => {
     if (baseball) return a + baseballDartPoints(d, inn);
     if (fortyOne && f41Target) {
@@ -316,7 +316,7 @@ export function TvDisplay() {
               state.players.map((p, idx) => {
                 const ps = state.playerStates.find((s) => s.playerId === p.id)!;
                 const active =
-                  idx === display.playerIndex &&
+                  idx === visitView.playerIndex &&
                   (state.status === "playing" || takeoutActive);
                 const rem = getRemaining(state, p.id);
                 const avg = threeDartAverage(ps);
@@ -424,7 +424,7 @@ export function TvDisplay() {
           {/* Visit strip + history */}
           <div className="mt-6 border-t border-white/5 pt-5">
             <div className="font-display text-xs tracking-[0.25em] text-zinc-500">
-              {display.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
+              {visitView.holdingLastVisit ? "LAST VISIT" : "THIS VISIT"}
               {currentTeam && currentTeam.playerIds.length > 1
                 ? ` · ${currentTeam.name}`
                 : ""}
@@ -432,7 +432,7 @@ export function TvDisplay() {
             <div className="mt-1 font-display text-lg font-bold text-white lg:text-xl">
               {current?.name}
               <span className="ml-2 font-normal text-zinc-500">
-                {display.holdingLastVisit ? "scored" : "throws"}
+                {visitView.holdingLastVisit ? "scored" : "throws"}
               </span>
             </div>
             <div className="mt-3 flex items-center gap-3">
