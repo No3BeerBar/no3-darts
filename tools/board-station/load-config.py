@@ -22,6 +22,7 @@ DEFAULTS = {
         "process_names": ["Autodarts", "autodarts", "AutodartsDesktop"],
         "start_if_missing": True,
         "ready_timeout_s": 45,
+        "board_id": "",
     },
     "no3": {
         "url": "http://localhost:3000",
@@ -48,6 +49,11 @@ DEFAULTS = {
         "unhealthy_seconds": 15.0,
         "restart_cooldown_seconds": 60.0,
         "between_games_recal": True,
+    },
+    "keep_alive": {
+        "enabled": True,
+        "interval_s": 10.0,
+        "board_id": "",
     },
 }
 

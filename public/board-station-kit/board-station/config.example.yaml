@@ -16,6 +16,10 @@ autodarts:
   start_if_missing: true
   # Seconds to wait for http://host:port/api/state after launch
   ready_timeout_s: 45
+  # Autodarts board UUID from Board Manager Config (Board1 only).
+  # Leave blank on this one-board mini-PC. If more than one board is listed,
+  # the companion will not start any board until this id is set.
+  board_id: ""
 
 # No3 scoring UI (hosted or LAN)
 no3:
@@ -55,3 +59,9 @@ health:
   restart_cooldown_seconds: 60.0
   # Only when No3 match is absent / leg-or-match boundary (not mid-visit)
   between_games_recal: true
+
+# Companion starts a stopped board (idle timer / leftover Stop) while it is up.
+keep_alive:
+  enabled: true
+  interval_s: 10.0
+  board_id: ""

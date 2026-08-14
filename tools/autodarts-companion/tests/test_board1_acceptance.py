@@ -113,3 +113,19 @@ def test_board1_p0_maybe_end_turn_fail_closed_without_seat() -> None:
     assert "if seat is not None:\n            payload[\"expectedPlayerIndex\"]" not in src
     assert "patron_force_ready" in src
     assert "keeping banner cleared until unlock" in src
+
+
+def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
+    """Idle-timer Stop must auto-start Board1; never reset/recal from keep-alive."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    assert "maybe_keep_alive" in src
+    assert "Idle-timer / leftover Stop" in src
+    ka = (
+        Path(__file__).resolve().parents[1] / "companion" / "keepalive.py"
+    ).read_text(encoding="utf-8")
+    assert "/api/detection/start" in ka
+    assert "board_id" in ka
+    assert "Never reset" in ka or "Never include reset" in ka
+    assert "/api/reset" not in ka
+    assert "/api/calibrate" not in ka
+    assert "try_recalibrate" not in ka

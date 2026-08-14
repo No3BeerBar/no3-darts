@@ -52,6 +52,7 @@ What it does:
 | `kiosk.open_tv` / `browser` / `tv_url` | TV kiosk window |
 | `kiosk.open_play` | Usually `false` — use the iPad |
 | `health.*` | FPS floor, unhealthy duration, restart cooldown, between-games recal |
+| `autodarts.board_id` / `keep_alive.*` | Idle-timer keep-alive (start Stopped Board1 only) |
 
 Bridge-only knobs also live in `tools/autodarts-companion/config.example.yaml` (overwritten by the start script when you use board-station).
 
@@ -104,6 +105,14 @@ When unhealthy longer than `health.unhealthy_seconds`:
 4. Wait for `/api/state` again and report recovery
 
 Disable with `health.enabled: false` or `python -m companion bridge --no-health`.
+
+### Keep the board started (idle timer)
+
+Board Manager can still be up on `:3180` after its Config idle timer (or a leftover Stop) has **Stopped** the board. Starting the Board Manager process at boot is not enough -- John should not have to click Start.
+
+While the companion bridge is running it polls `/api/state` and, about every 10s, starts **this** board if it is Stopped (`PUT /api/detection/start`, Board1 `board_id` only). Quitting the companion stops the loop. This path is start-only: it does not reset or recalibrate (that stays gated on a real between-games boundary).
+
+`keep_alive.enabled: false` or `python -m companion bridge --no-keep-alive` disables it.
 
 ### Between games (calibration / reset)
 

@@ -20,6 +20,7 @@ Game setup, players, legs, and modes stay in No3. Autodarts is detector-only (no
 | Call No3 `end-turn` on Autodarts takeout | Steal Autodarts detection models |
 | Sync mid-visit **corrections** via `/api/camera/correct` | Ignore Autodarts throw edits |
 | Watch FPS/cam health, restart Board Manager, toast No3 | Reverse-engineer Autodarts CV |
+| Keep the board started while the companion is running (idle-timer Stop) | Click Start in Board Manager |
 | Spy / compare / viz helpers for debugging | Need internet (stays local except No3 POST) |
 
 Community tools (ioBroker, Tools for Autodarts) use the same local Board Manager HTTP API.
@@ -28,7 +29,7 @@ Community tools (ioBroker, Tools for Autodarts) use the same local Board Manager
 
 1. Autodarts Desktop / Board Manager running on the board PC  
 2. Open in a browser: `http://127.0.0.1:3180`  
-3. Board started (status **Throw** / green)  
+3. Board started (status **Throw** / green) -- the bridge keep-alive will Start it if the idle timer stopped it
 4. Python 3.11+ on that PC  
 5. A No3 match open on the **same room** (any game mode)
 
@@ -75,6 +76,7 @@ Env vars also work: `NO3_URL`, `CAMERA_API_KEY`.
 5. If a throw is **corrected** in Board Manager (changed/removed), bridge calls `POST /api/camera/correct` with the full visit - no double-scoring.
 6. Players can also fix on the iPad: tap the dart -> pick the right segment.
 7. Health: FPS / disconnect -> notify No3 + restart Board Manager (needs `exe_path` in config).
+8. Keep-alive: if Board Manager reports **Stopped** (idle timer or leftover Stop), the bridge PUTs `/api/detection/start` for the configured `board_id` (Board1 only). Quitting the companion stops the loop. This is start-only -- never reset/recal.
 
 ## Commands
 
@@ -158,6 +160,8 @@ See [`docs/CAMERA.md`](../../docs/CAMERA.md) and [`docs/BOARD-STATION.md`](../..
 ## Health / restart
 
 With `health.enabled: true` (default), the bridge posts `/api/camera/health` and may restart Board Manager when offline or FPS stays below `fps_min`. Set `autodarts.exe_path` (or `health.exe_path`) so restart can relaunch the app.
+
+With `keep_alive.enabled: true` (default), every ~10s the bridge checks whether **this** board is Stopped and starts it (`PUT /api/detection/start`). Start-Board launching Board Manager is not enough -- the idle timer will Stop the board again overnight. Companion-up is the on-switch. Set `autodarts.board_id` (or `keep_alive.board_id`) when more than one Autodarts board could be visible; otherwise keep-alive refuses to start a stranger. Disable with `--no-keep-alive`.
 
 Between games, the bridge probes local reset/calibrate HTTP paths only when the board is empty **and** No3 has no playing/paused match on the room (real game boundary - not every visit takeout). If none exist, calibrate manually in Board Manager.
 

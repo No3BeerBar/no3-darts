@@ -110,6 +110,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Disable camera health watch / Board Manager auto-restart",
     )
+    p_br.add_argument(
+        "--no-keep-alive",
+        action="store_true",
+        help="Disable idle-timer keep-alive (do not auto-start a stopped board)",
+    )
 
     args = parser.parse_args(argv)
     cfg = _load_cfg(args.config)
@@ -167,6 +172,7 @@ def main(argv: list[str] | None = None) -> None:
         hcfg_raw = cfg.get("health") or {}
         from .bridge import run_bridge
         from .health import HealthConfig
+        from .keepalive import KeepAliveConfig
 
         health = HealthConfig(
             enabled=not bool(args.no_health)
@@ -189,6 +195,21 @@ def main(argv: list[str] | None = None) -> None:
                 or ["Autodarts", "autodarts", "AutodartsDesktop"]
             ),
         )
+        ka_raw = cfg.get("keep_alive") or {}
+        keep_alive = KeepAliveConfig(
+            enabled=not bool(args.no_keep_alive)
+            and bool(ka_raw.get("enabled", ad.get("keep_alive", True))),
+            interval_s=float(
+                ka_raw.get("interval_s")
+                or ad.get("keep_alive_interval_s")
+                or 10.0
+            ),
+            board_id=str(
+                ka_raw.get("board_id")
+                or ad.get("board_id")
+                or ""
+            ).strip(),
+        )
 
         run_bridge(
             host=host,
@@ -206,6 +227,7 @@ def main(argv: list[str] | None = None) -> None:
             dry_run=bool(args.dry_run),
             end_turn_on_takeout=not bool(args.no_end_turn),
             health=health,
+            keep_alive=keep_alive,
         )
         return
 
