@@ -5,7 +5,7 @@
  * Laser marks sit at exact pointer positions; all darts in the visit stay marked.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BOARD_ORDER, type DartThrow, type SegmentKind } from "@/engine";
 import {
   BOARD_R,
@@ -17,6 +17,16 @@ import {
   type BoardHit,
   wedgePath,
 } from "@/lib/board-geometry";
+import {
+  HIT_FLASH_FILL,
+  HIT_FLASH_MS,
+  HIT_ON_TARGET_FLASH,
+  type BoardFocusSpec,
+  isObjectiveSegment,
+  lastDartKey,
+  lastVisitDart,
+  segmentPaintRole,
+} from "@/lib/board-highlight";
 import { cn } from "@/lib/utils";
 
 export type BoardFocusRing = "double" | "triple";
@@ -74,6 +84,27 @@ export function Dartboard({
   const [livePin, setLivePin] = useState<{ x: number; y: number } | null>(null);
 
   const allMarks: DartThrow[] = marks ?? (highlight ? [highlight] : []);
+  const lastHit = lastVisitDart(allMarks);
+  const hitKey = lastDartKey(lastHit);
+  const [hitFlashActive, setHitFlashActive] = useState(false);
+
+  useEffect(() => {
+    if (!hitKey) {
+      setHitFlashActive(false);
+      return;
+    }
+    setHitFlashActive(true);
+    const t = window.setTimeout(() => setHitFlashActive(false), HIT_FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [hitKey]);
+
+  const focusSpec = {
+    focusNumber,
+    focusNumbers,
+    focusKind,
+    focusRing,
+    focusBull,
+  };
 
   const sample = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -117,17 +148,11 @@ export function Dartboard({
     setLivePin(null);
   };
 
-  const isLit = (kind: string, num: number) => {
-    if (hover) {
-      if (kind === "bull") return hover.kind === "bull";
-      if (kind === "outer_bull") return hover.kind === "outer_bull";
-      return hover.kind === kind && hover.number === num;
-    }
-    return allMarks.some((d) => {
-      if (kind === "bull") return d.kind === "bull";
-      if (kind === "outer_bull") return d.kind === "outer_bull";
-      return d.kind === kind && d.number === num;
-    });
+  const isHoverSeg = (kind: string, num: number) => {
+    if (!hover) return false;
+    if (kind === "bull") return hover.kind === "bull";
+    if (kind === "outer_bull") return hover.kind === "outer_bull";
+    return hover.kind === kind && hover.number === num;
   };
 
   /** Primary target (Baseball inning / Killer own number). */
@@ -234,7 +259,6 @@ export function Dartboard({
           const singleB = dark ? "#141416" : "#d4d0c6";
           const multiA = dark ? "#c41e1e" : "#1a8f45";
           const multiB = dark ? "#8f1212" : "#0f6b32";
-          const lit = "#f5c518";
           // Autodarts-style target: whole wedge (Baseball) or double-only (Killer)
           const primary = isPrimaryFocus(num);
           const secondary = isSecondaryFocus(num);
@@ -248,18 +272,21 @@ export function Dartboard({
             : dark
               ? "#7a5a18"
               : "#c4a84a";
+          const hoverTint = dark ? "#7a2a2a" : "#e8b4b0";
           const fillRing = (
             kind: "single" | "double" | "triple",
             base: string,
             focusBase: string
           ) => {
-            if (isLit(kind, num)) return lit;
-            if (focus) {
+            const objective = isObjectiveSegment(kind, num, focusSpec);
+            // Target gold stays locked — last dart must not replace it.
+            if (objective) {
               if (doubleOnly && kind !== "double") return base;
               return focusBase;
             }
             if (kind === "double" && focusDoubleRing) return focusMulti;
             if (kind === "triple" && focusTripleRing) return focusMulti;
+            if (isHoverSeg(kind, num)) return hoverTint;
             return base;
           };
 
@@ -331,10 +358,10 @@ export function Dartboard({
           cy={CY}
           r={BOARD_R * NR.outerBull}
           fill={
-            isLit("outer_bull", 25)
-              ? "#f5c518"
-              : focusBull
-                ? "#e8c547"
+            focusBull
+              ? "#e8c547"
+              : isHoverSeg("outer_bull", 25)
+                ? "#7a2a2a"
                 : "#1a8f45"
           }
           stroke={focusBull ? "#f5c518" : "#050505"}
@@ -344,7 +371,13 @@ export function Dartboard({
           cx={CX}
           cy={CY}
           r={BOARD_R * NR.bull}
-          fill={isLit("bull", 50) ? "#f5c518" : focusBull ? "#d4a017" : "#c41e1e"}
+          fill={
+            focusBull
+              ? "#d4a017"
+              : isHoverSeg("bull", 50)
+                ? "#7a2a2a"
+                : "#c41e1e"
+          }
           stroke={focusBull ? "#f5c518" : "#050505"}
           strokeWidth={focusBull ? 1.4 : 0.8}
         />
@@ -364,6 +397,12 @@ export function Dartboard({
           )
         )}
 
+        <HitFlashOverlay
+          dart={lastHit}
+          active={hitFlashActive}
+          focusSpec={focusSpec}
+        />
+
         {/* All darts this visit */}
         {pins.map(({ pos, index }) => (
           <LaserMark
@@ -380,6 +419,80 @@ export function Dartboard({
         </svg>
       </div>
     </div>
+  );
+}
+
+/** Brief red (or white-on-gold) flash of the landed ring — not target gold. */
+function HitFlashOverlay({
+  dart,
+  active,
+  focusSpec,
+}: {
+  dart: DartThrow | null;
+  active: boolean;
+  focusSpec: BoardFocusSpec;
+}) {
+  if (!active || !dart || dart.kind === "miss") return null;
+  const role = segmentPaintRole({
+    isObjective: isObjectiveSegment(dart.kind, dart.number, focusSpec),
+    isLastHit: true,
+    hitFlashActive: true,
+  });
+  const fill = role === "hitOnTarget" ? HIT_ON_TARGET_FLASH : HIT_FLASH_FILL;
+  const stroke = role === "hitOnTarget" ? HIT_FLASH_FILL : "#ffb3b3";
+
+  if (dart.kind === "bull") {
+    return (
+      <circle
+        className="board-hit-flash"
+        cx={CX}
+        cy={CY}
+        r={BOARD_R * NR.bull}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={1.2}
+      />
+    );
+  }
+  if (dart.kind === "outer_bull") {
+    return (
+      <circle
+        className="board-hit-flash"
+        cx={CX}
+        cy={CY}
+        r={BOARD_R * NR.outerBull}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={1.2}
+        style={{ fillOpacity: 0.55 }}
+      />
+    );
+  }
+
+  const idx = BOARD_ORDER.indexOf(dart.number as (typeof BOARD_ORDER)[number]);
+  if (idx < 0) return null;
+  const paths =
+    dart.kind === "double"
+      ? [wedgePath(idx, NR.doubleInner, NR.doubleOuter)]
+      : dart.kind === "triple"
+        ? [wedgePath(idx, NR.tripleInner, NR.tripleOuter)]
+        : [
+            wedgePath(idx, NR.tripleOuter, NR.doubleInner),
+            wedgePath(idx, NR.outerBull, NR.tripleInner),
+          ];
+
+  return (
+    <g className="board-hit-flash">
+      {paths.map((d) => (
+        <path
+          key={d}
+          d={d}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={1.1}
+        />
+      ))}
+    </g>
   );
 }
 

@@ -225,6 +225,23 @@ body {
   width: min(100cqw, 100cqh);
   height: min(100cqw, 100cqh);
 }
+
+/* Last-dart hit flash — must not use target gold. Fades; target stays. */
+@keyframes board-hit-flash {
+  0% {
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.board-hit-flash {
+  animation: board-hit-flash 1.1s ease-out forwards;
+  pointer-events: none;
+}
 .tv-display * {
   user-select: none;
 }
