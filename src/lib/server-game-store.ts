@@ -17,6 +17,7 @@ import {
   isCameraBridgeOffline,
   isLiveTakeoutSignal,
   isStaleCameraHealth,
+  statusLooksLikeTakeout,
   type CameraHealth,
 } from "@/lib/camera-health";
 import { isLiveMatchStatus, isScoringLiveStatus } from "@/lib/live-match";
@@ -27,6 +28,7 @@ export {
   isLiveTakeoutSignal,
   isStaleCameraHealth,
   shouldShowTakeoutUi,
+  statusLooksLikeTakeout,
   CAMERA_HEALTH_FRESH_MS,
 } from "@/lib/camera-health";
 
@@ -383,11 +385,13 @@ function markVisitOpen(state: GameState): void {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
   gate.openVisitSeat = state.currentPlayerIndex;
-  // Undo / correct reopened this visit — never leave a silent next-seat hold
-  // that blocks scoring while Autodarts sits in yellow reset with no banner.
-  // Live takeout health will re-arm the hold on the next companion heartbeat
-  // and /play will show Reset takeout.
-  gate.holdUntilTakeoutClear = false;
+  // Undo / correct reopened this visit. Clear hold only when Autodarts is
+  // not still in takeout / yellow reset — otherwise keep the hold so
+  // Reset takeout stays on /play instead of a silent no-score.
+  const health = getCameraHealth(room);
+  if (!isLiveTakeoutSignal(health)) {
+    gate.holdUntilTakeoutClear = false;
+  }
 }
 
 /**
@@ -445,9 +449,12 @@ function realignCameraGateFromMatch(
   if (!next.roomId) return;
   const gate = getCameraGate(next.roomId);
   if (next.currentTurnDarts.length > 0) {
-    // Open visit (undo / mid-visit correct) — scoring must resume
+    // Open visit (undo / mid-visit correct). Keep hold when AD is still
+    // in takeout so Reset stays visible; mid-visit APPEND still scores.
     gate.openVisitSeat = next.currentPlayerIndex;
-    gate.holdUntilTakeoutClear = false;
+    if (!isLiveTakeoutSignal(getCameraHealth(next.roomId))) {
+      gate.holdUntilTakeoutClear = false;
+    }
     return;
   }
   if (prev && prev.currentTurnDarts.length > 0 && next.currentTurnDarts.length === 0) {
@@ -745,11 +752,13 @@ export function applyCameraUndo(opts: {
 
   const result = undo(state);
   matches.set(result.state.id, result.state);
-  // Undo reopens / shrinks the visit - clear takeout hold so camera can score
+  // Undo reopens / shrinks the visit. Clear hold only when AD is not still
+  // in takeout — live takeout must keep Reset takeout on /play.
+  const room = normRoom(result.state.roomId || "Board 1");
   if (result.state.currentTurnDarts.length > 0) {
     markVisitOpen(result.state);
-  } else {
-    clearTakeoutHold(normRoom(result.state.roomId || "Board 1"));
+  } else if (!isLiveTakeoutSignal(getCameraHealth(room))) {
+    clearTakeoutHold(room);
   }
   emit({
     type: "dart_detected",
@@ -771,7 +780,11 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   const rawTakeout =
     Boolean(health.takeout) ||
     health.level === "takeout" ||
-    health.reason === "takeout";
+    health.reason === "takeout" ||
+    (health.reason !== "takeout_cleared" &&
+      !/ready for next visit/i.test(health.message || "") &&
+      (statusLooksLikeTakeout(health.status) ||
+        statusLooksLikeTakeout(health.message)));
   const candidate: CameraHealth = {
     ...health,
     roomId: room,

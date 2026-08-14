@@ -267,7 +267,7 @@ describe("correct then resume (41 any-double + D20)", () => {
     }
   });
 
-  it("mid-visit correct while AD takeout is live clears silent hold and keeps scoring", () => {
+  it("mid-visit correct while AD takeout is live keeps Reset visible and still scores", () => {
     let state = skipToAnyDouble(fortyOneMatch(`${ROOM} TO`));
     state = withDarts(state, createDart("double", 20));
     upsertServerMatch(state);
@@ -285,10 +285,8 @@ describe("correct then resume (41 any-double + D20)", () => {
       expect(corrected.ok).toBe(true);
       if (!corrected.ok) throw new Error(corrected.error);
       expect(corrected.state.currentTurnDarts).toHaveLength(1);
-      // Undo/correct must not leave the next-seat hold latched on an open visit
-      expect(getCameraGateSnapshot(`${ROOM} TO`).holdUntilTakeoutClear).toBe(
-        false
-      );
+      // Live AD takeout must keep Reset on /play (no silent hide after correct)
+      expect(shouldShowTakeoutUi(getCameraHealth(`${ROOM} TO`))).toBe(true);
       const second = applyCameraDart({
         kind: "double",
         number: 8,
@@ -299,6 +297,87 @@ describe("correct then resume (41 any-double + D20)", () => {
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold(`${ROOM} TO`);
+    }
+  });
+
+  it("undo while AD is in takeout keeps Reset takeout visible", () => {
+    const state = fortyOneMatch(`${ROOM} UndoTO`);
+    upsertServerMatch(state);
+    clearTakeoutHold(`${ROOM} UndoTO`);
+    seedHealth(`${ROOM} UndoTO`, false);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: `${ROOM} UndoTO`,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 5,
+          roomId: `${ROOM} UndoTO`,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 1,
+          roomId: `${ROOM} UndoTO`,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      seedHealth(`${ROOM} UndoTO`, true);
+      expect(getCameraGateSnapshot(`${ROOM} UndoTO`).holdUntilTakeoutClear).toBe(
+        true
+      );
+
+      const undone = applyCameraUndo({ roomId: `${ROOM} UndoTO` });
+      expect(undone.ok).toBe(true);
+      if (!undone.ok) throw new Error(undone.error);
+      expect(undone.state.currentTurnDarts.length).toBeGreaterThan(0);
+      // Must not hide Reset while Autodarts is still yellow / takeout
+      expect(shouldShowTakeoutUi(getCameraHealth(`${ROOM} UndoTO`))).toBe(true);
+      // Mid-visit APPEND still works (hold blocks only a new empty visit)
+      const again = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: `${ROOM} UndoTO`,
+        expectedPlayerIndex: 0,
+      });
+      expect(again.ok).toBe(true);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(`${ROOM} UndoTO`);
+    }
+  });
+
+  it("Cameras healthy + status Reset still arms takeout (companion desync)", () => {
+    const state = fortyOneMatch(`${ROOM} Status`);
+    upsertServerMatch(state);
+    clearTakeoutHold(`${ROOM} Status`);
+    try {
+      setCameraHealth({
+        roomId: `${ROOM} Status`,
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        takeout: false,
+        status: "Reset",
+        connected: true,
+        ts: Date.now(),
+      });
+      const health = getCameraHealth(`${ROOM} Status`);
+      expect(shouldShowTakeoutUi(health)).toBe(true);
+      expect(getCameraGateSnapshot(`${ROOM} Status`).holdUntilTakeoutClear).toBe(
+        true
+      );
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(`${ROOM} Status`);
     }
   });
 });

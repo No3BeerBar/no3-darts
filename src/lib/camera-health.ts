@@ -43,8 +43,37 @@ export function isCameraBridgeOffline(
 }
 
 /**
- * Takeout is active only when:
- *   takeout && connected !== false && health ts fresh (≤30s)
+ * Autodarts board/detection copy that means remove-darts / yellow reset.
+ * Used when the companion posts Cameras healthy with takeout:false but
+ * status is still Takeout / Reset / Removing darts (undo desync).
+ */
+export function statusLooksLikeTakeout(raw?: string | null): boolean {
+  if (!raw) return false;
+  const s = raw.trim().toLowerCase().replace(/_/g, " ");
+  if (!s) return false;
+  if (s.includes("takeout finished") || s.replace(/\s/g, "") === "takeoutfinished") {
+    return false;
+  }
+  if (s.includes("between")) return false;
+  if (s.includes("ready for next")) return false;
+  if (s.includes("takeout reset") || s.includes("takeout cleared")) return false;
+  if (s.includes("takeout")) return true;
+  if (s.includes("removing dart") || s.includes("remove dart") || s.includes("pull dart")) {
+    return true;
+  }
+  if (s === "hand" || s.includes("partial takeout")) return true;
+  if (s === "reset" || s === "resetting" || s === "board reset" || s.startsWith("reset ")) {
+    return true;
+  }
+  if (s.includes("yellow reset")) return true;
+  return false;
+}
+
+/**
+ * Takeout is active when:
+ *   (takeout flag / level / reason OR AD status looks like takeout)
+ *   && connected !== false && health ts fresh (≤30s)
+ * Explicit takeout_cleared / Ready wins so Reset can dismiss the banner.
  * Else clients/server must clear takeout UI + holdUntilTakeoutClear.
  */
 export function isLiveTakeoutSignal(
@@ -55,8 +84,14 @@ export function isLiveTakeoutSignal(
   // Exact gate: connected===false kills takeout (undefined still allowed).
   if (h.connected === false) return false;
   if (h.reason === "board_manager_offline") return false;
+  if (h.reason === "takeout_cleared") return false;
+  if (/ready for next visit/i.test(h.message || "")) return false;
   const active =
-    Boolean(h.takeout) || h.level === "takeout" || h.reason === "takeout";
+    Boolean(h.takeout) ||
+    h.level === "takeout" ||
+    h.reason === "takeout" ||
+    statusLooksLikeTakeout(h.status) ||
+    statusLooksLikeTakeout(h.message);
   if (!active) return false;
   if (typeof h.ts !== "number" || now - h.ts > CAMERA_HEALTH_FRESH_MS) {
     return false;

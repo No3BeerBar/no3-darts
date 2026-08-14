@@ -44,6 +44,9 @@ def test_event_only_takeout_detected() -> None:
     assert is_takeout_state({"status": "Throw", "event": "Hand"}) is True
     assert is_takeout_state({"status": "Throw", "event": "Partial Takeout"}) is True
     assert is_takeout_state({"status": "Throw detected", "event": "Dart"}) is False
+    assert is_takeout_state({"status": "Reset"}) is True
+    assert is_takeout_state({"status": "Throw", "boardState": "Removing darts"}) is True
+    assert is_takeout_state({"status": "Throw", "mode": "Reset"}) is True
     # Board State "Takeout finished" is complete - not active freeze
     assert is_takeout_state({"status": "Takeout finished", "event": "Empty"}) is False
     assert is_takeout_state({"status": "Takeout finished", "throws": []}) is False

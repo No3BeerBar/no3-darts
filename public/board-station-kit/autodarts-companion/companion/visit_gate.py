@@ -72,6 +72,17 @@ def is_takeout_state(state: Optional[dict[str, Any]]) -> bool:
                     return False
                 if is_takeout_status(val):
                     return True
+    # Yellow reset / Removing darts sometimes lives on a sibling string
+    # (mode, boardState, detection) while status is still Throw.
+    for key, val in state.items():
+        if not isinstance(val, str):
+            continue
+        if key.lower() in ("status", "event"):
+            continue
+        if is_takeout_finished_status(val):
+            continue
+        if is_takeout_status(val):
+            return True
     return False
 
 

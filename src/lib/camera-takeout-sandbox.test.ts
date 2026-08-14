@@ -14,6 +14,8 @@ import {
   CAMERA_HEALTH_FRESH_MS,
   isLiveTakeoutSignal,
   isCameraBridgeOffline,
+  shouldShowTakeoutUi,
+  statusLooksLikeTakeout,
 } from "@/lib/camera-health";
 import {
   applyCameraDart,
@@ -118,6 +120,51 @@ describe("isLiveTakeoutSignal", () => {
         message: "Pull darts - takeout",
         takeout: true,
         connected: false,
+        ts: Date.now(),
+      })
+    ).toBe(false);
+  });
+
+  it("AD status Reset / Removing darts is live even when takeout:false (undo desync)", () => {
+    expect(statusLooksLikeTakeout("Reset")).toBe(true);
+    expect(statusLooksLikeTakeout("Removing darts")).toBe(true);
+    expect(statusLooksLikeTakeout("Takeout finished")).toBe(false);
+    expect(statusLooksLikeTakeout("Throw")).toBe(false);
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        takeout: false,
+        status: "Reset",
+        connected: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
+    expect(
+      shouldShowTakeoutUi({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        takeout: false,
+        status: "Removing darts",
+        connected: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
+    // Explicit Ready / takeout_cleared wins so Reset can dismiss
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Ready for next visit",
+        reason: "takeout_cleared",
+        takeout: false,
+        status: "Removing darts",
+        connected: true,
         ts: Date.now(),
       })
     ).toBe(false);

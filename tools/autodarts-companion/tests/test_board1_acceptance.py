@@ -154,3 +154,5 @@ def test_board1_undo_correct_unfreezes_and_posts_frozen_banner() -> None:
     assert "frozen_visit" in src
     assert "No3 undo/correct - scoring resumed" in src
     assert "silent hold was the Board 1 deadlock" in src
+    assert "AD takeout this poll always wins" in src
+    assert "Do not treat a reopened visit as" in src

@@ -256,6 +256,7 @@ def run_bridge(
     saw_takeout_after_close = False
     # Patron tapped Ready / Reset takeout on /play
     patron_force_ready = False
+    patron_ready_at = 0.0
     # Consecutive empty polls while in_takeout (UI / diagnostics)
     empty_polls_in_takeout = 0
     # Hard seat lock for the open AD visit (No3 currentPlayerIndex)
@@ -579,11 +580,23 @@ def run_bridge(
         undo/correct left Autodarts yellow and /play with no Reset.
         Clears (active=False) are always allowed so Ready/Reset can unblock.
         """
-        nonlocal last_takeout_post_at
+        nonlocal last_takeout_post_at, patron_force_ready
         if active and not ad_ok:
             return
         if active and not ad_takeout and not frozen_visit:
             return
+        # Fresh Ready tap: keep banner cleared briefly while AD reset runs.
+        # If AD is still takeout after that, the next poll re-arms Reset.
+        if (
+            active
+            and patron_force_ready
+            and patron_ready_at
+            and time.time() - patron_ready_at < 2.5
+        ):
+            return
+        if active and patron_force_ready and patron_ready_at:
+            if time.time() - patron_ready_at >= 2.5:
+                patron_force_ready = False
         now = time.time()
         # Heartbeat takeout banner while active; always post on edge transitions
         if active and now - last_takeout_post_at < 8.0 and last_health_level == "takeout":
@@ -796,6 +809,7 @@ def run_bridge(
         - Unlocks next-visit scoring when throws are empty (even if AD status sticks).
         """
         nonlocal visit_closed, saw_takeout_after_close, in_takeout, patron_force_ready
+        nonlocal patron_ready_at
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -814,6 +828,7 @@ def run_bridge(
         saw_takeout_after_close = True
         in_takeout = False
         patron_force_ready = True
+        patron_ready_at = time.time()
         result = client.try_recalibrate()
         if result.get("ok"):
             console.print(
@@ -927,6 +942,9 @@ def run_bridge(
                 ad_ok = False
                 console.print(f"[red]AD offline: {e}[/red]")
 
+            takeout_now = bool(state) and is_takeout_state(state)
+            status_early = extract_status(state) if state else ""
+
             if hcfg.enabled:
                 hp = tracker.evaluate(state, ad_ok)
                 if not ad_ok:
@@ -942,11 +960,18 @@ def run_bridge(
                     handle_takeout_ready_ack(prev_status or "", [])
                     time.sleep(max(1.0, poll_ms / 1000.0))
                     continue
-                banner_on = in_takeout or visit_closed
-                # Do not overwrite an active takeout / visit-closed banner
-                if not (banner_on and hp.get("ok") and not hp.get("restarting")):
-                    if not banner_on:
-                        post_health({**hp, "takeout": False})
+                # AD takeout this poll always wins. Never clobber with
+                # "Cameras healthy" / takeout:false (undo desync / silent hold).
+                banner_on = takeout_now or in_takeout or visit_closed
+                if takeout_now:
+                    post_takeout_health(
+                        status_early,
+                        active=True,
+                        message="Pull darts - takeout",
+                        ad_takeout=True,
+                    )
+                elif not banner_on:
+                    post_health({**hp, "takeout": False})
                 if hp.get("level") == "unhealthy":
                     maybe_restart(hp)
 
@@ -956,6 +981,16 @@ def run_bridge(
             takeout_now = is_takeout_state(state)
             # Tablet Undo / Fix dart may have reopened the No3 visit
             reopen_visit_if_no3_undid()
+            # After undo, if AD is still yellow / takeout, keep the banner.
+            # Do not treat a reopened visit as "play is live, hide Reset".
+            if takeout_now:
+                in_takeout = True
+                post_takeout_health(
+                    status,
+                    active=True,
+                    message="Pull darts - takeout",
+                    ad_takeout=True,
+                )
             # Idle-timer / leftover Stop: start this board only. Never reset.
             if kacfg.enabled:
                 maybe_keep_alive(client, ka_tracker, state)
