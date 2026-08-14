@@ -43,7 +43,8 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     let lastOkToastTs: number | null = null;
 
     const showNotice = (h: CameraHealth) => {
-      // Live Autodarts takeout / yellow Reset — never hide while still active.
+      // Live Autodarts takeout / yellow Reset / server hold — never hide
+      // while still active. Missed poll must not clear the banner.
       const showTakeout = shouldShowTakeoutUi({
         health: h,
         currentlyShowing: takeoutRef.current,
@@ -217,7 +218,8 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: room }),
       });
-      // Bridge ends incomplete visit, probes AD reset, unlocks when board clear.
+      // Companion starts detection if Stopped, clears takeout if yellow;
+      // no-op if already detecting. Never ends a live visit / mid-match recal.
     } catch {
       /* offline - local banner already cleared; retry via poll if health sticks */
     } finally {
@@ -225,5 +227,17 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
     }
   }, [roomId]);
 
-  return { health, notice, takeout, takeoutBusy, acknowledgeTakeout };
+  const armTakeoutUi = useCallback(() => {
+    // Immediate Reset after tablet Fix ends a visit — do not wait for the
+    // 4s health poll while Autodarts is already in yellow takeout.
+    setTakeout(true);
+    setNotice({
+      level: "takeout",
+      message: "Pull darts — takeout",
+      takeout: true,
+      ts: Date.now(),
+    });
+  }, []);
+
+  return { health, notice, takeout, takeoutBusy, acknowledgeTakeout, armTakeoutUi };
 }

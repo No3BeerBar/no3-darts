@@ -33,6 +33,8 @@ def test_board1_p0_recognize_takeout_and_removing_darts() -> None:
     assert is_takeout_status("Partial Takeout")
     assert is_takeout_status("Removing darts")
     assert is_takeout_status("removing darts")
+    assert is_takeout_status("Reset")
+    assert is_takeout_status("Board reset")
     # Takeout finished = complete (must not leave Pull-darts stuck)
     assert not is_takeout_status("Takeout finished")
     assert scoring_frozen(takeout=True, visit_closed=False) is True
@@ -68,6 +70,12 @@ def test_board1_p0_incomplete_never_auto_end_turn() -> None:
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=1) is False
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=2) is False
     assert should_end_turn_on_takeout(visit_closed=False, throws_count=3) is True
+    assert (
+        should_end_turn_on_takeout(
+            visit_closed=False, throws_count=1, no3_visit_done=True
+        )
+        is True
+    )
     assert (
         should_end_turn_on_empty_takeout_finished(
             visit_closed=False,
@@ -142,3 +150,36 @@ def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
     ).read_text(encoding="utf-8")
     assert 'reason"] = "board_stopped"' in health
     assert 'reason") == "board_stopped"' in health
+
+
+def test_board1_patron_reset_starts_board_clears_takeout_only() -> None:
+    """Always-on Reset: start if Stopped; clear takeout; never end visit / recal."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    start = src.index("def handle_takeout_ready_ack")
+    end = src.index("\n    def ", start + 1)
+    ack = src[start:end]
+    assert "try_start_detection" in ack
+    assert "maybe_end_turn" not in ack
+    assert "mark_visit_closed" not in ack
+    assert "maybe_between_games_recal(" not in ack
+    assert "Board reset between games" not in ack
+    assert "try_recalibrate" in ack
+    assert "stuck_takeout" in ack
+    assert "is_takeout_status" in ack
+    assert "already detecting, not in takeout" in ack
+    assert "close_visit_if_no3_already_ended" in src
+    assert "no3 already ended (bust)" in src
+    assert "You are done - pull darts" in src
+    assert "no3_visit_already_ended" in src
+
+
+def test_board1_undo_correct_unfreezes_and_posts_frozen_banner() -> None:
+    """Silent takeout after undo/correct: reopen No3 visit + arm Reset banner."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    assert "def reopen_visit_if_no3_undid" in src
+    assert "reopen_visit_if_no3_undid()" in src
+    assert "frozen_visit" in src
+    assert "No3 undo/correct - scoring resumed" in src
+    assert "silent hold was the Board 1 deadlock" in src
+    assert "AD takeout this poll always wins" in src
+    assert "Do not treat a reopened visit as" in src

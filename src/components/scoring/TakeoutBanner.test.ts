@@ -30,6 +30,12 @@ describe("TakeoutBanner", () => {
     expect(SRC).toMatch(/takeout/i);
     expect(SRC).toMatch(/Camera scoring paused/);
     expect(SRC).toMatch(/Pull your darts/);
-    expect(SRC).toMatch(/tap Reset takeout/);
+    expect(SRC).toMatch(/tap Reset/);
+  });
+
+  it("bust copy tells the thrower they are done and to wait for green", () => {
+    expect(SRC).toMatch(/youreDone/);
+    expect(SRC).toMatch(/You're done/);
+    expect(SRC).toMatch(/board is green/);
   });
 });

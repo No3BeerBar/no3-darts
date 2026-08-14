@@ -11,18 +11,21 @@ import { cn } from "@/lib/utils";
  * Last visit (player + 3 darts) stays in this banner so a yellow AD reset
  * never looks like a blank /play. Never hide while `active` is true.
  *
- * Only mount when there is a *live* Autodarts takeout signal (see
- * isLiveTakeoutSignal). Sandbox / no bridge must never show this.
+ * Mount when shouldShowTakeoutUi (live Autodarts takeout OR server hold).
+ * Sandbox / no bridge / stale leftover must never show this.
  */
 export function TakeoutBanner({
   active,
   busy,
+  youreDone,
   onReady,
   playerName,
   darts,
 }: {
   active: boolean;
   busy?: boolean;
+  /** Exact-41 / X01 bust — visit already over; wait for green. */
+  youreDone?: boolean;
   onReady: () => void;
   playerName?: string | null;
   darts?: DartThrow[];
@@ -42,7 +45,9 @@ export function TakeoutBanner({
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-wide">
-            Removing darts - takeout
+            {youreDone
+              ? "You're done — removing darts"
+              : "Removing darts - takeout"}
           </p>
           {showVisit ? (
             <div className="mt-1.5" data-testid="play-takeout-last-visit">
@@ -75,8 +80,9 @@ export function TakeoutBanner({
             </div>
           ) : null}
           <p className="mt-1 text-xs text-amber-100/90">
-            Camera scoring paused. Pull your darts, then tap Reset takeout so
-            the next visit can start. Clears a stuck takeout from /play.
+            {youreDone
+              ? "Visit over. Pull your darts and wait until the Autodarts board is green. Tap Reset if it stays yellow."
+              : "Camera scoring paused. Pull your darts, then tap Reset so the next visit can start. Clears a stuck takeout from /play."}
           </p>
         </div>
         <button

@@ -27,6 +27,8 @@ export {
   isCameraBridgeOffline,
   isLiveTakeoutSignal,
   isStaleCameraHealth,
+  shouldShowTakeoutUi,
+  statusLooksLikeTakeout,
   CAMERA_HEALTH_FRESH_MS,
 } from "@/lib/camera-health";
 
@@ -383,8 +385,9 @@ function markVisitOpen(state: GameState): void {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
   gate.openVisitSeat = state.currentPlayerIndex;
-  // Do not clear a takeout-armed hold while health still says takeout -
-  // empty-visit reject must stay fail-closed even mid-APPEND of dart 3.
+  // Undo / correct reopened this visit. Clear hold only when Autodarts is
+  // not still in takeout / yellow reset — otherwise keep the hold so
+  // Reset takeout stays on /play instead of a silent no-score.
   const health = getCameraHealth(room);
   if (!isLiveTakeoutSignal(health)) {
     gate.holdUntilTakeoutClear = false;
@@ -443,14 +446,26 @@ function realignCameraGateFromMatch(
   if (!next.roomId) return;
   const gate = getCameraGate(next.roomId);
   if (next.currentTurnDarts.length > 0) {
+    // Open visit (undo / mid-visit correct). Keep hold when AD is still
+    // in takeout so Reset stays visible; mid-visit APPEND still scores.
     gate.openVisitSeat = next.currentPlayerIndex;
-    gate.holdUntilTakeoutClear = false;
+    if (!isLiveTakeoutSignal(getCameraHealth(next.roomId))) {
+      gate.holdUntilTakeoutClear = false;
+    }
     return;
   }
-  if (prev && countProgress(next) < countProgress(prev)) {
-    // Progress went backward (Undo) with empty open visit - allow rescoring
-    gate.holdUntilTakeoutClear = false;
-    gate.openVisitSeat = null;
+  if (prev && prev.currentTurnDarts.length > 0 && next.currentTurnDarts.length === 0) {
+    if (countProgress(next) < countProgress(prev)) {
+      // Undo walked back to an empty visit — allow rescoring
+      gate.holdUntilTakeoutClear = false;
+      gate.openVisitSeat = null;
+      return;
+    }
+    if (next.status === "playing") {
+      // Tablet Fix dart / End visit finalized the turn — arm hold so Reset
+      // takeout is visible instead of a silent camera pause.
+      markVisitClosedForTakeout(next);
+    }
   }
 }
 
@@ -529,8 +544,8 @@ export function applyCameraDart(
   const result = applyDart(state, dart);
   matches.set(result.state.id, result.state);
   const turnEnded =
+    result.state.currentTurnDarts.length === 0 ||
     result.state.currentPlayerIndex !== beforePlayer ||
-    (beforeTurnLen + 1 >= 3 && result.state.currentTurnDarts.length === 0) ||
     result.state.status !== "playing";
 
   if (turnEnded) {
@@ -677,7 +692,7 @@ export function applyCameraCorrect(opts: {
   const turnEnded =
     result.state.currentPlayerIndex !== beforePlayer ||
     result.state.status !== "playing" ||
-    (darts.length >= 3 && result.state.currentTurnDarts.length === 0);
+    (darts.length > 0 && result.state.currentTurnDarts.length === 0);
 
   if (state.status === "playing") {
     if (turnEnded) {
@@ -734,11 +749,13 @@ export function applyCameraUndo(opts: {
 
   const result = undo(state);
   matches.set(result.state.id, result.state);
-  // Undo reopens / shrinks the visit - clear takeout hold so camera can score
+  // Undo reopens / shrinks the visit. Clear hold only when AD is not still
+  // in takeout — live takeout must keep Reset takeout on /play.
+  const room = normRoom(result.state.roomId || "Board 1");
   if (result.state.currentTurnDarts.length > 0) {
     markVisitOpen(result.state);
-  } else {
-    clearTakeoutHold(normRoom(result.state.roomId || "Board 1"));
+  } else if (!isLiveTakeoutSignal(getCameraHealth(room))) {
+    clearTakeoutHold(room);
   }
   emit({
     type: "dart_detected",
@@ -802,8 +819,9 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
     // (Do not clear on ordinary "Cameras healthy" heartbeats.)
     gate.holdUntilTakeoutClear = false;
   }
-  emit({ type: "camera_health", data: next });
-  return next;
+  const stamped = stampHoldOnHealth(next, room);
+  emit({ type: "camera_health", data: stamped });
+  return stamped;
 }
 
 /** Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes). */
@@ -860,16 +878,24 @@ export function consumeTakeoutReady(
   return { pending: ts != null, ts, roomId: room };
 }
 
+function stampHoldOnHealth(health: CameraHealth, roomId: string): CameraHealth {
+  const gate = getCameraGate(roomId);
+  return {
+    ...health,
+    holdUntilTakeoutClear: gate.holdUntilTakeoutClear,
+  };
+}
+
 export function getCameraHealth(roomId?: string): CameraHealth | undefined {
   if (roomId) {
     reconcileStaleTakeout(roomId);
     const exact = cameraHealthByRoom.get(roomId);
-    if (exact) return exact;
+    if (exact) return stampHoldOnHealth(exact, normRoom(roomId));
     const lower = cameraHealthByRoom.get(roomId.trim().toLowerCase());
-    if (lower) return lower;
+    if (lower) return stampHoldOnHealth(lower, normRoom(roomId));
     for (const h of cameraHealthByRoom.values()) {
       if ((h.roomId || "").trim().toLowerCase() === roomId.trim().toLowerCase()) {
-        return h;
+        return stampHoldOnHealth(h, normRoom(h.roomId || roomId));
       }
     }
     return undefined;
@@ -880,9 +906,12 @@ export function getCameraHealth(roomId?: string): CameraHealth | undefined {
     if (!latest || (h.ts ?? 0) > (latest.ts ?? 0)) latest = h;
   }
   if (latest?.roomId) reconcileStaleTakeout(latest.roomId);
-  return latest?.roomId
+  const resolved = latest?.roomId
     ? cameraHealthByRoom.get(normRoom(latest.roomId)) ?? latest
     : latest;
+  return resolved?.roomId
+    ? stampHoldOnHealth(resolved, normRoom(resolved.roomId))
+    : resolved;
 }
 
 export function subscribe(listener: Listener): () => void {

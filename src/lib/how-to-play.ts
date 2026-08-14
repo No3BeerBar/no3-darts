@@ -127,7 +127,7 @@ export const HOW_TO_PLAY: Record<GameModeId, HowToPlayGuide> = {
   forty_one: {
     mode: "forty_one",
     title: "41",
-    summary: "Start at 60. Hit each round’s target — or get halved. Exact 41 needs all 3 darts.",
+    summary: "Start at 60. Hit each round’s target — or get halved. Exact 41: go over and the visit ends now.",
     sections: [
       {
         title: "Goal",
@@ -143,11 +143,11 @@ export const HOW_TO_PLAY: Record<GameModeId, HowToPlayGuide> = {
       },
       {
         title: "Examples",
-        body: "On 20s with 60: hit S20 + miss + miss → score becomes 80. Miss all three → 60 halves to 30. Exact-41: three scoring darts that sum to exactly 41 (e.g. T7 + S13 + S7) → add +41. A miss in that visit voids it even if the other two add to 41.",
+        body: "On 20s with 60: hit S20 + miss + miss → score becomes 80. Miss all three → 60 halves to 30. Exact-41: three scoring darts that sum to exactly 41 (e.g. T7 + S13 + S7) → add +41. A miss in that visit voids it even if the other two add to 41. Go over 41 (e.g. T19 first dart) and the visit ends immediately — no darts 2 and 3.",
       },
       {
         title: "Special rules",
-        body: "Any double includes D1–D20 or the bullseye (50); outer bull (25) does not count as a double. Any triple is T1–T20 only. Exact 41: all 3 darts must contribute (no miss / zero), sum exactly 41, then you gain +41 — otherwise halve.",
+        body: "Any double includes D1–D20 or the bullseye (50); outer bull (25) does not count as a double. Any triple is T1–T20 only. Exact 41: all 3 darts must contribute (no miss / zero), sum exactly 41, then you gain +41 — otherwise halve. Going over 41 busts the visit immediately (same as an X01 bust).",
       },
     ],
   },

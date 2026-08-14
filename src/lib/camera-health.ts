@@ -17,6 +17,12 @@ export type CameraHealth = {
   restarting?: boolean;
   /** Autodarts remove-darts / takeout mode — scoring paused on the bridge. */
   takeout?: boolean;
+  /**
+   * Server next-seat hold (visit closed, camera paused). Stamped by
+   * getCameraHealth so /play and /tv can show Reset after undo/correct
+   * even when Autodarts is in yellow reset and takeout:true was not posted.
+   */
+  holdUntilTakeoutClear?: boolean;
   ts: number;
 };
 
@@ -49,9 +55,21 @@ export function isAutodartsRemoveDartsStatus(
   if (s.includes("takeout finished") || s.replace(/\s/g, "") === "takeoutfinished") {
     return false;
   }
+  if (s.includes("between")) return false;
   if (s.includes("cleared") || s.includes("ready")) return false;
   const compact = s.replace(/\s/g, "");
-  if (s === "reset" || s === "board reset" || compact === "reset") return true;
+  if (
+    s === "reset" ||
+    s === "board reset" ||
+    s === "resetting" ||
+    compact === "reset" ||
+    compact === "boardreset" ||
+    compact === "resetting" ||
+    s.startsWith("reset ") ||
+    s.includes("yellow reset")
+  ) {
+    return true;
+  }
   if (
     s === "takeout" ||
     s === "takeout started" ||
@@ -70,6 +88,9 @@ export function isAutodartsRemoveDartsStatus(
   if (s.includes("takeout")) return true;
   return false;
 }
+
+/** Alias used by older tests / server raw-takeout checks. */
+export const statusLooksLikeTakeout = isAutodartsRemoveDartsStatus;
 
 /** Bridge / patron explicitly ended takeout (Ready, stale clear, offline). */
 export function isExplicitTakeoutClear(
@@ -100,7 +121,10 @@ export function healthIndicatesTakeout(
   if (Boolean(h.takeout) || h.level === "takeout" || h.reason === "takeout") {
     return true;
   }
-  return isAutodartsRemoveDartsStatus(h.status);
+  return (
+    isAutodartsRemoveDartsStatus(h.status) ||
+    isAutodartsRemoveDartsStatus(h.message)
+  );
 }
 
 /**
@@ -123,26 +147,6 @@ export function isLiveTakeoutSignal(
   return true;
 }
 
-/**
- * Banner visibility. Never hide a live takeout. A missed/null poll must not
- * clear an already-showing banner. Hide only on explicit clear, offline, or
- * a fresh non-takeout health row (Throw / cameras healthy).
- */
-export function shouldShowTakeoutUi(opts: {
-  health: CameraHealth | null | undefined;
-  currentlyShowing: boolean;
-  now?: number;
-}): boolean {
-  const now = opts.now ?? Date.now();
-  if (isLiveTakeoutSignal(opts.health, now)) return true;
-  if (!opts.currentlyShowing) return false;
-  if (!opts.health) return true;
-  if (isCameraBridgeOffline(opts.health)) return false;
-  if (isExplicitTakeoutClear(opts.health)) return false;
-  if (isStaleCameraHealth(opts.health, now)) return false;
-  return false;
-}
-
 /** Stale leftover takeout row (no fresh bridge heartbeat). */
 export function isStaleCameraHealth(
   h: CameraHealth | null | undefined,
@@ -158,4 +162,65 @@ export function isConnectedForTakeout(
   h: CameraHealth | null | undefined
 ): boolean {
   return Boolean(h) && h!.connected !== false;
+}
+
+function holdShowsBanner(
+  h: CameraHealth | null | undefined,
+  now: number
+): boolean {
+  if (!h) return false;
+  if (isCameraBridgeOffline(h)) return false;
+  if (isStaleCameraHealth(h, now)) return false;
+  return Boolean(h.holdUntilTakeoutClear);
+}
+
+export type ShouldShowTakeoutUiOpts = {
+  health: CameraHealth | null | undefined;
+  currentlyShowing: boolean;
+  now?: number;
+};
+
+function isShouldShowOpts(
+  value: unknown
+): value is ShouldShowTakeoutUiOpts {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "currentlyShowing" in (value as object)
+  );
+}
+
+/**
+ * Banner visibility.
+ *
+ * Object form (TV / hook): never hide a live takeout. A missed/null poll
+ * must not clear an already-showing banner. Hide only on explicit clear,
+ * offline, or a fresh non-takeout health row.
+ *
+ * Health-only form (tests / hold): live takeout OR server next-seat hold.
+ * The patron Reset button is always visible on /play and is not gated here.
+ */
+export function shouldShowTakeoutUi(
+  health: CameraHealth | null | undefined,
+  now?: number
+): boolean;
+export function shouldShowTakeoutUi(opts: ShouldShowTakeoutUiOpts): boolean;
+export function shouldShowTakeoutUi(
+  healthOrOpts: CameraHealth | null | undefined | ShouldShowTakeoutUiOpts,
+  nowArg?: number
+): boolean {
+  if (isShouldShowOpts(healthOrOpts)) {
+    const now = healthOrOpts.now ?? Date.now();
+    if (isLiveTakeoutSignal(healthOrOpts.health, now)) return true;
+    if (holdShowsBanner(healthOrOpts.health, now)) return true;
+    if (!healthOrOpts.currentlyShowing) return false;
+    if (!healthOrOpts.health) return true;
+    if (isCameraBridgeOffline(healthOrOpts.health)) return false;
+    if (isExplicitTakeoutClear(healthOrOpts.health)) return false;
+    if (isStaleCameraHealth(healthOrOpts.health, now)) return false;
+    return false;
+  }
+  const now = nowArg ?? Date.now();
+  if (isLiveTakeoutSignal(healthOrOpts, now)) return true;
+  return holdShowsBanner(healthOrOpts, now);
 }

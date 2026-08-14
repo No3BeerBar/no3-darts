@@ -36,6 +36,9 @@ export function FortyOneBanner({
 
   const lastTurn = state.turns[state.turns.length - 1];
   const lastVisitHalved = Boolean(lastTurn?.bust);
+  const lastVisitBustOver =
+    lastVisitHalved &&
+    (lastTurn?.darts.reduce((a, d) => a + d.value, 0) ?? 0) > 41;
   const lastVisitPoints =
     lastTurn && !lastTurn.bust ? lastTurn.endScore - lastTurn.startScore : null;
   const lg = size === "lg";
@@ -97,7 +100,7 @@ export function FortyOneBanner({
             >
               {exact41Voided
                 ? "Miss voids visit · will HALVE"
-                : "All 3 darts must score · total exactly 41"}
+                : "All 3 must score · exactly 41 · over ends the visit"}
             </div>
           )}
         </div>
@@ -156,7 +159,9 @@ export function FortyOneBanner({
                   : lastPts > 0
                     ? `+${lastPts}`
                     : "0"
-              : lastVisitHalved
+              : lastVisitBustOver
+                ? "BUST"
+                : lastVisitHalved
                 ? "HALVED"
                 : typeof lastVisitPoints === "number" && lastVisitPoints > 0
                   ? `+${lastVisitPoints}`

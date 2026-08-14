@@ -10,7 +10,10 @@
  *
  * Staff (admin unlocked): Edit / End turn / Pause / Home + Keys/Pad.
  * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
- * Undo + End game are patron-visible (not behind admin).
+ * Undo + End game + Reset are patron-visible (not behind admin).
+ * Reset is always on /play (live match and idle-at-board) — not gated on
+ * takeout, not behind Admin PIN. Tap clears Autodarts takeout and starts
+ * detection if Stopped; no-op if already detecting and not in takeout.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +76,27 @@ import { ResumeAuthGate } from "./ResumeAuthGate";
 import { TakeoutBanner } from "./TakeoutBanner";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
+
+/** Fat patron Reset — always on /play, never behind takeout or Admin PIN. */
+function BoardResetButton({
+  busy,
+  onReset,
+}: {
+  busy: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={busy}
+      data-testid="play-board-reset"
+      className="btn-primary min-h-14 w-full font-display text-base font-semibold tracking-wider"
+    >
+      {busy ? "Resetting…" : "Reset"}
+    </button>
+  );
+}
 
 function ScoringScreenInner() {
   const {
@@ -225,14 +249,26 @@ function ScoringScreenInner() {
   useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  // Takeout Ready must stay reachable from /play even during PIN gate / bot
-  // turns - stuck "Removing darts" must always be clearable.
+  // Reset must stay reachable from /play even during PIN gate / bot turns /
+  // idle-at-board — stuck "Removing darts" or a Stopped board must always
+  // be clearable. Not gated on a live match.
+  const cameraRoom =
+    (state?.roomId || settings.roomName || "Board 1").trim() || "Board 1";
   const {
     notice: cameraNotice,
     takeout: takeoutActive,
     takeoutBusy,
     acknowledgeTakeout,
-  } = useCameraHealth(state?.roomId, Boolean(state));
+    armTakeoutUi,
+  } = useCameraHealth(cameraRoom, true);
+
+  const scoreAndArmTakeout: typeof throwDart = (...args) => {
+    throwDart(...args);
+    const after = useGameStore.getState().state;
+    if (after?.status === "playing" && after.currentTurnDarts.length === 0) {
+      armTakeoutUi();
+    }
+  };
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
   const showCheckout =
@@ -257,6 +293,12 @@ function ScoringScreenInner() {
   if (!state) {
     return (
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <CameraHealthToast notice={cameraNotice} />
+        <TakeoutBanner
+          active={takeoutActive}
+          busy={takeoutBusy}
+          onReady={() => void acknowledgeTakeout()}
+        />
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
         {settings.roomName?.trim() ? (
@@ -275,6 +317,12 @@ function ScoringScreenInner() {
         )}
         <div className="w-full max-w-md text-left">
           <TournamentMatchBanner staffUnlocked={admin.isAdmin} />
+        </div>
+        <div className="w-full max-w-md">
+          <BoardResetButton
+            busy={takeoutBusy}
+            onReset={() => void acknowledgeTakeout()}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href={setupHref(settings.roomName)} className="btn-primary min-h-12 px-8">
@@ -383,25 +431,25 @@ function ScoringScreenInner() {
   const submitPad = () => {
     const dart = parseDartLabel(pad);
     if (dart) {
-      throwDart(dart.kind, dart.number);
+      scoreAndArmTakeout(dart.kind, dart.number);
       setPad("");
       return;
     }
     const n = parseInt(pad, 10);
     if (!Number.isNaN(n) && n >= 0 && n <= 60) {
-      if (n === 0) throwDart("miss", 0);
-      else if (n === 25) throwDart("outer_bull", 25);
-      else if (n === 50) throwDart("bull", 50);
-      else if (n <= 20) throwDart("single", n);
+      if (n === 0) scoreAndArmTakeout("miss", 0);
+      else if (n === 25) scoreAndArmTakeout("outer_bull", 25);
+      else if (n === 50) scoreAndArmTakeout("bull", 50);
+      else if (n <= 20) scoreAndArmTakeout("single", n);
       else {
         for (let i = 20; i >= 1; i--) {
           if (i * 3 === n) {
-            throwDart("triple", i);
+            scoreAndArmTakeout("triple", i);
             setPad("");
             return;
           }
           if (i * 2 === n) {
-            throwDart("double", i);
+            scoreAndArmTakeout("double", i);
             setPad("");
             return;
           }
@@ -425,7 +473,7 @@ function ScoringScreenInner() {
         showLiveLabel
         onScore={(kind, number, meta) => {
           if (botThrowing) return;
-          throwDart(kind, number, {
+          scoreAndArmTakeout(kind, number, {
             angle: meta?.angle,
             radius: meta?.radius,
             source: "manual",
@@ -440,6 +488,7 @@ function ScoringScreenInner() {
       <TakeoutBanner
         active={takeoutActive}
         busy={takeoutBusy}
+        youreDone={Boolean(state.turns[state.turns.length - 1]?.bust)}
         onReady={() => void acknowledgeTakeout()}
         playerName={current?.name ?? null}
         darts={visitDarts}
@@ -471,8 +520,21 @@ function ScoringScreenInner() {
           focusRing={fortyOneFocus?.focusRing ?? null}
           focusBull={fortyOneFocus?.focusBull ?? false}
           onPick={(kind, number) => {
+            const before = useGameStore.getState().state;
+            const beforeLen = before?.currentTurnDarts.length ?? 0;
             correctDartAt(correctSlot, kind, number);
             setCorrectSlot(null);
+            const after = useGameStore.getState().state;
+            const afterLen = after?.currentTurnDarts.length ?? 0;
+            // Empty-slot Fix that completes dart 3 auto-ends. Show Reset
+            // immediately so the iPad is never only End game.
+            if (
+              after &&
+              after.status === "playing" &&
+              (afterLen >= 3 || (beforeLen < 3 && afterLen === 0))
+            ) {
+              armTakeoutUi();
+            }
           }}
           onClear={() => {
             correctDartAt(correctSlot, null);
@@ -693,8 +755,29 @@ function ScoringScreenInner() {
             {playing && (
               <p className="mt-1 text-[10px] tracking-wide text-zinc-600">
                 Undo steps back one dart · tap a dart to fix
+                {state.currentTurnDarts.length > 0 && !visitView.holdingLastVisit
+                  ? " · Next visit ends this throw"
+                  : ""}
               </p>
             )}
+            {playing &&
+              (state.currentTurnDarts.length >= 3 ||
+                (!visitView.holdingLastVisit &&
+                  state.currentTurnDarts.length > 0)) && (
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={!seatsOk || botThrowing}
+                  className={cn(
+                    "mt-2 min-h-12 w-full rounded-lg font-display text-sm font-semibold tracking-wider",
+                    seatsOk && !botThrowing
+                      ? "bg-[var(--brand-red)] text-white hover:brightness-110"
+                      : "bg-zinc-800 text-zinc-600"
+                  )}
+                >
+                  Next visit
+                </button>
+              )}
           </div>
 
           <VisitHistory state={state} limit={12} size="md" className="shrink-0" />
@@ -777,7 +860,7 @@ function ScoringScreenInner() {
 
           {playing && isAdmin && tab === "keys" && (
             <div className="w-full max-w-lg md:hidden">
-              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+              <DartQuickKeys onDart={(k, n) => scoreAndArmTakeout(k, n)} />
             </div>
           )}
           {playing && isAdmin && tab === "pad" && (
@@ -791,13 +874,32 @@ function ScoringScreenInner() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={endGame}
-            className="btn-ghost mt-auto min-h-12 w-full border border-[rgb(225_6_0/0.35)] font-display text-sm tracking-wider text-red-300"
-          >
-            End game
-          </button>
+          <div className="mt-auto flex flex-col gap-2">
+            <BoardResetButton
+              busy={takeoutBusy}
+              onReset={() => void acknowledgeTakeout()}
+            />
+            {playing &&
+              (state.currentTurnDarts.length >= 3 ||
+                (!visitView.holdingLastVisit &&
+                  state.currentTurnDarts.length > 0)) && (
+                <button
+                  type="button"
+                  onClick={endTurn}
+                  disabled={!seatsOk || botThrowing}
+                  className="btn-primary min-h-12 w-full font-display text-sm tracking-wider"
+                >
+                  Next visit
+                </button>
+              )}
+            <button
+              type="button"
+              onClick={endGame}
+              className="btn-ghost min-h-12 w-full border border-[rgb(225_6_0/0.35)] font-display text-sm tracking-wider text-red-300"
+            >
+              End game
+            </button>
+          </div>
         </section>
 
         {/* Reserved board cell — fills leftover space; chrome never shoves it */}
@@ -815,7 +917,7 @@ function ScoringScreenInner() {
           </div>
           {playing && isAdmin && tab === "keys" && (
             <div className="hidden w-full max-w-lg md:block">
-              <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
+              <DartQuickKeys onDart={(k, n) => scoreAndArmTakeout(k, n)} />
             </div>
           )}
           {playing && isAdmin && tab === "pad" && (

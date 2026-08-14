@@ -17,6 +17,7 @@ import {
   isLiveTakeoutSignal,
   isCameraBridgeOffline,
   shouldShowTakeoutUi,
+  statusLooksLikeTakeout,
 } from "@/lib/camera-health";
 import {
   applyCameraDart,
@@ -121,6 +122,51 @@ describe("isLiveTakeoutSignal", () => {
         message: "Pull darts - takeout",
         takeout: true,
         connected: false,
+        ts: Date.now(),
+      })
+    ).toBe(false);
+  });
+
+  it("AD status Reset / Removing darts is live even when takeout:false (undo desync)", () => {
+    expect(statusLooksLikeTakeout("Reset")).toBe(true);
+    expect(statusLooksLikeTakeout("Removing darts")).toBe(true);
+    expect(statusLooksLikeTakeout("Takeout finished")).toBe(false);
+    expect(statusLooksLikeTakeout("Throw")).toBe(false);
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        takeout: false,
+        status: "Reset",
+        connected: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
+    expect(
+      shouldShowTakeoutUi({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        takeout: false,
+        status: "Removing darts",
+        connected: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
+    // Explicit Ready / takeout_cleared wins so Reset can dismiss
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Ready for next visit",
+        reason: "takeout_cleared",
+        takeout: false,
+        status: "Removing darts",
+        connected: true,
         ts: Date.now(),
       })
     ).toBe(false);
@@ -287,7 +333,7 @@ describe("sandbox takeout hold / banner", () => {
         join(ROOT, "src/hooks/useCameraHealth.ts"),
         "utf8"
       );
-      expect(hook).toMatch(/isLiveTakeoutSignal/);
+      expect(hook).toMatch(/shouldShowTakeoutUi/);
       expect(hook).toMatch(/lastOkToastTs/);
     } finally {
       removeServerMatch(state.id);
@@ -417,6 +463,8 @@ describe("sandbox takeout hold / banner", () => {
       expect(screen).not.toMatch(/interactive=\{!botThrowing && !takeout/);
       expect(screen).not.toMatch(/interactive=\{!takeout/);
       expect(screen).toMatch(/source:\s*["']manual["']/);
+      expect(screen).toMatch(/data-testid="play-board-reset"/);
+      expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
     } finally {
       removeServerMatch(state.id);
     }
@@ -433,10 +481,15 @@ describe("bridge AD-offline clears takeout (source)", () => {
     expect(bridge).toContain('"takeout": False');
     expect(bridge).toContain('"connected": False');
     expect(bridge).toContain('handle_takeout_ready_ack(prev_status or "", [])');
+    const ackStart = bridge.indexOf("def handle_takeout_ready_ack");
+    const ackEnd = bridge.indexOf("\n    def ", ackStart + 1);
+    const ack = bridge.slice(ackStart, ackEnd);
+    expect(ack).toContain("try_start_detection");
+    expect(ack).not.toContain("maybe_end_turn");
+    expect(ack).not.toContain("maybe_between_games_recal(");
     expect(bridge).toContain("ad_takeout: bool = False");
-    expect(bridge).toContain(
-      "if active and (not ad_ok or not ad_takeout):"
-    );
+    expect(bridge).toContain("if active and not ad_ok:");
+    expect(bridge).toContain("if active and not ad_takeout and not frozen_visit:");
   });
 });
 
@@ -453,7 +506,6 @@ describe("TV takeout prominence (John watches /tv)", () => {
       join(ROOT, "src/hooks/useTvMatchFeed.ts"),
       "utf8"
     );
-    expect(feed).toMatch(/isLiveTakeoutSignal/);
     expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/setTakeoutActive\(false\)/);
     expect(feed).toMatch(/Missed poll must not hide/);

@@ -68,15 +68,19 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/acknowledgeTakeout/);
-    // Reset must stay reachable even during PIN gate / bot turns
-    expect(screen).toMatch(
-      /useCameraHealth\(state\?\.roomId,\s*Boolean\(state\)\)/
-    );
+    expect(screen).toMatch(/Next visit/);
+    // Reset is always on /play (live + idle), not gated on takeout/match
+    expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
+    expect(screen).toMatch(/data-testid="play-board-reset"/);
+    expect(screen).toMatch(/function BoardResetButton/);
+    expect(screen).toMatch(/scoreAndArmTakeout/);
+    expect(screen).not.toMatch(/takeoutActive && \(/);
     const hook = readSrc("src/hooks/useCameraHealth.ts");
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);
     expect(hook).toMatch(/shouldShowTakeoutUi/);
-    expect(hook).toMatch(/isLiveTakeoutSignal/);
+    expect(hook).toMatch(/armTakeoutUi/);
+    expect(screen).toMatch(/armTakeoutUi/);
     expect(hook).not.toMatch(/Optimistic clear/);
   });
 
@@ -92,7 +96,6 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(tv).toMatch(/takeoutActive/);
     expect(tv).toMatch(/takeoutVisitDisplay/);
     const feed = readSrc("src/hooks/useTvMatchFeed.ts");
-    expect(feed).toMatch(/isLiveTakeoutSignal/);
     expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/takeoutActive/);
   });
