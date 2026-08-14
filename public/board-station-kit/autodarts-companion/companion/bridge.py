@@ -807,7 +807,7 @@ def run_bridge(
         - Always PUT /api/detection/start (or /api/start). Harmless if already
           detecting.
         - If takeout / Reset / Removing darts: probe Board Manager /api/reset
-          (stuck takeout only). Never maybe_between_games_recal.
+          (stuck takeout only). Never between-games recal.
         - Never ends a live visit (casual Reset must be a no-op mid-visit).
         - Incomplete early pull ends via Next visit on /play, not Reset.
         """

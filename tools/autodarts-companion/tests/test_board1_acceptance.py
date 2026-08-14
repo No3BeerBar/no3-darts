@@ -155,7 +155,7 @@ def test_board1_patron_reset_starts_board_clears_takeout_only() -> None:
     assert "try_start_detection" in ack
     assert "maybe_end_turn" not in ack
     assert "mark_visit_closed" not in ack
-    assert "maybe_between_games_recal" not in ack
+    assert "maybe_between_games_recal(" not in ack
     assert "Board reset between games" not in ack
     assert "try_recalibrate" in ack
     assert "stuck_takeout" in ack

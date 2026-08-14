@@ -408,7 +408,7 @@ describe("bridge AD-offline clears takeout (source)", () => {
     const ack = bridge.slice(ackStart, ackEnd);
     expect(ack).toContain("try_start_detection");
     expect(ack).not.toContain("maybe_end_turn");
-    expect(ack).not.toContain("maybe_between_games_recal");
+    expect(ack).not.toContain("maybe_between_games_recal(");
     expect(bridge).toContain("ad_takeout: bool = False");
     expect(bridge).toContain("if active and not ad_ok:");
     expect(bridge).toContain("if active and not ad_takeout and not frozen_visit:");
