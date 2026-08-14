@@ -161,7 +161,7 @@ See [`docs/CAMERA.md`](../../docs/CAMERA.md) and [`docs/BOARD-STATION.md`](../..
 
 With `health.enabled: true` (default), the bridge posts `/api/camera/health` and may restart Board Manager when offline or FPS stays below `fps_min`. Set `autodarts.exe_path` (or `health.exe_path`) so restart can relaunch the app.
 
-With `keep_alive.enabled: true` (default), every ~10s the bridge checks whether **this** board is Stopped and starts it (`PUT /api/detection/start`). Start-Board launching Board Manager is not enough -- the idle timer will Stop the board again overnight. Companion-up is the on-switch. Set `autodarts.board_id` (or `keep_alive.board_id`) when more than one Autodarts board could be visible; otherwise keep-alive refuses to start a stranger. Disable with `--no-keep-alive`.
+With `keep_alive.enabled: true` (default), the bridge starts this local board (`PUT /api/detection/start`, fallback `/api/start`) on launch, whenever status/event is **Stopped** (~10s check, ~30s start cooldown), and after a Board Manager process restart. `:3180` HTTP 200 is not detecting. Companion-up is the on-switch. Start-Board also presses Start once (`Ensure-BoardDetecting`). Disable with `--no-keep-alive`. `Stopped` is health reason `board_stopped` and does not taskkill the exe.
 
 Between games, the bridge probes local reset/calibrate HTTP paths only when the board is empty **and** No3 has no playing/paused match on the room (real game boundary - not every visit takeout). If none exist, calibrate manually in Board Manager.
 

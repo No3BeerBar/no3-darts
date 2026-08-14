@@ -122,6 +122,23 @@ describe("Board1 setup ASCII + PS 5.1 safety", () => {
     assertAsciiFile("tools/board-station/start-board.bat");
   });
 
+  it("Start-Board presses Autodarts Start when the board is Stopped", () => {
+    const src = readFileSync(
+      join(ROOT, "tools/board-station/Start-Board.ps1"),
+      "utf8"
+    );
+    expect(src).toContain("function Ensure-BoardDetecting");
+    expect(src).toContain("function Invoke-BoardStartPut");
+    expect(src).toContain("start_board_if_stopped");
+    expect(src).toContain("/api/detection/start");
+    expect(src).toContain("/api/start");
+    expect(src).toContain("-Method PUT");
+    expect(src).toContain("Board detecting (status=");
+    expect(src).toContain("board is Stopped");
+    expect(src).not.toMatch(/\/api\/detection\/stop/);
+    expect(src).not.toMatch(/Ensure-BoardDetecting[\s\S]*\/api\/reset/);
+  });
+
   it("Start-Board recreates a dead companion venv before pip", () => {
     const src = readFileSync(
       join(ROOT, "tools/board-station/Start-Board.ps1"),

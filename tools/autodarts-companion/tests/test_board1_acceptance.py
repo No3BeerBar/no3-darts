@@ -120,6 +120,9 @@ def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
     src = BRIDGE_PY.read_text(encoding="utf-8")
     assert "maybe_keep_alive" in src
     assert "Idle-timer / leftover Stop" in src
+    assert "ensure_board_detecting" in src
+    assert "after Board Manager restart" in src
+    assert "try_start_detection" in src
     ka = (
         Path(__file__).resolve().parents[1] / "companion" / "keepalive.py"
     ).read_text(encoding="utf-8")
@@ -129,3 +132,13 @@ def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
     assert "/api/reset" not in ka
     assert "/api/calibrate" not in ka
     assert "try_recalibrate" not in ka
+    client = (
+        Path(__file__).resolve().parents[1] / "companion" / "client.py"
+    ).read_text(encoding="utf-8")
+    assert "def try_start_detection" in client
+    assert '("/api/detection/start", "/api/start")' in client
+    health = (
+        Path(__file__).resolve().parents[1] / "companion" / "health.py"
+    ).read_text(encoding="utf-8")
+    assert 'reason"] = "board_stopped"' in health
+    assert 'reason") == "board_stopped"' in health

@@ -22,12 +22,10 @@ from .client import AutodartsClient, extract_status
 
 console = Console()
 
-# Community Board Manager start hooks (PUT first; POST fallback).
-# Never include reset / calibrate paths here.
+# Community Board Manager start hooks (PUT). Never reset / calibrate / stop.
 START_PATHS = (
     "/api/detection/start",
     "/api/start",
-    "/api/board/start",
 )
 
 STOPPED_TOKENS = frozenset(
@@ -57,7 +55,30 @@ RUNNING_TOKENS = frozenset(
         "hand",
         "partial takeout",
         "removing darts",
-        "calibration finished",
+    }
+)
+
+DETECTING_STATUS = frozenset(
+    {
+        "throw",
+        "throw detected",
+        "takeout",
+        "takeout started",
+        "takeout finished",
+        "started",
+    }
+)
+
+DETECTING_EVENT = frozenset(
+    {
+        "wait",
+        "stable",
+        "empty",
+        "dart",
+        "hand",
+        "partial takeout",
+        "takeout",
+        "removing darts",
     }
 )
 
@@ -89,6 +110,7 @@ class KeepAliveConfig:
 
     enabled: bool = True
     interval_s: float = 10.0
+    start_cooldown_s: float = 30.0
     board_id: str = ""
 
 
@@ -142,15 +164,59 @@ def _bool_running_flag(obj: dict[str, Any]) -> Optional[bool]:
     return None
 
 
+def is_calibrating(state: Optional[dict[str, Any]]) -> bool:
+    """True when status/event mentions Calibration -- do not press Start."""
+    if not isinstance(state, dict):
+        return False
+    blobs = [
+        extract_status(state),
+        state.get("event"),
+        state.get("Event"),
+        state.get("boardStatus"),
+        state.get("BoardStatus"),
+    ]
+    nested = state.get("board")
+    if isinstance(nested, dict):
+        blobs.extend(
+            [nested.get("status"), nested.get("Status"), nested.get("event")]
+        )
+    for val in blobs:
+        if isinstance(val, str) and "calibrat" in val.strip().lower():
+            return True
+    return False
+
+
+def is_board_detecting(state: Optional[dict[str, Any]]) -> bool:
+    """
+    Ready: GET /api/state is not Stopped.
+
+    Expect status Throw / Throw detected / Takeout* or event
+    Wait / Stable / Empty / Dart / Hand / Takeout*. Calibration is not ready.
+    """
+    if not isinstance(state, dict) or is_calibrating(state):
+        return False
+    if is_board_stopped(state):
+        return False
+    status = _norm_token(extract_status(state))
+    event = _norm_token(state.get("event") or state.get("Event"))
+    if status in DETECTING_STATUS:
+        return True
+    if event in DETECTING_EVENT:
+        return True
+    return False
+
+
 def is_board_stopped(state: Optional[dict[str, Any]]) -> bool:
     """
     True when Board Manager is reachable but detection is stopped.
 
     Idle-timer stop and leftover Stop typically report status/event "Stopped".
     Takeout / Throw / Started are running -- do not start those.
-    Unknown / empty status is not treated as stopped (avoid fighting calib).
+    Calibration is not Stopped (skip Start; do not fight calib).
     """
     if not isinstance(state, dict):
+        return False
+    if is_calibrating(state):
         return False
 
     flag = _bool_running_flag(state)
@@ -269,19 +335,15 @@ def should_start_this_board(
     *payloads: Any,
 ) -> bool:
     """
-    Board1 only: do not start some other Autodarts board.
+    Board1: one Board Manager per mini-PC (127.0.0.1:3180).
 
-    - configured id + discovered ids that do not include it -> refuse
-    - no configured id + more than one discovered board -> refuse
-    - otherwise start the local Board Manager instance (typical Board1)
+    Fighting a bartender Stop on this local BM is the default.
+    Only refuse when a configured board_id is set and the local BM
+    reports a different id.
     """
     want = (configured_id or "").strip()
     ids = collect_board_ids(*payloads)
-    if want:
-        if ids and want not in ids:
-            return False
-        return True
-    if len(ids) > 1:
+    if want and ids and want not in ids:
         return False
     return True
 
@@ -291,49 +353,31 @@ def start_board_detection(
     board_id: str = "",
 ) -> dict[str, Any]:
     """
-    PUT/POST Board Manager start hooks. Start only -- no reset/calibrate.
-
-    When board_id is set, try board-scoped paths first, then the local
-    /api/detection/start (one Board Manager instance = that board).
+    PUT /api/detection/start, then PUT /api/start on 404. Start only.
     """
+    del board_id  # local BM at host:port is this mini-PC's board
+    fn = getattr(client, "try_start_detection", None)
+    if callable(fn):
+        return fn()
     tried: list[dict[str, Any]] = []
-    bid = (board_id or "").strip()
-    paths: list[str] = []
-    if bid:
-        paths.extend(
-            [
-                f"/api/boards/{bid}/start",
-                f"/api/board/{bid}/start",
-                f"/api/detection/start/{bid}",
-            ]
-        )
-    paths.extend(START_PATHS)
-
-    for path in paths:
-        for method in ("PUT", "POST"):
-            try:
-                if method == "PUT":
-                    code, data = client.put(path)
-                else:
-                    code, data = client.post(path, {})
-            except ConnectionError as e:
-                return {"ok": False, "error": str(e), "tried": tried}
-            entry = {
+    for path in START_PATHS:
+        try:
+            code, data = client.put(path)
+        except ConnectionError as e:
+            return {"ok": False, "error": str(e), "tried": tried}
+        entry = {"path": path, "method": "PUT", "code": code, "preview": str(data)[:120]}
+        tried.append(entry)
+        if 200 <= int(code) < 300:
+            return {
+                "ok": True,
                 "path": path,
-                "method": method,
+                "method": "PUT",
                 "code": code,
-                "preview": str(data)[:120],
+                "detail": data,
+                "tried": tried,
             }
-            tried.append(entry)
-            if 200 <= int(code) < 300:
-                return {
-                    "ok": True,
-                    "path": path,
-                    "method": method,
-                    "code": code,
-                    "detail": data,
-                    "tried": tried,
-                }
+        if int(code) not in (404, 405):
+            return {"ok": False, "tried": tried, "code": code}
     return {"ok": False, "tried": tried}
 
 
@@ -374,8 +418,13 @@ def maybe_keep_alive(
     if not tracker.due(t):
         return {"ok": True, "action": "skip", "reason": "not_due"}
     tracker.mark_check(t)
+    if is_calibrating(state):
+        return {"ok": True, "action": "skip", "reason": "calibrating"}
     if not is_board_stopped(state):
         return {"ok": True, "action": "skip", "reason": "already_running"}
+    cooldown = max(0.0, float(tracker.config.start_cooldown_s))
+    if tracker.last_start_at > 0 and (t - tracker.last_start_at) < cooldown:
+        return {"ok": True, "action": "skip", "reason": "start_cooldown"}
 
     identity = fetch_board_identity(client)
     payloads = (state, identity.get("config"), identity.get("boards"))

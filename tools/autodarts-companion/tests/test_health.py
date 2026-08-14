@@ -16,6 +16,20 @@ def test_healthy_state_clears_timer() -> None:
     assert t.unhealthy_since is None
 
 
+def test_stopped_is_board_stopped_not_process_restart() -> None:
+    t = HealthTracker(
+        HealthConfig(unhealthy_seconds=0.0, restart_cooldown_seconds=0.0)
+    )
+    p = t.evaluate({"status": "Stopped"}, True)
+    assert p["ok"] is False
+    assert p["reason"] == "board_stopped"
+    assert p["level"] == "unhealthy"
+    assert t.should_restart() is False
+    throw = t.evaluate({"status": "Throw", "cameras": [{"fps": 30}]}, True)
+    assert throw["ok"] is True
+    assert throw["reason"] != "board_stopped"
+
+
 def test_offline_becomes_unhealthy() -> None:
     t = HealthTracker(
         HealthConfig(unhealthy_seconds=0.0, restart_cooldown_seconds=60.0)

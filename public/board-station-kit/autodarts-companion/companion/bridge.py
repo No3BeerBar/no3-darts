@@ -38,7 +38,12 @@ from .health import (
     restart_board_manager,
     wait_for_board_manager,
 )
-from .keepalive import KeepAliveConfig, KeepAliveTracker, maybe_keep_alive
+from .keepalive import (
+    KeepAliveConfig,
+    KeepAliveTracker,
+    is_calibrating,
+    maybe_keep_alive,
+)
 from .mapping import (
     dart_to_no3,
     format_segment_label,
@@ -280,6 +285,38 @@ def run_bridge(
         "Start a No3 match on this room (any game mode). Leave Autodarts detecting.\n"
         "Ctrl+C to stop.\n"
     )
+
+    def ensure_board_detecting(reason: str) -> None:
+        """PUT Start on this local BM. Skip calibration. Never reset."""
+        if not kacfg.enabled:
+            return
+        try:
+            snap = client.state()
+        except Exception:
+            snap = None
+        if is_calibrating(snap):
+            console.print(
+                f"[dim]keep-alive[/dim] ({reason}) calibrating - skip Start"
+            )
+            return
+        result = client.try_start_detection()
+        ka_tracker.mark_start()
+        if result.get("ok"):
+            console.print(
+                f"[green]keep-alive start OK[/green] ({reason}) "
+                f"{result.get('method')} {result.get('path')}"
+            )
+        else:
+            err = result.get("error") or f"HTTP {result.get('code', '?')}"
+            console.print(f"[red]keep-alive start failed[/red] ({reason}) {err}")
+
+    # Bridge-up is the on-switch: leftover Stop after boot / Fix Me.
+    if kacfg.enabled:
+        try:
+            boot_state = client.state()
+        except Exception:
+            boot_state = None
+        maybe_keep_alive(client, ka_tracker, boot_state)
 
     prev_throws: list[dict[str, Any]] = []
     prev_status = ""
@@ -544,6 +581,8 @@ def run_bridge(
         ok = wait_for_board_manager(client, timeout_s=45.0)
         if ok:
             console.print("[bold green]Board Manager back online[/bold green]")
+            # Relaunch leaves the board Stopped -- press Start, do not reset.
+            ensure_board_detecting("after Board Manager restart")
             post_health(
                 {
                     "ok": True,

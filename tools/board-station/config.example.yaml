@@ -14,11 +14,11 @@ autodarts:
     - "autodarts"
     - "AutodartsDesktop"
   start_if_missing: true
+  # :3180 HTTP 200 is not detecting. Press Autodarts Start if Stopped.
+  start_board_if_stopped: true
   # Seconds to wait for http://host:port/api/state after launch
   ready_timeout_s: 45
-  # Autodarts board UUID from Board Manager Config (Board1 only).
-  # Leave blank on this one-board mini-PC. If more than one board is listed,
-  # the companion will not start any board until this id is set.
+  # Optional Autodarts board UUID. One BM per Board1 mini-PC; leave blank.
   board_id: ""
 
 # No3 scoring UI (hosted or LAN)
