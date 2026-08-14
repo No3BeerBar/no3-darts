@@ -3,6 +3,8 @@
 /**
  * Robust TV match feed: poll + SSE with reconnect + session cache.
  * Exposes `idle` so attract mode can show when no match is running.
+ * Takeout banner uses shouldShowTakeoutUi (isLiveTakeoutSignal) and must
+ * not hide on a missed health poll while Autodarts is still yellow.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,12 +14,15 @@ import {
   type CameraHealth,
 } from "@/lib/camera-health";
 import {
-  MATCH_WON_ATTRACT_MS,
+  MATCH_RESULT_HOLD_MS,
   TV_ACTIVE_POLL_MS,
   idleAfterEmptyActivePoll,
   isLiveTvStatus,
   nextIdleDeadline,
+  resultHoldRemainingMs,
   shouldApplyLiveMatch,
+  shouldCancelResultHold,
+  shouldHoldOnMatchRemoved,
   shouldRefreshLiveSighting,
   shouldStartMatchWonAttractTimer,
 } from "@/lib/tv-match-feed";
@@ -63,9 +68,10 @@ export function useTvMatchFeed(room: string) {
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [statusText, setStatusText] = useState("Connecting…");
   const [cameraNotice, setCameraNotice] = useState<string | null>(null);
-  /** Live Autodarts takeout only — drives the prominent TV banner. */
+  /** Live Autodarts takeout / yellow Reset — drives the prominent TV banner. */
   const [takeoutActive, setTakeoutActive] = useState(false);
   const [takeoutMessage, setTakeoutMessage] = useState<string | null>(null);
+  const takeoutActiveRef = useRef(false);
   const roomRef = useRef(room);
   roomRef.current = room;
   const healthTimer = useRef<number | null>(null);
@@ -75,6 +81,12 @@ export function useTvMatchFeed(room: string) {
   const matchWonForId = useRef<string | null>(null);
   const dismissedWonId = useRef<string | null>(null);
   const lastSeenLiveAt = useRef<number | null>(null);
+  /** First sighting of match_won / End game — 30s result hold. */
+  const resultEndedAt = useRef<number | null>(null);
+  const currentMatchId = useRef<string | null>(null);
+  const appliedUpdatedAt = useRef(0);
+  /** Consecutive empty /active polls — stamp a hold if SSE missed End game. */
+  const emptyActivePolls = useRef(0);
 
   const goIdle = useCallback((reason: string) => {
     if (idleTimer.current) {
@@ -86,7 +98,15 @@ export function useTvMatchFeed(room: string) {
       window.clearTimeout(matchWonTimer.current);
       matchWonTimer.current = null;
     }
+    if (matchWonForId.current) {
+      dismissedWonId.current = matchWonForId.current;
+    }
     matchWonForId.current = null;
+    resultEndedAt.current = null;
+    lastSeenLiveAt.current = null;
+    currentMatchId.current = null;
+    appliedUpdatedAt.current = 0;
+    emptyActivePolls.current = 0;
     setState(null);
     saveCache(roomRef.current, null);
     setIdle(true);
@@ -111,6 +131,25 @@ export function useTvMatchFeed(room: string) {
     [goIdle]
   );
 
+  /** 30s last-result hold. Does not shorten an already-scheduled hold. */
+  const beginResultHold = useCallback(
+    (reason: string) => {
+      if (resultEndedAt.current == null) resultEndedAt.current = Date.now();
+      const left = resultHoldRemainingMs(resultEndedAt.current, Date.now());
+      if (left <= 0) {
+        goIdle(reason);
+        return;
+      }
+      if (idleTimer.current) {
+        window.clearTimeout(idleTimer.current);
+        idleTimer.current = null;
+      }
+      idleDeadline.current = null;
+      scheduleIdle(left, reason);
+    },
+    [goIdle, scheduleIdle]
+  );
+
   const apply = useCallback(
     (match: GameState | null, source: string) => {
       if (!shouldApplyLiveMatch(match, dismissedWonId.current)) return;
@@ -121,6 +160,9 @@ export function useTvMatchFeed(room: string) {
         if (matchRoom.replace(/\s+/g, " ") !== want.replace(/\s+/g, " ")) {
           return;
         }
+      }
+      if (appliedUpdatedAt.current && match.updatedAt < appliedUpdatedAt.current) {
+        return;
       }
 
       if (
@@ -137,6 +179,9 @@ export function useTvMatchFeed(room: string) {
         idleDeadline.current = null;
         lastSeenLiveAt.current = Date.now();
       }
+      emptyActivePolls.current = 0;
+      currentMatchId.current = match.id;
+      appliedUpdatedAt.current = match.updatedAt;
       setIdle(false);
 
       setState((prev) => {
@@ -155,31 +200,25 @@ export function useTvMatchFeed(room: string) {
         })
       ) {
         matchWonForId.current = match.id;
-        if (matchWonTimer.current) window.clearTimeout(matchWonTimer.current);
-        matchWonTimer.current = window.setTimeout(() => {
-          dismissedWonId.current = match.id;
-          matchWonForId.current = null;
-          matchWonTimer.current = null;
-          setState((cur) => {
-            if (cur && cur.id === match.id && cur.status === "match_won") {
-              saveCache(roomRef.current, null);
-              setIdle(true);
-              setStatusText("Match over · attract");
-              return null;
-            }
-            return cur;
-          });
-        }, MATCH_WON_ATTRACT_MS);
-      } else if (match.status !== "match_won") {
+        beginResultHold("Match over · attract");
+      } else if (
+        shouldCancelResultHold({
+          matchStatus: match.status,
+          matchId: match.id,
+          lingerMatchId: matchWonForId.current,
+        })
+      ) {
+        // New match — skip the 30s hold immediately.
         dismissedWonId.current = null;
         matchWonForId.current = null;
+        resultEndedAt.current = null;
         if (matchWonTimer.current) {
           window.clearTimeout(matchWonTimer.current);
           matchWonTimer.current = null;
         }
       }
     },
-    []
+    [beginResultHold]
   );
 
   useEffect(() => {
@@ -205,16 +244,19 @@ export function useTvMatchFeed(room: string) {
 
     const applyCameraHealth = (h: CameraHealth | null) => {
       if (!h) {
-        setTakeoutActive(false);
-        setTakeoutMessage(null);
+        // Missed poll must not hide Removing darts while AD is still yellow.
         return;
       }
       const want = roomRef.current.trim().toLowerCase();
       const got = (h.roomId || "").trim().toLowerCase();
       if (got && want && got !== want) return;
 
-      // Live Autodarts takeout OR server hold (silent freeze after undo/correct).
-      if (shouldShowTakeoutUi(h)) {
+      const showTakeout = shouldShowTakeoutUi({
+        health: h,
+        currentlyShowing: takeoutActiveRef.current,
+      });
+      takeoutActiveRef.current = showTakeout;
+      if (showTakeout) {
         setTakeoutActive(true);
         setTakeoutMessage(h.message || "Pull darts — takeout");
         // Takeout has its own TV banner; don't also use the small toast.
@@ -277,21 +319,39 @@ export function useTvMatchFeed(room: string) {
         if (shouldApplyLiveMatch(incoming, dismissedWonId.current)) {
           apply(incoming, "poll");
         } else {
-          // No active match — remaining grace from last live sighting (do not reset)
+          emptyActivePolls.current += 1;
+          // Do not stamp a hold on the first empty poll — a new match POST
+          // can race GET /active. After two empties (or match_won on screen)
+          // treat it as End game / winner dropped.
+          if (
+            lastSeenLiveAt.current != null &&
+            resultEndedAt.current == null &&
+            (emptyActivePolls.current >= 2 ||
+              matchWonForId.current != null)
+          ) {
+            resultEndedAt.current = Date.now();
+          }
           const decision = idleAfterEmptyActivePoll({
             lastSeenLiveAt: lastSeenLiveAt.current,
             now: Date.now(),
+            resultEndedAt: resultEndedAt.current,
+            resultHoldMs: MATCH_RESULT_HOLD_MS,
           });
           if (decision.goIdle) {
             goIdle(
               lastSeenLiveAt.current ? "Board idle · attract" : "Waiting for match…"
             );
-          } else {
-            scheduleIdle(decision.delayMs, "Board idle · attract");
+          } else if (resultEndedAt.current != null) {
+            beginResultHold("Board idle · attract");
             setStatusText((prev) =>
               prev.startsWith("Live") || prev.includes("Restored")
-                ? "Waiting for tablet sync…"
+                ? "Last result · holding"
                 : "Waiting for match…"
+            );
+          } else {
+            scheduleIdle(
+              decision.delayMs,
+              lastSeenLiveAt.current ? "Board idle · attract" : "Waiting for match…"
             );
           }
         }
@@ -330,8 +390,25 @@ export function useTvMatchFeed(room: string) {
         }
       });
 
-      es.addEventListener("match_removed", () => {
-        scheduleIdle(1_500, "Match cleared · attract");
+      es.addEventListener("match_removed", (ev) => {
+        let removedId: string | undefined;
+        try {
+          removedId = (JSON.parse((ev as MessageEvent).data) as { id?: string })
+            .id;
+        } catch {
+          /* */
+        }
+        if (
+          !shouldHoldOnMatchRemoved({
+            removedMatchId: removedId,
+            currentMatchId: currentMatchId.current,
+            lastSeenLiveAt: lastSeenLiveAt.current,
+          })
+        ) {
+          return;
+        }
+        if (resultEndedAt.current == null) resultEndedAt.current = Date.now();
+        beginResultHold("Match cleared · attract");
       });
 
       es.addEventListener("dart_detected", (ev) => {
@@ -407,7 +484,7 @@ export function useTvMatchFeed(room: string) {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("online", fetchActive);
     };
-  }, [room, apply, goIdle, scheduleIdle]);
+  }, [room, apply, beginResultHold, goIdle, scheduleIdle]);
 
   return {
     state,

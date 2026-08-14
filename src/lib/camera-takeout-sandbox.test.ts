@@ -12,6 +12,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { applyDart, createDart, createGame } from "@/engine";
 import {
   CAMERA_HEALTH_FRESH_MS,
+  healthIndicatesTakeout,
+  isAutodartsRemoveDartsStatus,
   isLiveTakeoutSignal,
   isCameraBridgeOffline,
   shouldShowTakeoutUi,
@@ -184,6 +186,66 @@ describe("isLiveTakeoutSignal", () => {
       })
     ).toBe(false);
   });
+
+  it("Autodarts yellow Reset is live takeout even without takeout:true", () => {
+    expect(isAutodartsRemoveDartsStatus("Reset")).toBe(true);
+    expect(isAutodartsRemoveDartsStatus("Takeout")).toBe(true);
+    expect(isAutodartsRemoveDartsStatus("Takeout finished")).toBe(false);
+    expect(
+      healthIndicatesTakeout({
+        takeout: false,
+        level: "ok",
+        reason: "",
+        status: "Reset",
+        message: "Throw",
+      })
+    ).toBe(true);
+    expect(
+      isLiveTakeoutSignal({
+        roomId: "Board 1",
+        ok: true,
+        level: "ok",
+        message: "Cameras healthy",
+        status: "Reset",
+        takeout: false,
+        connected: true,
+        ts: Date.now(),
+      })
+    ).toBe(true);
+    expect(
+      healthIndicatesTakeout({
+        takeout: false,
+        level: "ok",
+        reason: "takeout_cleared",
+        status: "Throw",
+        message: "Takeout reset - ready for next visit",
+      })
+    ).toBe(false);
+  });
+
+  it("never hides an already-showing takeout banner on a missed poll", () => {
+    expect(
+      shouldShowTakeoutUi({ health: null, currentlyShowing: true })
+    ).toBe(true);
+    expect(
+      shouldShowTakeoutUi({ health: null, currentlyShowing: false })
+    ).toBe(false);
+    expect(
+      shouldShowTakeoutUi({
+        health: {
+          roomId: "Board 1",
+          ok: true,
+          level: "ok",
+          message: "Takeout reset - ready for next visit",
+          reason: "takeout_cleared",
+          takeout: false,
+          connected: true,
+          ts: Date.now(),
+        },
+        currentlyShowing: true,
+      })
+    ).toBe(false);
+  });
 });
 
 describe("sandbox takeout hold / banner", () => {
@@ -213,6 +275,22 @@ describe("sandbox takeout hold / banner", () => {
     } finally {
       removeServerMatch(state.id);
     }
+  });
+
+  it("yellow Autodarts Reset health arms takeout hold + banner signal", () => {
+    setCameraHealth({
+      roomId: "Sandbox LiveTO",
+      ok: true,
+      level: "ok",
+      message: "Cameras healthy",
+      status: "Reset",
+      takeout: false,
+      connected: true,
+      ts: Date.now(),
+    });
+    const h = getCameraHealth("Sandbox LiveTO");
+    expect(isLiveTakeoutSignal(h)).toBe(true);
+    expect(h?.takeout).toBe(true);
   });
 
   it("live takeout health arms hold; TakeoutBanner source exposes Reset", () => {
@@ -430,6 +508,7 @@ describe("TV takeout prominence (John watches /tv)", () => {
     );
     expect(feed).toMatch(/shouldShowTakeoutUi/);
     expect(feed).toMatch(/setTakeoutActive\(false\)/);
+    expect(feed).toMatch(/Missed poll must not hide/);
     const tv = readFileSync(
       join(ROOT, "src/components/tv/TvDisplay.tsx"),
       "utf8"

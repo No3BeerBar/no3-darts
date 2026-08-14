@@ -97,6 +97,10 @@ describe("GET /api/matches/active after finish / abandon", () => {
     expect(data.match?.id).toBe(next.id);
   });
 
+  it("keeps match_won active for the 30s HDMI result hold", () => {
+    expect(MATCH_WON_ACTIVE_MS).toBe(30_000);
+  });
+
   it("does not keep match_won active forever (brief linger then null)", async () => {
     const wonAt = 1_000_000;
     const state = {

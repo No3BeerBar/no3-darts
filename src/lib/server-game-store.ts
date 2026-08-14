@@ -14,10 +14,10 @@ import {
   undo,
 } from "@/engine";
 import {
+  healthIndicatesTakeout,
   isCameraBridgeOffline,
   isLiveTakeoutSignal,
   isStaleCameraHealth,
-  statusLooksLikeTakeout,
   type CameraHealth,
 } from "@/lib/camera-health";
 import { isLiveMatchStatus, isScoringLiveStatus } from "@/lib/live-match";
@@ -44,8 +44,8 @@ const matchWonAt = new Map<string, number>();
 
 /** Ignore resurrecting a cleared match for this long (in-flight POST). */
 export const CLEARED_MATCH_TOMBSTONE_MS = 45_000;
-/** Winner screen may stay "active" briefly, then attract. */
-export const MATCH_WON_ACTIVE_MS = 15_000;
+/** Winner stays on GET /active for the HDMI result hold, then attract. */
+export const MATCH_WON_ACTIVE_MS = 30_000;
 
 type RoomTombstone = { matchId: string; updatedAt: number; removedAt: number };
 const removedRooms = new Map<string, RoomTombstone>();
@@ -406,10 +406,7 @@ function reconcileStaleTakeout(roomId: string, now = Date.now()): void {
   const stale = isStaleCameraHealth(health, now);
   if (!offline && !stale) return;
 
-  const hadTakeout =
-    Boolean(health.takeout) ||
-    health.level === "takeout" ||
-    health.reason === "takeout";
+  const hadTakeout = healthIndicatesTakeout(health);
   const gate = getCameraGate(room);
   if (!hadTakeout && !gate.holdUntilTakeoutClear) return;
 
@@ -777,14 +774,7 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   const room = normRoom(health.roomId || "Board 1");
   const offline = isCameraBridgeOffline(health);
   // Never persist sticky takeout:true while AD/bridge is unreachable or stale.
-  const rawTakeout =
-    Boolean(health.takeout) ||
-    health.level === "takeout" ||
-    health.reason === "takeout" ||
-    (health.reason !== "takeout_cleared" &&
-      !/ready for next visit/i.test(health.message || "") &&
-      (statusLooksLikeTakeout(health.status) ||
-        statusLooksLikeTakeout(health.message)));
+  const rawTakeout = healthIndicatesTakeout(health);
   const candidate: CameraHealth = {
     ...health,
     roomId: room,

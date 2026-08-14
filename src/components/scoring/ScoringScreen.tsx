@@ -490,6 +490,8 @@ function ScoringScreenInner() {
         busy={takeoutBusy}
         youreDone={Boolean(state.turns[state.turns.length - 1]?.bust)}
         onReady={() => void acknowledgeTakeout()}
+        playerName={current?.name ?? null}
+        darts={visitDarts}
       />
 
       {!seatsOk && (
@@ -797,7 +799,9 @@ function ScoringScreenInner() {
                 <p className="mt-1 text-xs text-zinc-500">Tournament · advancing bracket…</p>
               )}
               {state.status === "match_won" ? (
-                <p className="mt-2 text-sm text-zinc-400">Saving…</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Holding result · then idle
+                </p>
               ) : (
                 <div className="mt-3 flex flex-wrap justify-center gap-2">
                   {pickLegMode && state.tournamentMeta ? (

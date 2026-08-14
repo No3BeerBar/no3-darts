@@ -43,37 +43,93 @@ export function isCameraBridgeOffline(
 }
 
 /**
- * Autodarts board/detection copy that means remove-darts / yellow reset.
- * Used when the companion posts Cameras healthy with takeout:false but
- * status is still Takeout / Reset / Removing darts (undo desync).
+ * Autodarts Board State / Detection State that means "pull darts".
+ * Yellow Reset is the same patron-facing pause as Takeout.
+ * "Takeout finished" and Ready/cleared copy are not active takeout.
  */
-export function statusLooksLikeTakeout(raw?: string | null): boolean {
-  if (!raw) return false;
-  const s = raw.trim().toLowerCase().replace(/_/g, " ");
+export function isAutodartsRemoveDartsStatus(
+  status?: string | null
+): boolean {
+  const s = (status || "").trim().toLowerCase().replace(/_/g, " ");
   if (!s) return false;
   if (s.includes("takeout finished") || s.replace(/\s/g, "") === "takeoutfinished") {
     return false;
   }
   if (s.includes("between")) return false;
-  if (s.includes("ready for next")) return false;
-  if (s.includes("takeout reset") || s.includes("takeout cleared")) return false;
+  if (s.includes("cleared") || s.includes("ready")) return false;
+  const compact = s.replace(/\s/g, "");
+  if (
+    s === "reset" ||
+    s === "board reset" ||
+    s === "resetting" ||
+    compact === "reset" ||
+    compact === "boardreset" ||
+    compact === "resetting" ||
+    s.startsWith("reset ") ||
+    s.includes("yellow reset")
+  ) {
+    return true;
+  }
+  if (
+    s === "takeout" ||
+    s === "takeout started" ||
+    s === "hand" ||
+    s === "partial takeout"
+  ) {
+    return true;
+  }
+  if (
+    s.includes("removing dart") ||
+    s.includes("remove dart") ||
+    s.includes("pull dart")
+  ) {
+    return true;
+  }
   if (s.includes("takeout")) return true;
-  if (s.includes("removing dart") || s.includes("remove dart") || s.includes("pull dart")) {
+  return false;
+}
+
+/** Alias used by older tests / server raw-takeout checks. */
+export const statusLooksLikeTakeout = isAutodartsRemoveDartsStatus;
+
+/** Bridge / patron explicitly ended takeout (Ready, stale clear, offline). */
+export function isExplicitTakeoutClear(
+  h: CameraHealth | null | undefined
+): boolean {
+  if (!h) return false;
+  if (
+    h.reason === "takeout_cleared" ||
+    h.reason === "takeout_stale_cleared" ||
+    h.reason === "board_manager_offline"
+  ) {
     return true;
   }
-  if (s === "hand" || s.includes("partial takeout")) return true;
-  if (s === "reset" || s === "resetting" || s === "board reset" || s.startsWith("reset ")) {
-    return true;
-  }
-  if (s.includes("yellow reset")) return true;
+  const msg = (h.message || "").toLowerCase();
+  if (msg.includes("ready for next visit")) return true;
+  if (msg.includes("takeout reset") && msg.includes("ready")) return true;
   return false;
 }
 
 /**
- * Takeout is active when:
- *   (takeout flag / level / reason OR AD status looks like takeout)
- *   && connected !== false && health ts fresh (≤30s)
- * Explicit takeout_cleared / Ready wins so Reset can dismiss the banner.
+ * Health row says Autodarts is in takeout / yellow Reset — including when
+ * the companion sent status=Reset without takeout:true.
+ */
+export function healthIndicatesTakeout(
+  h: Pick<CameraHealth, "takeout" | "level" | "reason" | "status" | "message">
+): boolean {
+  if (isExplicitTakeoutClear(h as CameraHealth)) return false;
+  if (Boolean(h.takeout) || h.level === "takeout" || h.reason === "takeout") {
+    return true;
+  }
+  return (
+    isAutodartsRemoveDartsStatus(h.status) ||
+    isAutodartsRemoveDartsStatus(h.message)
+  );
+}
+
+/**
+ * Takeout is active when health indicates remove-darts / Reset, the bridge
+ * is connected, and the row is fresh (≤30s).
  * Else clients/server must clear takeout UI + holdUntilTakeoutClear.
  */
 export function isLiveTakeoutSignal(
@@ -84,15 +140,7 @@ export function isLiveTakeoutSignal(
   // Exact gate: connected===false kills takeout (undefined still allowed).
   if (h.connected === false) return false;
   if (h.reason === "board_manager_offline") return false;
-  if (h.reason === "takeout_cleared") return false;
-  if (/ready for next visit/i.test(h.message || "")) return false;
-  const active =
-    Boolean(h.takeout) ||
-    h.level === "takeout" ||
-    h.reason === "takeout" ||
-    statusLooksLikeTakeout(h.status) ||
-    statusLooksLikeTakeout(h.message);
-  if (!active) return false;
+  if (!healthIndicatesTakeout(h)) return false;
   if (typeof h.ts !== "number" || now - h.ts > CAMERA_HEALTH_FRESH_MS) {
     return false;
   }
@@ -116,20 +164,63 @@ export function isConnectedForTakeout(
   return Boolean(h) && h!.connected !== false;
 }
 
-/**
- * Show the yellow Removing-darts banner on /play and /tv when Autodarts
- * is in live takeout OR the server is holding the next seat (silent hold
- * after undo/correct). The patron Reset button is always visible on /play
- * and is not gated here. Sandbox / offline / stale leftover still hide
- * the banner.
- */
-export function shouldShowTakeoutUi(
+function holdShowsBanner(
   h: CameraHealth | null | undefined,
-  now = Date.now()
+  now: number
 ): boolean {
-  if (isLiveTakeoutSignal(h, now)) return true;
   if (!h) return false;
   if (isCameraBridgeOffline(h)) return false;
   if (isStaleCameraHealth(h, now)) return false;
   return Boolean(h.holdUntilTakeoutClear);
+}
+
+export type ShouldShowTakeoutUiOpts = {
+  health: CameraHealth | null | undefined;
+  currentlyShowing: boolean;
+  now?: number;
+};
+
+function isShouldShowOpts(
+  value: unknown
+): value is ShouldShowTakeoutUiOpts {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "currentlyShowing" in (value as object)
+  );
+}
+
+/**
+ * Banner visibility.
+ *
+ * Object form (TV / hook): never hide a live takeout. A missed/null poll
+ * must not clear an already-showing banner. Hide only on explicit clear,
+ * offline, or a fresh non-takeout health row.
+ *
+ * Health-only form (tests / hold): live takeout OR server next-seat hold.
+ * The patron Reset button is always visible on /play and is not gated here.
+ */
+export function shouldShowTakeoutUi(
+  health: CameraHealth | null | undefined,
+  now?: number
+): boolean;
+export function shouldShowTakeoutUi(opts: ShouldShowTakeoutUiOpts): boolean;
+export function shouldShowTakeoutUi(
+  healthOrOpts: CameraHealth | null | undefined | ShouldShowTakeoutUiOpts,
+  nowArg?: number
+): boolean {
+  if (isShouldShowOpts(healthOrOpts)) {
+    const now = healthOrOpts.now ?? Date.now();
+    if (isLiveTakeoutSignal(healthOrOpts.health, now)) return true;
+    if (holdShowsBanner(healthOrOpts.health, now)) return true;
+    if (!healthOrOpts.currentlyShowing) return false;
+    if (!healthOrOpts.health) return true;
+    if (isCameraBridgeOffline(healthOrOpts.health)) return false;
+    if (isExplicitTakeoutClear(healthOrOpts.health)) return false;
+    if (isStaleCameraHealth(healthOrOpts.health, now)) return false;
+    return false;
+  }
+  const now = nowArg ?? Date.now();
+  if (isLiveTakeoutSignal(healthOrOpts, now)) return true;
+  return holdShowsBanner(healthOrOpts, now);
 }

@@ -4,9 +4,10 @@
  */
 
 import type { GameState } from "@/engine";
+import { MATCH_RESULT_HOLD_MS } from "@/lib/tv-match-feed";
 
-/** Brief pause so patrons see the MATCH winner before returning to idle. */
-export const MATCH_WON_AUTOSAVE_MS = 1600;
+/** Hold the winner on /play for the same ~30s as HDMI, then idle. */
+export const MATCH_WON_AUTOSAVE_MS = MATCH_RESULT_HOLD_MS;
 
 export function shouldAutoSaveMatch(state: GameState | null | undefined): boolean {
   return state?.status === "match_won";
