@@ -1,6 +1,7 @@
 /**
- * Board stage sizing — TV and iPad are intentionally separate so HDMI flex
- * grow cannot leak into /play stay-put.
+ * Board stage sizing — TV and iPad use separate helpers/CSS so HDMI flex
+ * cannot leak into /play. Stay-put = reserved cell, no mid-match jump.
+ * It does NOT mean a postage-stamp max-size cap.
  */
 
 /** HDMI /tv leftover column: largest square that fits. No max-size cap. */
@@ -11,11 +12,12 @@ export function tvBoardSide(stageWidth: number, stageHeight: number): number {
 }
 
 /**
- * /play iPad reserved board cell. Cap 440 + min 200 — stay-put, never jump
- * when visit/seat chrome reflows.
+ * /play iPad reserved board cell. Fill the leftover square (no 440 cap).
+ * Size comes only from the reserved stage so takeout / dart 3 / seat
+ * chrome cannot move the graphic.
  */
 export function playBoardSide(stageWidth: number, stageHeight: number): number {
-  const side = Math.floor(Math.min(stageWidth, stageHeight) - 20);
-  if (side <= 0) return 0;
-  return Math.max(200, Math.min(side, 440));
+  const pad = 12;
+  const side = Math.floor(Math.min(stageWidth, stageHeight) - pad);
+  return Math.max(200, side);
 }

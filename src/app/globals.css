@@ -216,9 +216,14 @@ body {
   height: min(100cqw, 100cqh);
 }
 
-/* /play reserved board cell — size comes from JS playBoardSide (cap 440). */
+/* /play reserved board cell — fill leftover square; no 440 postage-stamp cap.
+   Stay-put = this cell does not reflow mid-match (takeout / dart 3 / seats). */
 .play-board-stage {
-  /* stay-put: do not flex-grow the board with leftover viewport */
+  container-type: size;
+}
+.play-board-fill {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
 }
 .tv-display * {
   user-select: none;

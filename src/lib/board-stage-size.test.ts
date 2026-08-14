@@ -13,10 +13,11 @@ describe("tvBoardSide (HDMI leftover column)", () => {
   });
 });
 
-describe("playBoardSide (iPad stay-put)", () => {
-  it("caps at 440 so visit/seat chrome cannot grow the board", () => {
-    expect(playBoardSide(800, 800)).toBe(440);
-    expect(playBoardSide(500, 360)).toBe(340);
+describe("playBoardSide (iPad reserved cell, no postage-stamp cap)", () => {
+  it("fills the leftover square — no 440 max-size", () => {
+    expect(playBoardSide(800, 800)).toBe(788);
+    expect(playBoardSide(800, 800)).toBeGreaterThan(440);
+    expect(playBoardSide(500, 360)).toBe(348);
   });
 
   it("floors at 200", () => {

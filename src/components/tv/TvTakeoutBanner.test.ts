@@ -53,10 +53,10 @@ describe("TvTakeoutBanner", () => {
 
     const play = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(play).toMatch(/play-board-stage/);
+    expect(play).toMatch(/play-board-fill/);
     expect(play).toMatch(/playBoardSide/);
     expect(play).not.toMatch(/tv-board-stage/);
     expect(play).not.toMatch(/tvBoardSide/);
-    expect(play).not.toMatch(/fillParent/);
   });
 
   it("TV feed gates takeout on isLiveTakeoutSignal (no sandbox spam)", () => {

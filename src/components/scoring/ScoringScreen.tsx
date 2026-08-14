@@ -101,7 +101,7 @@ function ScoringScreenInner() {
   const [pad, setPad] = useState("");
   const [tab, setTab] = useState<"board" | "keys" | "pad">("board");
   const [correctSlot, setCorrectSlot] = useState<number | null>(null);
-  const [boardSize, setBoardSize] = useState(320);
+  const [boardSize, setBoardSize] = useState(520);
   const [seatAuthTick, setSeatAuthTick] = useState(0);
   const [idlePickerOpen, setIdlePickerOpen] = useState(false);
   const [idleAuthOpen, setIdleAuthOpen] = useState(false);
@@ -619,18 +619,18 @@ function ScoringScreenInner() {
       </header>
 
       {/*
-        Stable match grid:
-        - Landscape / iPad: scrollable chrome | fixed board column
-        - Portrait: compact scroll seats → fixed board band → scroll visit/footer
-        Board stage size is independent of visit history / checkout / seat count.
+        Stable match grid — board is the leftover dominant cell:
+        - Landscape / iPad: scrollable chrome | board fills remaining width
+        - Portrait: compact chrome on top | board fills remaining height
+        Stage size is independent of visit/takeout/seat chrome (no mid-match jump).
       */}
       <main
         className={cn(
-          "mx-auto grid w-full max-w-6xl flex-1 min-h-0 gap-2 px-2 py-2",
-          // Portrait: scrollable chrome on top, fixed board band below
-          "grid-rows-[minmax(0,1fr)_minmax(240px,46%)]",
-          // Landscape / iPad: chrome | fixed board column
-          "md:grid-cols-[minmax(0,1fr)_minmax(280px,44%)] md:grid-rows-1"
+          "grid w-full flex-1 min-h-0 gap-2 px-2 py-2",
+          // Portrait: chrome capped; board takes leftover
+          "grid-rows-[minmax(140px,36%)_minmax(0,1fr)]",
+          // Landscape / iPad: chrome | leftover board column
+          "md:grid-cols-[minmax(260px,36%)_minmax(0,1fr)] md:grid-rows-1"
         )}
       >
         {/* Chrome column — seats, banners, visit, actions (scrolls) */}
@@ -695,7 +695,7 @@ function ScoringScreenInner() {
             )}
           </div>
 
-          <VisitHistory state={state} limit={12} size="sm" className="shrink-0" />
+          <VisitHistory state={state} limit={12} size="md" className="shrink-0" />
 
           {(state.status === "leg_won" || state.status === "match_won") && (
             <div className="rounded-xl border border-[rgb(225_6_0/0.45)] bg-[rgb(225_6_0/0.12)] p-4 text-center">
@@ -796,15 +796,19 @@ function ScoringScreenInner() {
           </button>
         </section>
 
-        {/* Fixed board column — size from this cell only; history/seats never shove it */}
+        {/* Reserved board cell — fills leftover space; chrome never shoves it */}
         <section
-          ref={boardStageRef}
           className={cn(
-            "play-board-stage flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl border border-[rgb(225_6_0/0.2)] bg-black px-2 py-2 md:order-2",
+            "flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl border border-[rgb(225_6_0/0.2)] bg-black px-2 py-2 md:order-2",
             !playing && "opacity-80"
           )}
         >
-          {boardNode}
+          <div
+            ref={boardStageRef}
+            className="play-board-stage flex min-h-0 min-w-0 flex-1 items-center justify-center"
+          >
+            <div className="play-board-fill">{boardNode}</div>
+          </div>
           {playing && isAdmin && tab === "keys" && (
             <div className="hidden w-full max-w-lg md:block">
               <DartQuickKeys onDart={(k, n) => throwDart(k, n)} />
