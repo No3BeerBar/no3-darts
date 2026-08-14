@@ -31,7 +31,14 @@ import {
 import { isHeartbeatMatchStatus } from "@/lib/live-match";
 import { getActiveGame, mergeMatchStatsIntoPlayers, saveMatch, setActiveGame } from "@/lib/storage";
 import { clearMatchFromServer, stopMatchSync, syncMatchToServer } from "@/lib/sync-server";
+import { rememberRegisteredSeats } from "@/lib/tablet-session";
 import { useSessionStore } from "@/store/session-store";
+
+/** Keep every PIN seat on the iPad lobby after / between matches. */
+function rememberMatchSeatsOnTablet(state: GameState): void {
+  const roster = rememberRegisteredSeats(state.players);
+  useSessionStore.setState({ tabletPlayers: roster });
+}
 
 /** Save history / stats / Postgres only when a PIN account played. Guests are ephemeral. */
 function recordFinishedMatch(stored: ReturnType<typeof buildStoredMatch>): void {
@@ -116,6 +123,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = createGame(opts);
     const sessionId = useSessionStore.getState().player?.id ?? null;
     seedSeatAuthForMatch(state.id, state.players, sessionId);
+    rememberMatchSeatsOnTablet(state);
     persist(state);
     set({ state, lastCallout: "Game on!", lastHighlight: null });
   },
@@ -236,6 +244,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const prevId = state.id;
     const finished = { ...state, status: "finished" as const, updatedAt: Date.now() };
     recordFinishedMatch(buildStoredMatch(finished));
+    rememberMatchSeatsOnTablet(state);
     // Clear match + seat-auth only — do NOT logout the tablet PIN session
     stopMatchSync();
     clearSeatAuth();
@@ -251,6 +260,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (get().displayOnly) return;
     stopMatchSync();
     const prev = get().state;
+    if (prev) rememberMatchSeatsOnTablet(prev);
     // Tear down match seat trust only — tablet session cookie stays until Sign out / idle
     clearSeatAuth();
     persist(null);

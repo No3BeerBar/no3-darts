@@ -60,6 +60,8 @@ import { usePlayAdmin } from "@/hooks/usePlayAdmin";
 import { setupHref, statsHrefFromPlay } from "@/lib/play-kiosk";
 import { playBoardSide } from "@/lib/board-stage-size";
 import { stopMatchSync } from "@/lib/sync-server";
+import { matchWinnerLabel } from "@/lib/match-winner";
+import { signedInLobbyPlayers } from "@/lib/tablet-session";
 import { takeoutVisitDisplay } from "@/lib/takeout-visit-display";
 import { Dartboard } from "@/components/board/Dartboard";
 import { BaseballBanner } from "./BaseballBanner";
@@ -115,6 +117,7 @@ function ScoringScreenInner() {
   } = useGameStore();
   const settings = useSettingsStore();
   const sessionPlayer = useSessionStore((s) => s.player);
+  const tabletPlayers = useSessionStore((s) => s.tabletPlayers);
   const sessionHydrated = useSessionStore((s) => s.hydrated);
   const hydrateSession = useSessionStore((s) => s.hydrate);
   const logoutSession = useSessionStore((s) => s.logout);
@@ -306,15 +309,42 @@ function ScoringScreenInner() {
             {settings.roomName.trim()}
           </p>
         ) : null}
-        {sessionPlayer ? (
-          <p className="text-sm text-zinc-400">
-            Signed in · <span className="text-white">{sessionPlayer.name}</span>
-          </p>
-        ) : (
-          <p className="max-w-sm text-sm text-zinc-500">
-            Guests can play without an account. Saved players sign in with PIN.
-          </p>
-        )}
+        {(() => {
+          const lobby = signedInLobbyPlayers(sessionPlayer, tabletPlayers);
+          if (lobby.length === 0) {
+            return (
+              <p className="max-w-sm text-sm text-zinc-500">
+                Guests can play without an account. Saved players sign in with PIN.
+              </p>
+            );
+          }
+          return (
+            <div className="w-full max-w-md" data-testid="play-idle-signed-in">
+              <p className="mb-2 font-display text-[10px] tracking-[0.2em] text-zinc-500">
+                SIGNED IN · {lobby.length}
+              </p>
+              <ul className="space-y-1.5">
+                {lobby.map((p) => (
+                  <li
+                    key={p.id}
+                    className="rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 py-2 text-left text-sm font-semibold text-white"
+                  >
+                    {p.name}
+                    {sessionPlayer?.id === p.id ? (
+                      <span className="ml-2 text-[10px] font-normal text-zinc-500">
+                        You
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-[10px] font-normal text-zinc-500">
+                        Signed in
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
         <div className="w-full max-w-md text-left">
           <TournamentMatchBanner staffUnlocked={admin.isAdmin} />
         </div>
@@ -342,7 +372,7 @@ function ScoringScreenInner() {
             Stats
           </Link>
         </div>
-        {sessionPlayer && (
+        {(sessionPlayer || tabletPlayers.length > 0) && (
           <button
             type="button"
             className="text-xs text-zinc-600 hover:text-zinc-400"
@@ -785,15 +815,16 @@ function ScoringScreenInner() {
           {(state.status === "leg_won" || state.status === "match_won") && (
             <div className="rounded-xl border border-[rgb(225_6_0/0.45)] bg-[rgb(225_6_0/0.12)] p-4 text-center">
               <div className="font-logo text-2xl text-[var(--brand-red-bright)]">
-                {state.status === "match_won" ? "MATCH" : "LEG"} ·{" "}
-                {(() => {
-                  const wid = state.winnerId ?? state.legWinnerId;
-                  if (!wid) return "—";
-                  const team = getTeamForPlayer(state, wid);
-                  return team && team.playerIds.length > 1
-                    ? team.name
-                    : state.players.find((p) => p.id === wid)?.name;
-                })()}
+                {state.status === "match_won"
+                  ? `WINNER · ${matchWinnerLabel(state) ?? "—"}`
+                  : `LEG · ${(() => {
+                      const wid = state.legWinnerId ?? state.winnerId;
+                      if (!wid) return "—";
+                      const team = getTeamForPlayer(state, wid);
+                      return team && team.playerIds.length > 1
+                        ? team.name
+                        : state.players.find((p) => p.id === wid)?.name;
+                    })()}`}
               </div>
               {state.tournamentMeta && state.status === "match_won" && (
                 <p className="mt-1 text-xs text-zinc-500">Tournament · advancing bracket…</p>
