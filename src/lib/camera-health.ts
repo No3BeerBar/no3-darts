@@ -117,9 +117,11 @@ export function isConnectedForTakeout(
 }
 
 /**
- * Show Reset takeout on /play and /tv when Autodarts is in live takeout
- * OR the server is holding the next seat (silent hold after undo/correct).
- * Sandbox / offline / stale leftover still hide the banner.
+ * Show the yellow Removing-darts banner on /play and /tv when Autodarts
+ * is in live takeout OR the server is holding the next seat (silent hold
+ * after undo/correct). The patron Reset button is always visible on /play
+ * and is not gated here. Sandbox / offline / stale leftover still hide
+ * the banner.
  */
 export function shouldShowTakeoutUi(
   h: CameraHealth | null | undefined,

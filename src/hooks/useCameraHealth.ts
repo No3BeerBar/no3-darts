@@ -219,7 +219,8 @@ export function useCameraHealth(roomId: string | undefined, enabled = true) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomId: room }),
       });
-      // Bridge ends incomplete visit, probes AD reset, unlocks when board clear.
+      // Companion starts detection if Stopped, clears takeout if yellow;
+      // no-op if already detecting. Never ends a live visit / mid-match recal.
     } catch {
       /* offline - local banner already cleared; retry via poll if health sticks */
     } finally {

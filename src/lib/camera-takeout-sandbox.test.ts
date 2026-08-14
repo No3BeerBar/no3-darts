@@ -385,6 +385,8 @@ describe("sandbox takeout hold / banner", () => {
       expect(screen).not.toMatch(/interactive=\{!botThrowing && !takeout/);
       expect(screen).not.toMatch(/interactive=\{!takeout/);
       expect(screen).toMatch(/source:\s*["']manual["']/);
+      expect(screen).toMatch(/data-testid="play-board-reset"/);
+      expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
     } finally {
       removeServerMatch(state.id);
     }
@@ -401,6 +403,12 @@ describe("bridge AD-offline clears takeout (source)", () => {
     expect(bridge).toContain('"takeout": False');
     expect(bridge).toContain('"connected": False');
     expect(bridge).toContain('handle_takeout_ready_ack(prev_status or "", [])');
+    const ackStart = bridge.indexOf("def handle_takeout_ready_ack");
+    const ackEnd = bridge.indexOf("\n    def ", ackStart + 1);
+    const ack = bridge.slice(ackStart, ackEnd);
+    expect(ack).toContain("try_start_detection");
+    expect(ack).not.toContain("maybe_end_turn");
+    expect(ack).not.toContain("maybe_between_games_recal");
     expect(bridge).toContain("ad_takeout: bool = False");
     expect(bridge).toContain("if active and not ad_ok:");
     expect(bridge).toContain("if active and not ad_takeout and not frozen_visit:");

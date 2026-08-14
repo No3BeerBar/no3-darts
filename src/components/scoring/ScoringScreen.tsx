@@ -10,7 +10,10 @@
  *
  * Staff (admin unlocked): Edit / End turn / Pause / Home + Keys/Pad.
  * Unlock: `?admin=1`, long-press logo + PIN, or Admin link.
- * Undo + End game are patron-visible (not behind admin).
+ * Undo + End game + Reset are patron-visible (not behind admin).
+ * Reset is always on /play (live match and idle-at-board) — not gated on
+ * takeout, not behind Admin PIN. Tap clears Autodarts takeout and starts
+ * detection if Stopped; no-op if already detecting and not in takeout.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +76,27 @@ import { ResumeAuthGate } from "./ResumeAuthGate";
 import { TakeoutBanner } from "./TakeoutBanner";
 import { TurnDarts } from "./TurnDarts";
 import { VisitHistory } from "./VisitHistory";
+
+/** Fat patron Reset — always on /play, never behind takeout or Admin PIN. */
+function BoardResetButton({
+  busy,
+  onReset,
+}: {
+  busy: boolean;
+  onReset: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={busy}
+      data-testid="play-board-reset"
+      className="btn-primary min-h-14 w-full font-display text-base font-semibold tracking-wider"
+    >
+      {busy ? "Resetting…" : "Reset"}
+    </button>
+  );
+}
 
 function ScoringScreenInner() {
   const {
@@ -225,15 +249,18 @@ function ScoringScreenInner() {
   useBotTurn(seatsOk);
   // Keep TV feed alive during the gate; only scoring input is blocked
   useMatchHeartbeat(true);
-  // Takeout Ready must stay reachable from /play even during PIN gate / bot
-  // turns - stuck "Removing darts" must always be clearable.
+  // Reset must stay reachable from /play even during PIN gate / bot turns /
+  // idle-at-board — stuck "Removing darts" or a Stopped board must always
+  // be clearable. Not gated on a live match.
+  const cameraRoom =
+    (state?.roomId || settings.roomName || "Board 1").trim() || "Board 1";
   const {
     notice: cameraNotice,
     takeout: takeoutActive,
     takeoutBusy,
     acknowledgeTakeout,
     armTakeoutUi,
-  } = useCameraHealth(state?.roomId, Boolean(state));
+  } = useCameraHealth(cameraRoom, true);
 
   const checkout = useMemo(() => (state ? getCheckout() : null), [state, getCheckout]);
   const showCheckout =
@@ -258,6 +285,12 @@ function ScoringScreenInner() {
   if (!state) {
     return (
       <div className="shell-black flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <CameraHealthToast notice={cameraNotice} />
+        <TakeoutBanner
+          active={takeoutActive}
+          busy={takeoutBusy}
+          onReady={() => void acknowledgeTakeout()}
+        />
         <Image src="/brand/logo.png" alt="No.3" width={72} height={72} />
         <h1 className="font-logo text-2xl text-white">No active match</h1>
         {settings.roomName?.trim() ? (
@@ -276,6 +309,12 @@ function ScoringScreenInner() {
         )}
         <div className="w-full max-w-md text-left">
           <TournamentMatchBanner staffUnlocked={admin.isAdmin} />
+        </div>
+        <div className="w-full max-w-md">
+          <BoardResetButton
+            busy={takeoutBusy}
+            onReset={() => void acknowledgeTakeout()}
+          />
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link href={setupHref(settings.roomName)} className="btn-primary min-h-12 px-8">
@@ -823,16 +862,10 @@ function ScoringScreenInner() {
           )}
 
           <div className="mt-auto flex flex-col gap-2">
-            {takeoutActive && (
-              <button
-                type="button"
-                onClick={() => void acknowledgeTakeout()}
-                disabled={takeoutBusy}
-                className="btn-primary min-h-14 w-full font-display text-base font-semibold tracking-wider"
-              >
-                {takeoutBusy ? "Resetting…" : "Reset takeout"}
-              </button>
-            )}
+            <BoardResetButton
+              busy={takeoutBusy}
+              onReset={() => void acknowledgeTakeout()}
+            />
             {playing &&
               (state.currentTurnDarts.length >= 3 ||
                 (!visitView.holdingLastVisit &&

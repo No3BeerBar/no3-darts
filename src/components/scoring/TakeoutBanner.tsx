@@ -34,8 +34,8 @@ export function TakeoutBanner({
             Removing darts - takeout
           </p>
           <p className="text-xs text-amber-100/90">
-            Camera scoring paused. Pull your darts, then tap Reset takeout so
-            the next visit can start. Clears a stuck takeout from /play.
+            Camera scoring paused. Pull your darts, then tap Reset so the
+            next visit can start. Clears a stuck takeout from /play.
           </p>
         </div>
         <button

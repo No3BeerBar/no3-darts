@@ -18,7 +18,7 @@ Critical ordering (bar P0):
   2. Only then end-turn / freeze on takeout.
   3. Never auto end-turn an incomplete (1-2 dart) visit - dart 3 often lags
      several seconds after a Takeout/empty flicker. Incomplete early pull is
-     confirmed only by the patron Ready / reset control on /play.
+     confirmed only by the patron Next visit control on /play.
   4. While mirroring an open AD visit, lock the No3 seat; refuse dart/end-turn
      that would apply to a different seat than the visit started on.
   5. After a visit closes, do not unlock on scored-close alone - require an AD
@@ -174,7 +174,7 @@ def should_end_turn_on_empty_takeout_finished(
 
     Dart 3 routinely lags >1-2s after AD flickers empty/takeout-finished.
     Auto early-pull was seat-jumping every visit. Incomplete visits end only
-    via patron Ready (`handle_takeout_ready_ack` -> maybe_end_turn).
+    via patron Next visit on /play. Reset never ends a live visit.
     """
     _ = (
         visit_closed,

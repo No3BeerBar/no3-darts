@@ -801,12 +801,15 @@ def run_bridge(
 
     def handle_takeout_ready_ack(status: str, throws: list[Any]) -> None:
         """
-        Patron Ready/Reset on /play: clear stuck takeout handshake (bridge + UI).
+        Patron Reset on /play: start the board if Stopped, and/or clear
+        Autodarts takeout (yellow Removing darts).
 
-        - Ends open visit (including incomplete early pull - patron confirms).
-        - Clears Pull-darts health immediately (no sticky takeout:true).
-        - Probes Board Manager /api/reset (stuck takeout) - NOT between-games recal.
-        - Unlocks next-visit scoring when throws are empty (even if AD status sticks).
+        - Always PUT /api/detection/start (or /api/start). Harmless if already
+          detecting.
+        - If takeout / Reset / Removing darts: probe Board Manager /api/reset
+          (stuck takeout only). Never maybe_between_games_recal.
+        - Never ends a live visit (casual Reset must be a no-op mid-visit).
+        - Incomplete early pull ends via Next visit on /play, not Reset.
         """
         nonlocal visit_closed, saw_takeout_after_close, in_takeout, patron_force_ready
         nonlocal patron_ready_at
@@ -818,12 +821,23 @@ def run_bridge(
         )
         if not data or not data.get("pending"):
             return
+        start = client.try_start_detection()
+        if start.get("ok"):
+            console.print(
+                f"[green]detection start OK[/green] "
+                f"{start.get('method')} {start.get('path')}"
+            )
+        stuck_takeout = bool(in_takeout or is_takeout_status(status or ""))
+        if not stuck_takeout:
+            console.print(
+                "[dim]Reset: already detecting, not in takeout - no-op "
+                "(no visit end, no mid-match recal)[/dim]"
+            )
+            return
         console.print(
-            "[cyan]takeout-ready[/cyan] patron Ready/Reset - "
-            "ending open visit if needed, clearing handshake"
+            "[cyan]takeout-ready[/cyan] patron Reset - "
+            "clearing takeout handshake (not ending visit)"
         )
-        maybe_end_turn("takeout-ready ack")
-        mark_visit_closed("takeout-ready ack")
         # Ack = takeout handshake + force unlock once board is empty
         saw_takeout_after_close = True
         in_takeout = False

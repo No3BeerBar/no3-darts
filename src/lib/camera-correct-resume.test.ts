@@ -392,6 +392,8 @@ describe("play UI continue path after correct", () => {
     expect(screen).toMatch(/onClick=\{endTurn\}/);
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/Reset takeout|acknowledgeTakeout/);
+    expect(screen).toMatch(/data-testid="play-board-reset"/);
+    expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
     expect(screen).toMatch(/armTakeoutUi/);
     expect(screen).toMatch(/afterLen >= 3/);
   });

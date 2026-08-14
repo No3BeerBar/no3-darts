@@ -146,6 +146,23 @@ def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
     assert 'reason") == "board_stopped"' in health
 
 
+def test_board1_patron_reset_starts_board_clears_takeout_only() -> None:
+    """Always-on Reset: start if Stopped; clear takeout; never end visit / recal."""
+    src = BRIDGE_PY.read_text(encoding="utf-8")
+    start = src.index("def handle_takeout_ready_ack")
+    end = src.index("\n    def ", start + 1)
+    ack = src[start:end]
+    assert "try_start_detection" in ack
+    assert "maybe_end_turn" not in ack
+    assert "mark_visit_closed" not in ack
+    assert "maybe_between_games_recal" not in ack
+    assert "Board reset between games" not in ack
+    assert "try_recalibrate" in ack
+    assert "stuck_takeout" in ack
+    assert "is_takeout_status" in ack
+    assert "already detecting, not in takeout" in ack
+
+
 def test_board1_undo_correct_unfreezes_and_posts_frozen_banner() -> None:
     """Silent takeout after undo/correct: reopen No3 visit + arm Reset banner."""
     src = BRIDGE_PY.read_text(encoding="utf-8")

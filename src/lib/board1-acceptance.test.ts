@@ -69,10 +69,11 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(screen).toMatch(/TakeoutBanner/);
     expect(screen).toMatch(/acknowledgeTakeout/);
     expect(screen).toMatch(/Next visit/);
-    // Reset must stay reachable even during PIN gate / bot turns
-    expect(screen).toMatch(
-      /useCameraHealth\(state\?\.roomId,\s*Boolean\(state\)\)/
-    );
+    // Reset is always on /play (live + idle), not gated on takeout/match
+    expect(screen).toMatch(/useCameraHealth\(cameraRoom,\s*true\)/);
+    expect(screen).toMatch(/data-testid="play-board-reset"/);
+    expect(screen).toMatch(/function BoardResetButton/);
+    expect(screen).not.toMatch(/takeoutActive && \(/);
     const hook = readSrc("src/hooks/useCameraHealth.ts");
     expect(hook).toMatch(/takeout-ready/);
     expect(hook).toMatch(/acknowledgeTakeout/);

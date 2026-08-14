@@ -30,6 +30,6 @@ describe("TakeoutBanner", () => {
     expect(SRC).toMatch(/takeout/i);
     expect(SRC).toMatch(/Camera scoring paused/);
     expect(SRC).toMatch(/Pull your darts/);
-    expect(SRC).toMatch(/tap Reset takeout/);
+    expect(SRC).toMatch(/tap Reset/);
   });
 });
