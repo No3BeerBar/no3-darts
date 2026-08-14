@@ -32,6 +32,11 @@ PROBE_PATHS = (
     "/api/calibration",
     "/api/board/reset",
     "/api/board/calibrate",
+    "/api/detection/start",
+    "/api/detection/stop",
+    "/api/start",
+    "/api/stop",
+    "/api/boards",
     "/",
 )
 
@@ -97,19 +102,24 @@ class AutodartsClient:
             raise RuntimeError(f"/api/state not JSON object: {type(data)}")
         return data
 
-    def post(self, path: str, body: Optional[dict[str, Any]] = None) -> tuple[int, Any]:
-        """POST JSON (or empty body) to Board Manager. Used for reset/calibrate probes."""
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: Optional[dict[str, Any]] = None,
+        *,
+        send_json: bool = True,
+    ) -> tuple[int, Any]:
         url = self.base + path
-        payload = json.dumps(body or {}).encode("utf-8")
-        req = Request(
-            url,
-            data=payload,
-            method="POST",
-            headers={
-                "Accept": "application/json,*/*",
-                "Content-Type": "application/json",
-            },
-        )
+        headers = {"Accept": "application/json,*/*"}
+        data = None
+        if send_json:
+            data = json.dumps(body or {}).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        elif body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = Request(url, data=data, method=method, headers=headers)
         try:
             with urlopen(req, timeout=self.timeout) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
@@ -123,6 +133,14 @@ class AutodartsClient:
             return code, json.loads(raw) if raw else {}
         except json.JSONDecodeError:
             return code, raw
+
+    def post(self, path: str, body: Optional[dict[str, Any]] = None) -> tuple[int, Any]:
+        """POST JSON (or empty body) to Board Manager. Used for reset/calibrate probes."""
+        return self._request("POST", path, body, send_json=True)
+
+    def put(self, path: str, body: Optional[dict[str, Any]] = None) -> tuple[int, Any]:
+        """PUT to Board Manager. Empty-body PUT is the community start/stop hook."""
+        return self._request("PUT", path, body, send_json=body is not None)
 
     def try_recalibrate(self) -> dict[str, Any]:
         """

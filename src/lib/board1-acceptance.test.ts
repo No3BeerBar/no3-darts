@@ -92,6 +92,18 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(feed).toMatch(/takeoutActive/);
   });
 
+  it("companion keep-alive starts a stopped board without reset/recal", () => {
+    const ka = readSrc("tools/autodarts-companion/companion/keepalive.py");
+    expect(ka).toMatch(/\/api\/detection\/start/);
+    expect(ka).toMatch(/board_id/);
+    expect(ka).toMatch(/is_board_stopped/);
+    expect(ka).not.toMatch(/\/api\/reset/);
+    expect(ka).not.toMatch(/try_recalibrate/);
+    const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
+    expect(bridge).toMatch(/maybe_keep_alive/);
+    expect(bridge).toMatch(/Idle-timer \/ leftover Stop/);
+  });
+
   it("bridge maybe_end_turn fail-closed without expectedPlayerIndex", () => {
     const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
     expect(bridge).toMatch(/No3 seat unknown \(fail closed/);

@@ -9,6 +9,10 @@ autodarts:
   # Editable install path (used for health auto-restart). Leave blank to skip Start.
   # Example: "C:\\Program Files\\Autodarts\\Autodarts.exe"
   exe_path: ""
+  # Autodarts board UUID from Board Manager Config (Board1 only).
+  # Leave blank on a one-board mini-PC. If more than one board is visible,
+  # keep-alive will not start any board until this id is set.
+  board_id: ""
   process_names:
     - "Autodarts"
     - "autodarts"
@@ -29,5 +33,13 @@ health:
   # Probe Board Manager reset/calibrate only at No3 game boundaries
   # (no playing/paused match) when the board is empty - not every visit takeout.
   between_games_recal: true
+
+# While the companion is running, start this board if Board Manager stopped it
+# (idle timer or leftover Stop). Quitting the companion stops the loop.
+keep_alive:
+  enabled: true
+  interval_s: 10.0
+  # Same as autodarts.board_id when set here
+  board_id: ""
 
 logs_dir: "./logs"

@@ -77,6 +77,9 @@ autodarts:
     - "AutodartsDesktop"
   start_if_missing: true
   ready_timeout_s: 45
+  # Autodarts board UUID from Board Manager Config (Board1 only).
+  # Leave blank on this one-board mini-PC.
+  board_id: ""
 
 # No3 scoring UI (Railway production)
 no3:
@@ -107,6 +110,12 @@ health:
   restart_cooldown_seconds: 60.0
   # Only when No3 match is absent / leg-or-match boundary (not mid-visit)
   between_games_recal: true
+
+# Companion starts a stopped board (idle timer / leftover Stop) while it is up.
+keep_alive:
+  enabled: true
+  interval_s: 10.0
+  board_id: ""
 `;
 
 function shouldSkip(name) {

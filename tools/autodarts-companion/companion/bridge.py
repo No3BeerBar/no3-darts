@@ -38,6 +38,7 @@ from .health import (
     restart_board_manager,
     wait_for_board_manager,
 )
+from .keepalive import KeepAliveConfig, KeepAliveTracker, maybe_keep_alive
 from .mapping import (
     dart_to_no3,
     format_segment_label,
@@ -197,6 +198,7 @@ def run_bridge(
     dry_run: bool = False,
     end_turn_on_takeout: bool = True,
     health: Optional[HealthConfig] = None,
+    keep_alive: Optional[KeepAliveConfig] = None,
 ) -> None:
     """
     Poll Autodarts and mirror throws into No3.
@@ -237,6 +239,8 @@ def run_bridge(
 
     hcfg = health or HealthConfig(enabled=True)
     tracker = HealthTracker(config=hcfg)
+    kacfg = keep_alive or KeepAliveConfig(enabled=True)
+    ka_tracker = KeepAliveTracker(config=kacfg)
     last_health_level = ""
     last_health_post_at = 0.0
     last_takeout_post_at = 0.0
@@ -267,6 +271,9 @@ def run_bridge(
         f"  end_turn: {end_turn_on_takeout} (on Autodarts takeout / clear)\n"
         f"  health:   {hcfg.enabled} (fps_min={hcfg.fps_min}, "
         f"unhealthy>={hcfg.unhealthy_seconds}s)\n"
+        f"  keep-alive: {kacfg.enabled} (every {kacfg.interval_s}s; "
+        f"start stopped board"
+        f"{(' id=' + kacfg.board_id) if kacfg.board_id else ''})\n"
         f"  recal:    between_games={hcfg.between_games_recal} "
         f"(gated on No3 match boundary via {active_match_url})\n"
         "\n"
@@ -868,6 +875,9 @@ def run_bridge(
             throws = extract_throws(state)
             status = extract_status(state)
             takeout_now = is_takeout_state(state)
+            # Idle-timer / leftover Stop: start this board only. Never reset.
+            if kacfg.enabled:
+                maybe_keep_alive(client, ka_tracker, state)
 
             if in_takeout and not throws:
                 empty_polls_in_takeout += 1

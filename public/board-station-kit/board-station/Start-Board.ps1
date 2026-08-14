@@ -588,6 +588,17 @@ $fpsMin = if ($null -ne $health.fps_min) { $health.fps_min } else { 5.0 }
 $unhealthyS = if ($null -ne $health.unhealthy_seconds) { $health.unhealthy_seconds } else { 15.0 }
 $cooldown = if ($null -ne $health.restart_cooldown_seconds) { $health.restart_cooldown_seconds } else { 60.0 }
 $recal = if ($null -ne $health.between_games_recal) { [bool]$health.between_games_recal } else { $true }
+$ka = $cfg.keep_alive
+$keepAliveEnabled = $true
+$keepAliveInterval = 10.0
+$boardId = ""
+if ($ad.board_id) { $boardId = [string]$ad.board_id }
+if ($null -ne $ka) {
+  if ($null -ne $ka.enabled) { $keepAliveEnabled = [bool]$ka.enabled }
+  if ($null -ne $ka.interval_s) { $keepAliveInterval = $ka.interval_s }
+  if (-not $boardId -and $ka.board_id) { $boardId = [string]$ka.board_id }
+}
+$boardIdEsc = $boardId.Replace('"', '')
 
 $yaml = @"
 autodarts:
@@ -595,6 +606,7 @@ autodarts:
   port: $AdPort
   poll_ms: 300
   exe_path: "$exeEsc"
+  board_id: "$boardIdEsc"
   process_names:
 $(($procNames | ForEach-Object { "    - `"$_`"" }) -join "`n")
 
@@ -609,6 +621,11 @@ health:
   unhealthy_seconds: $unhealthyS
   restart_cooldown_seconds: $cooldown
   between_games_recal: $($recal.ToString().ToLower())
+
+keep_alive:
+  enabled: $($keepAliveEnabled.ToString().ToLower())
+  interval_s: $keepAliveInterval
+  board_id: "$boardIdEsc"
 
 logs_dir: "./logs"
 "@
