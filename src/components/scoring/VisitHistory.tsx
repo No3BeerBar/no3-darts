@@ -4,29 +4,27 @@
  * Recent completed visits (previous rounds / turns).
  * Newest first — scroll horizontally on tablet.
  *
- * Fixed min-height so the board stage does not jump ~25px when the first
- * visit appears (empty placeholder vs scroll strip used to differ in height).
+ * Every visit (and each dart listed in it) shows who threw. Cards are large
+ * enough to read — not a tiny unlabeled dart list.
+ *
+ * Reserved min-height so the board stage does not jump when the first visit
+ * appears (empty placeholder vs scroll strip).
  *
  * Visit Σ uses mode rules via `visitPointsFromTurn` (not raw dart.value) so
  * Baseball / future non-X01 modes match the current-visit TurnDarts total.
  */
 
 import {
-  getTeamForPlayer,
   segmentLabel,
   visitPointsFromTurn,
+  type DartThrow,
   type GameState,
-  type Turn,
 } from "@/engine";
+import { visitThrowerLabel, visitThrowerName } from "@/lib/visit-thrower";
 import { cn } from "@/lib/utils";
 
-function dartLine(turn: Turn): string {
-  if (turn.darts.length === 0) return "—";
-  return turn.darts.map((d) => segmentLabel(d.kind, d.number)).join(" ");
-}
-
 /** Reserved strip height — label + visit cards / empty state (incl. scrollbar gutter). */
-const STRIP_MIN_H = "min-h-[5.75rem]";
+const STRIP_MIN_H = "min-h-[11.5rem]";
 
 export function VisitHistory({
   state,
@@ -56,61 +54,67 @@ export function VisitHistory({
       {recent.length === 0 ? (
         <div
           className={cn(
-            "flex h-[4.5rem] items-center justify-center rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 text-center text-sm text-zinc-600"
+            "flex h-[9.5rem] items-center justify-center rounded-xl border border-[var(--panel-border)] bg-[var(--panel)] px-3 text-center text-sm text-zinc-600"
           )}
         >
           No previous visits yet
         </div>
       ) : (
-        <div className="-mx-1 flex h-[4.5rem] gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1">
+        <div className="-mx-1 flex min-h-[9.5rem] gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1">
           {recent.map((turn, i) => {
-            const player = state.players.find((p) => p.id === turn.playerId);
-            const team = getTeamForPlayer(state, turn.playerId);
+            const thrower = visitThrowerName(state, turn);
+            const label = visitThrowerLabel(state, turn);
             const total = visitPointsFromTurn(state.mode, turn);
             const showScorePath =
               state.mode === "x01" || state.mode === "random_checkout";
+            const darts: Array<DartThrow | null> =
+              turn.darts.length > 0 ? turn.darts : [null];
 
             return (
               <div
                 key={`${turn.timestamp}-${turn.playerId}-${i}`}
+                data-testid="recent-visit"
                 className={cn(
-                  "flex h-full shrink-0 flex-col justify-center rounded-xl border border-[var(--panel-border)] bg-[var(--panel)]",
+                  "flex shrink-0 flex-col justify-center rounded-xl border border-[var(--panel-border)] bg-[var(--panel)]",
                   sm
-                    ? "min-w-[7.5rem] px-2.5 py-1.5"
+                    ? "min-w-[13.5rem] px-3 py-2"
                     : lg
-                      ? "min-w-[11rem] px-4 py-2"
-                      : "min-w-[9rem] px-3 py-1.5",
+                      ? "min-w-[16rem] px-4 py-2.5"
+                      : "min-w-[14.5rem] px-3.5 py-2",
                   turn.bust && "border-zinc-700 opacity-80",
                   turn.checkout && "border-[rgb(225_6_0/0.45)]"
                 )}
               >
-                {team && team.playerIds.length > 1 && (
-                  <div
-                    className={cn(
-                      "truncate font-display font-semibold tracking-wide text-[var(--brand-red-bright)]",
-                      lg ? "text-sm" : "text-xs"
-                    )}
-                  >
-                    {team.name}
-                  </div>
-                )}
                 <div
+                  data-testid="recent-visit-thrower"
                   className={cn(
-                    "truncate font-semibold text-white",
-                    lg ? "text-base" : sm ? "text-sm" : "text-[15px]"
+                    "truncate font-display font-bold tracking-wide text-white",
+                    lg ? "text-xl" : sm ? "text-base" : "text-lg"
                   )}
+                  title={label}
                 >
-                  {player?.name ?? "?"}
+                  {label}
                 </div>
-                <div
-                  className={cn(
-                    "mt-0.5 font-mono text-zinc-400",
-                    lg ? "text-sm" : "text-xs"
-                  )}
-                >
-                  {dartLine(turn)}
+                <div className="mt-1.5 space-y-0.5">
+                  {darts.map((d, di) => (
+                    <div
+                      key={d?.id ?? `empty-${di}`}
+                      data-testid="recent-visit-dart"
+                      className={cn(
+                        "flex items-baseline justify-between gap-3",
+                        lg ? "text-sm" : "text-[13px]"
+                      )}
+                    >
+                      <span className="min-w-0 truncate font-display font-semibold text-zinc-300">
+                        {thrower}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-zinc-400">
+                        {d ? segmentLabel(d.kind, d.number) : "—"}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div className="mt-0.5 flex items-baseline justify-between gap-2">
+                <div className="mt-1.5 flex items-baseline justify-between gap-2">
                   <span
                     className={cn(
                       "font-black tabular-nums",
@@ -119,7 +123,7 @@ export function VisitHistory({
                         : turn.checkout
                           ? "text-[var(--brand-red-bright)]"
                           : "text-white",
-                      lg ? "text-2xl" : "text-xl"
+                      lg ? "text-3xl" : "text-2xl"
                     )}
                   >
                     {turn.bust

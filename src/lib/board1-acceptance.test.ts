@@ -122,14 +122,28 @@ describe("Board1 P0: takeout recognize + Ready control", () => {
     expect(start).toMatch(/\/api\/detection\/start/);
   });
 
+  it("recent visits name the thrower on iPad and TV", () => {
+    const hist = readSrc("src/components/scoring/VisitHistory.tsx");
+    expect(hist).toMatch(/visitThrowerName/);
+    expect(hist).toMatch(/visitThrowerLabel/);
+    expect(hist).toMatch(/recent-visit-thrower/);
+    expect(hist).toMatch(/recent-visit-dart/);
+    expect(hist).toMatch(/\{thrower\}/);
+    const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
+    expect(screen).toMatch(/VisitHistory/);
+    const tv = readSrc("src/components/tv/TvDisplay.tsx");
+    expect(tv).toMatch(/VisitHistory/);
+  });
+
   it("takeout UI keeps last visit visible; iPad Reset + stay-put board stay isolated", () => {
     const screen = readSrc("src/components/scoring/ScoringScreen.tsx");
     expect(screen).toMatch(/takeoutVisitDisplay/);
     expect(screen).toMatch(/holdingLastVisit/);
     expect(screen).toMatch(/play-board-stage/);
+    expect(screen).toMatch(/play-board-fill/);
     expect(screen).toMatch(/playBoardSide/);
     expect(screen).not.toMatch(/tv-board-stage/);
-    expect(screen).not.toMatch(/fillParent/);
+    expect(screen).not.toMatch(/tvBoardSide/);
     const banner = readSrc("src/components/scoring/TakeoutBanner.tsx");
     expect(banner).toMatch(/"Reset takeout"/);
     expect(banner).toMatch(/bg-amber-950/);
