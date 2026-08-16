@@ -25,6 +25,8 @@ export async function POST(request: Request) {
     pending: true,
     roomId: result.roomId,
     ts: result.ts,
+    matchId: result.matchId,
+    visitToken: result.visitToken,
   });
 }
 
@@ -45,6 +47,8 @@ export async function GET(request: Request) {
       pending: result.pending,
       ts: result.ts,
       roomId: result.roomId,
+      matchId: result.matchId,
+      visitToken: result.visitToken,
     },
     {
       headers: {

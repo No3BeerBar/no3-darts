@@ -15,7 +15,9 @@ import {
   applyCameraDart,
   applyCameraEndTurn,
   clearTakeoutHold,
+  consumeTakeoutReady,
   getCameraGateSnapshot,
+  getServerMatch,
   removeServerMatch,
   requestTakeoutReady,
   setCameraHealth,
@@ -41,6 +43,22 @@ function board1Match(roomId: string) {
 
 function readSrc(...parts: string[]) {
   return readFileSync(join(ROOT, ...parts), "utf8");
+}
+
+/**
+ * Live companion path: GET takeout-ready?consume=1, then POST end-turn
+ * when Ready is still pending (older kits end-turn on that ack).
+ */
+function companionConsumeReadyThenEndTurn(roomId: string, seat: number) {
+  const ack = consumeTakeoutReady(roomId, true);
+  if (!ack.pending) return { ack, ended: false as const };
+  return {
+    ack,
+    ended: applyCameraEndTurn({
+      roomId,
+      expectedPlayerIndex: seat,
+    }),
+  };
 }
 
 afterEach(() => {
@@ -651,6 +669,103 @@ describe("Board1 acceptance: camera multi-step undo", () => {
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold("Board1 Accept Undo");
+    }
+  });
+});
+
+describe("Board1: stale takeout-ready must not end the next visit", () => {
+  it("End game + leftover Ready cannot close the next match's first visit", () => {
+    const room = "Board1 Stale Ready";
+    const leftover = board1Match(room);
+    upsertServerMatch(leftover);
+    requestTakeoutReady(room);
+    expect(consumeTakeoutReady(room, false).pending).toBe(true);
+    removeServerMatch(leftover.id);
+
+    const next = board1Match(room);
+    upsertServerMatch(next);
+    clearTakeoutHold(room);
+    try {
+      const dart = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 0,
+      });
+      expect(dart.ok).toBe(true);
+
+      const processed = companionConsumeReadyThenEndTurn(room, 0);
+      expect(processed.ack.pending).toBe(false);
+      expect(processed.ended).toBe(false);
+
+      const live = getServerMatch(next.id);
+      expect(live?.currentPlayerIndex).toBe(0);
+      expect(live?.currentTurnDarts).toHaveLength(1);
+      expect(live?.playerStates[0]?.score).toBe(481);
+    } finally {
+      removeServerMatch(next.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("Ready posted before the first dart must not end-turn that visit", () => {
+    const room = "Board1 Ready Then Dart";
+    const state = board1Match(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      requestTakeoutReady(room);
+      expect(consumeTakeoutReady(room, false).pending).toBe(true);
+
+      const dart = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 0,
+      });
+      expect(dart.ok).toBe(true);
+
+      const processed = companionConsumeReadyThenEndTurn(room, 0);
+      expect(processed.ack.pending).toBe(false);
+      expect(processed.ended).toBe(false);
+
+      const live = getServerMatch(state.id);
+      expect(live?.currentPlayerIndex).toBe(0);
+      expect(live?.currentTurnDarts).toHaveLength(1);
+      expect(live?.playerStates[0]?.score).toBe(481);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("Ready on the current 1-dart visit still authorizes companion end-turn", () => {
+    const room = "Board1 Ready Early Pull";
+    const state = board1Match(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: room,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      requestTakeoutReady(room);
+
+      const processed = companionConsumeReadyThenEndTurn(room, 0);
+      expect(processed.ack.pending).toBe(true);
+      expect(processed.ended && processed.ended.ok).toBe(true);
+
+      const live = getServerMatch(state.id);
+      expect(live?.currentPlayerIndex).toBe(1);
+      expect(live?.currentTurnDarts).toHaveLength(0);
+      expect(live?.playerStates[0]?.score).toBe(481);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
     }
   });
 });
