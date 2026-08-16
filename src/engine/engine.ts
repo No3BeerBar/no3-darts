@@ -422,10 +422,22 @@ export function editLastTurn(state: GameState): ApplyDartResult {
     next.turnBaseline = structuredClone(next.playerStates);
   }
 
-  // Put darts back without auto-ending (mark edited so credit stays void)
+  // Put darts back without auto-ending (mark edited so credit stays void).
+  // applyDartRaw still runs mode applyDart, which finalizes X01 / random-checkout
+  // busts (and checkouts) in-handler. Accepting that re-closes the visit and
+  // advances the thrower — undo then sees an empty visit and returns the
+  // re-busted state. Keep a re-finalizing dart on the open visit instead.
   let working = next;
   for (const d of markDartsEdited(last.darts)) {
     const r = applyDartRaw(working, d);
+    if (r.state.turns.length > working.turns.length) {
+      const open = cloneState(working);
+      open.currentTurnDarts = [...open.currentTurnDarts, d];
+      const psOpen = open.playerStates[open.currentPlayerIndex];
+      if (psOpen) psOpen.dartsThrown += 1;
+      working = open;
+      break;
+    }
     working = r.state;
   }
   working.currentTurnDarts = markDartsEdited(working.currentTurnDarts);
