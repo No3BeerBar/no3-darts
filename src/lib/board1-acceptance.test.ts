@@ -701,7 +701,8 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
       const live = getServerMatch(next.id);
       expect(live?.currentPlayerIndex).toBe(0);
       expect(live?.currentTurnDarts).toHaveLength(1);
-      expect(live?.playerStates[0]?.score).toBe(481);
+      expect(live?.currentTurnDarts[0]?.kind).toBe("single");
+      expect(live?.currentTurnDarts[0]?.number).toBe(20);
     } finally {
       removeServerMatch(next.id);
       clearTakeoutHold(room);
@@ -732,7 +733,8 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
       const live = getServerMatch(state.id);
       expect(live?.currentPlayerIndex).toBe(0);
       expect(live?.currentTurnDarts).toHaveLength(1);
-      expect(live?.playerStates[0]?.score).toBe(481);
+      expect(live?.currentTurnDarts[0]?.kind).toBe("single");
+      expect(live?.currentTurnDarts[0]?.number).toBe(20);
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold(room);
