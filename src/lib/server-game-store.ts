@@ -166,6 +166,10 @@ export function upsertServerMatch(state: GameState): void {
     matchWonAt.delete(state.id);
   }
   if (state.roomId) {
+    const priorReady = readTakeoutReady(state.roomId);
+    if (priorReady && priorReady.matchId !== state.id) {
+      clearTakeoutReady(state.roomId);
+    }
     indexRoom(state.roomId, state.id);
     removedRooms.delete(roomTombstoneKey(state.roomId));
   }
@@ -233,7 +237,11 @@ export function removeServerMatch(id: string): void {
   matches.delete(id);
   matchWonAt.delete(id);
   unindexRoom(m?.roomId, id);
-  if (m?.roomId) clearTakeoutHold(m.roomId);
+  if (m?.roomId) {
+    clearTakeoutHold(m.roomId);
+    // Leftover Ready must not authorize end-turn on the next game.
+    clearTakeoutReady(m.roomId);
+  }
   removedMatchIds.set(id, Date.now());
   if (m?.roomId) {
     removedRooms.set(roomTombstoneKey(m.roomId), {
@@ -252,6 +260,7 @@ export function resetServerGameStore(): void {
   removedMatchIds.clear();
   removedRooms.clear();
   matchWonAt.clear();
+  takeoutReadyByRoom.clear();
 }
 
 function resolveMatch(opts: {
@@ -824,14 +833,74 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   return stamped;
 }
 
-/** Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes). */
-const takeoutReadyByRoom = new Map<string, number>();
+/**
+ * Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes).
+ * Bound to the match + visit that was current when Ready was posted. A leftover
+ * Ready from End game / a previous visit must not end-turn the next open visit.
+ */
+type TakeoutReadyAck = {
+  ts: number;
+  matchId: string | null;
+  visitToken: string;
+};
 
-export function requestTakeoutReady(roomId: string): { roomId: string; ts: number } {
+const takeoutReadyByRoom = new Map<string, TakeoutReadyAck>();
+
+function takeoutVisitBinding(roomId: string): {
+  matchId: string | null;
+  visitToken: string;
+} {
+  const match = getActiveByRoom(roomId);
+  if (!match) return { matchId: null, visitToken: "none" };
+  return {
+    matchId: match.id,
+    visitToken: [
+      match.id,
+      match.legNumber ?? 1,
+      match.setNumber ?? 1,
+      match.turns?.length ?? 0,
+      match.currentPlayerIndex,
+      match.currentTurnDarts?.length ?? 0,
+    ].join(":"),
+  };
+}
+
+function readTakeoutReady(roomId: string): TakeoutReadyAck | null {
+  const room = normRoom(roomId);
+  return (
+    takeoutReadyByRoom.get(room) ??
+    takeoutReadyByRoom.get(room.toLowerCase()) ??
+    null
+  );
+}
+
+function writeTakeoutReady(roomId: string, ack: TakeoutReadyAck): void {
+  const room = normRoom(roomId);
+  takeoutReadyByRoom.set(room, ack);
+  takeoutReadyByRoom.set(room.toLowerCase(), ack);
+}
+
+function clearTakeoutReady(roomId: string): void {
+  const room = normRoom(roomId);
+  takeoutReadyByRoom.delete(room);
+  takeoutReadyByRoom.delete(room.toLowerCase());
+}
+
+function takeoutReadyIsLive(roomId: string, ack: TakeoutReadyAck): boolean {
+  const live = takeoutVisitBinding(roomId);
+  return ack.matchId === live.matchId && ack.visitToken === live.visitToken;
+}
+
+export function requestTakeoutReady(roomId: string): {
+  roomId: string;
+  ts: number;
+  matchId: string | null;
+  visitToken: string;
+} {
   const room = normRoom(roomId);
   const ts = Date.now();
-  takeoutReadyByRoom.set(room, ts);
-  takeoutReadyByRoom.set(room.toLowerCase(), ts);
+  const binding = takeoutVisitBinding(room);
+  writeTakeoutReady(room, { ts, ...binding });
   // Clear stuck Pull-darts banner + next-seat hold (bridge + UI must agree)
   clearTakeoutHold(room);
   const prev = getCameraHealth(room);
@@ -851,31 +920,54 @@ export function requestTakeoutReady(roomId: string): { roomId: string; ts: numbe
     restarting: false,
     ts,
   });
-  emit({ type: "takeout_ready", data: { roomId: room, ts } });
-  return { roomId: room, ts };
+  emit({
+    type: "takeout_ready",
+    data: {
+      roomId: room,
+      ts,
+      matchId: binding.matchId,
+      visitToken: binding.visitToken,
+    },
+  });
+  return { roomId: room, ts, matchId: binding.matchId, visitToken: binding.visitToken };
 }
 
 export function peekTakeoutReady(roomId: string): number | null {
   const room = normRoom(roomId);
-  return (
-    takeoutReadyByRoom.get(room) ??
-    takeoutReadyByRoom.get(room.toLowerCase()) ??
-    null
-  );
+  const ack = readTakeoutReady(room);
+  if (!ack) return null;
+  if (!takeoutReadyIsLive(room, ack)) {
+    clearTakeoutReady(room);
+    return null;
+  }
+  return ack.ts;
 }
 
 /** Bridge poll: return pending ts and clear it when consume=true. */
 export function consumeTakeoutReady(
   roomId: string,
   consume: boolean
-): { pending: boolean; ts: number | null; roomId: string } {
+): {
+  pending: boolean;
+  ts: number | null;
+  roomId: string;
+  matchId: string | null;
+  visitToken: string | null;
+} {
   const room = normRoom(roomId);
-  const ts = peekTakeoutReady(room);
-  if (ts != null && consume) {
-    takeoutReadyByRoom.delete(room);
-    takeoutReadyByRoom.delete(room.toLowerCase());
+  const ack = readTakeoutReady(room);
+  if (!ack || !takeoutReadyIsLive(room, ack)) {
+    if (ack) clearTakeoutReady(room);
+    return { pending: false, ts: null, roomId: room, matchId: null, visitToken: null };
   }
-  return { pending: ts != null, ts, roomId: room };
+  if (consume) clearTakeoutReady(room);
+  return {
+    pending: true,
+    ts: ack.ts,
+    roomId: room,
+    matchId: ack.matchId,
+    visitToken: ack.visitToken,
+  };
 }
 
 function stampHoldOnHealth(health: CameraHealth, roomId: string): CameraHealth {
