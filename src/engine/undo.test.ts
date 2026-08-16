@@ -128,4 +128,62 @@ describe("multi-step undo", () => {
     expect(result.callout).toBe("Nothing to undo");
     expect(canUndo(state)).toBe(false);
   });
+
+  it("undo after a first-dart X01 bust restores the busting thrower and leave", () => {
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 18, doubleIn: false, doubleOut: true },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+    });
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(getRemaining(state, "p1")).toBe(18);
+
+    const busted = applyDart(state, createDart("triple", 20));
+    expect(busted.callout).toBe("BUST");
+    state = busted.state;
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(getRemaining(state, "p1")).toBe(18);
+    expect(state.turns.at(-1)?.bust).toBe(true);
+
+    const undone = undo(state);
+    expect(undone.callout).toBe("UNDO");
+    state = undone.state;
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(getRemaining(state, "p1")).toBe(18);
+    expect(state.turns.some((t) => t.bust)).toBe(false);
+  });
+
+  it("undo after a mid-visit X01 bust drops the bust dart and keeps the thrower", () => {
+    let state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 40, doubleIn: false, doubleOut: true },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+    });
+    state = applyDart(state, createDart("single", 20)).state;
+    expect(state.currentTurnDarts).toHaveLength(1);
+    expect(getRemaining(state, "p1")).toBe(20);
+
+    const busted = applyDart(state, createDart("triple", 20));
+    expect(busted.callout).toBe("BUST");
+    state = busted.state;
+    expect(state.currentPlayerIndex).toBe(1);
+    expect(state.currentTurnDarts).toHaveLength(0);
+    expect(getRemaining(state, "p1")).toBe(40);
+
+    state = undo(state).state;
+    expect(state.currentPlayerIndex).toBe(0);
+    expect(state.currentTurnDarts).toHaveLength(1);
+    expect(state.currentTurnDarts[0].number).toBe(20);
+    expect(state.currentTurnDarts[0].kind).toBe("single");
+    expect(getRemaining(state, "p1")).toBe(20);
+    expect(state.turns.some((t) => t.bust)).toBe(false);
+  });
 });
