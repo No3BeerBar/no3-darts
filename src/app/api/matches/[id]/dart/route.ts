@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import type { SegmentKind } from "@/engine/types";
-import { applyCameraDart, checkCameraAuth } from "@/lib/server-game-store";
+import {
+  applyCameraDart,
+  checkCameraAuth,
+  getServerMatch,
+} from "@/lib/server-game-store";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,6 +21,14 @@ export async function POST(request: Request, ctx: Ctx) {
     return NextResponse.json({ error: "kind required" }, { status: 400 });
   }
 
+  // Honor a client-supplied seat. When omitted, the match id in the URL is
+  // enough for the bartender / API path — bind to the current thrower so
+  // dart 2/3 of the same visit still score after markVisitOpen.
+  const expectedPlayerIndex =
+    typeof body.expectedPlayerIndex === "number"
+      ? body.expectedPlayerIndex
+      : getServerMatch(id)?.currentPlayerIndex;
+
   const result = applyCameraDart({
     matchId: id,
     kind,
@@ -25,10 +37,17 @@ export async function POST(request: Request, ctx: Ctx) {
     radius: body.radius,
     confidence: body.confidence,
     timestamp: body.timestamp ?? Date.now(),
+    expectedPlayerIndex,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 404 });
+    const status =
+      /seat mismatch|expectedPlayerIndex|takeout hold|takeout active/i.test(
+        result.error
+      )
+        ? 409
+        : 404;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({
