@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { applyDart, createDart, createGame, defaultModeConfig } from "@/engine";
+import {
+  applyDart,
+  createDart,
+  createGame,
+  defaultModeConfig,
+  type ModeConfig,
+  type RandomCheckoutConfig,
+  type X01Config,
+} from "@/engine";
 
 const BOGEYS = [169, 168, 166, 165, 163, 162, 159];
 const TABLET_CHECKOUT = { minScore: 41, maxScore: 170, attempts: 10 } as const;
@@ -8,6 +16,18 @@ const players = [
   { id: "A", name: "A", isGuest: true },
   { id: "B", name: "B", isGuest: true },
 ];
+
+/** API payloads may send `{}` or omit config; createGame fills from defaults. */
+type IncompleteModeConfig =
+  | { mode: "random_checkout"; config?: Partial<RandomCheckoutConfig> }
+  | { mode: "x01"; config?: Partial<X01Config> };
+
+function createGameFromApi(modeConfig: IncompleteModeConfig) {
+  return createGame({
+    modeConfig: modeConfig as ModeConfig,
+    players,
+  });
+}
 
 function assertPlayableLeave(score: number) {
   expect(Number.isInteger(score)).toBe(true);
@@ -35,17 +55,16 @@ function assertPlayableCheckoutMatch(
 
 describe("random checkout — empty / missing API config", () => {
   it("createGame with empty config starts a playable match", () => {
-    const state = createGame({
-      modeConfig: { mode: "random_checkout", config: {} as any },
-      players,
+    const state = createGameFromApi({
+      mode: "random_checkout",
+      config: {},
     });
     assertPlayableCheckoutMatch(state);
   });
 
   it("createGame with omitted config starts a playable match", () => {
-    const state = createGame({
-      modeConfig: { mode: "random_checkout" } as any,
-      players,
+    const state = createGameFromApi({
+      mode: "random_checkout",
     });
     assertPlayableCheckoutMatch(state);
   });
@@ -115,9 +134,9 @@ describe("random checkout — bust and checkout", () => {
 
 describe("x01 — empty config uses bar defaults", () => {
   it("fills startScore 501 when config is empty", () => {
-    const state = createGame({
-      modeConfig: { mode: "x01", config: {} as any },
-      players,
+    const state = createGameFromApi({
+      mode: "x01",
+      config: {},
     });
     expect(state.modeConfig.config).toEqual({
       startScore: 501,
