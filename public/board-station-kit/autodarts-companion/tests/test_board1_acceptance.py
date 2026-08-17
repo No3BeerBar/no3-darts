@@ -121,6 +121,9 @@ def test_board1_p0_maybe_end_turn_fail_closed_without_seat() -> None:
     assert "if seat is not None:\n            payload[\"expectedPlayerIndex\"]" not in src
     assert "patron_force_ready" in src
     assert "keeping banner cleared until unlock" in src
+    assert "takeout_hold_block" in src
+    assert "takeout hold 409 (fail closed; retry after hold clears)" in src
+    assert "retry after clear / TTL (no end-turn)" in src
 
 
 def test_board1_keep_alive_starts_stopped_board_without_reset() -> None:
