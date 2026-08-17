@@ -36,6 +36,7 @@ import {
   soloTeamsFromPlayers,
 } from "./teams";
 import { tagNewTurnsWithLeg } from "./player-stats";
+import { resolveModeConfig } from "./mode-defaults";
 
 const HANDLERS: Record<GameModeId, GameModeHandler> = {
   x01: x01Handler,
@@ -98,7 +99,8 @@ export function createGame(opts: CreateGameOptions): GameState {
     throw new Error("Players must be between 1 and 8");
   }
 
-  const mode = opts.modeConfig.mode;
+  const modeConfig = resolveModeConfig(opts.modeConfig);
+  const mode = modeConfig.mode;
   let teams: TeamRef[];
   if (opts.teams?.length && modeSupportsTeams(mode)) {
     teams = opts.teams;
@@ -126,7 +128,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     id: createId("match"),
     status: "setup",
     mode,
-    modeConfig: opts.modeConfig,
+    modeConfig,
     matchFormat: opts.matchFormat ?? { legsToWin: 1, setsToWin: 1 },
     players: opts.players,
     playerStates: [],

@@ -6,6 +6,7 @@ export * from "./types";
 export * from "./dart";
 export * from "./checkout";
 export * from "./engine";
+export { defaultModeConfig, resolveModeConfig } from "./mode-defaults";
 export * from "./teams";
 export {
   BOT_BETWEEN_DARTS_MS,

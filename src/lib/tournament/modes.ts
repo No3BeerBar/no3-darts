@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { GameModeId, ModeConfig } from "@/engine/types";
+import { defaultModeConfig } from "@/engine/mode-defaults";
 import type { LegModePolicy, TournamentFormat } from "./types";
+
+export { defaultModeConfig };
 
 export const GAME_MODE_IDS = [
   "x01",
@@ -77,36 +80,6 @@ export function parseTournamentFormat(input: unknown): TournamentFormat {
 
 export function parseLegModePolicy(input: unknown): LegModePolicy {
   return legModePolicySchema.parse(input);
-}
-
-/** Sensible bar defaults for a mode id (Killer needs numbers at start — use x01 fallback). */
-export function defaultModeConfig(mode: GameModeId): ModeConfig {
-  switch (mode) {
-    case "x01":
-      return { mode: "x01", config: { startScore: 501, doubleIn: false, doubleOut: true } };
-    case "cricket":
-      return { mode: "cricket", config: { variant: "standard" } };
-    case "shanghai":
-      return { mode: "shanghai", config: { maxRound: 20 } };
-    case "countup":
-      return { mode: "countup", config: { turns: 8 } };
-    case "around_the_clock":
-      return {
-        mode: "around_the_clock",
-        config: { direction: "up", requireDouble: false, includeBull: true },
-      };
-    case "bermuda":
-      return { mode: "bermuda", config: {} };
-    case "random_checkout":
-      return { mode: "random_checkout", config: { minScore: 41, maxScore: 170, attempts: 10 } };
-    case "killer":
-      // Numbers assigned at lane start — empty map is a placeholder
-      return { mode: "killer", config: { lives: 3, playerNumbers: {}, doublesOnly: true } };
-    case "baseball":
-      return { mode: "baseball", config: { innings: 9 } };
-    case "forty_one":
-      return { mode: "forty_one", config: {} };
-  }
 }
 
 /**
