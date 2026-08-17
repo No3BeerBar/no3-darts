@@ -401,6 +401,9 @@ function markVisitOpen(state: GameState): void {
   if (!isLiveTakeoutSignal(health)) {
     gate.holdUntilTakeoutClear = false;
   }
+  // First dart of a new seat (or any visit identity change) expires leftover
+  // Ready so companion consume cannot end-turn this open visit.
+  expireTakeoutReadyIfVisitChanged(room);
 }
 
 /**
@@ -442,6 +445,7 @@ function markVisitClosedForTakeout(state: GameState): void {
   const gate = getCameraGate(room);
   gate.openVisitSeat = null;
   gate.holdUntilTakeoutClear = true;
+  expireTakeoutReadyIfVisitChanged(room);
 }
 
 /**
@@ -592,7 +596,9 @@ export function applyCameraEndTurn(opts: {
     return { ok: false, error: "Bot thrower - camera scoring paused" };
   }
 
-  // Visit already empty (3rd dart auto-ended) - re-broadcast; keep takeout hold.
+  // Visit already empty (3rd dart auto-ended) - re-broadcast. Keep an
+  // already-armed hold, but do not re-arm one Ready already released —
+  // leftover Ready + empty end-turn was 409ing the next seat's dart 2.
   // Fail closed: while hold/lock is active, old companions without
   // expectedPlayerIndex must not get a silent READY ack.
   if (state.currentTurnDarts.length === 0) {
@@ -601,7 +607,10 @@ export function applyCameraEndTurn(opts: {
       requireExpected: true,
     });
     if (seatErr) return { ok: false, error: seatErr };
-    markVisitClosedForTakeout(state);
+    const room = normRoom(state.roomId || opts.roomId || "Board 1");
+    const gate = getCameraGate(room);
+    gate.openVisitSeat = null;
+    expireTakeoutReadyIfVisitChanged(room);
     emit({ type: "match_update", data: state });
     return { ok: true, state, callout: "READY" };
   }
@@ -835,8 +844,9 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
 
 /**
  * Patron / staff ack: "darts pulled - ready for next visit" (bridge consumes).
- * Bound to the match + visit that was current when Ready was posted. A leftover
- * Ready from End game / a previous visit must not end-turn the next open visit.
+ * Bound to the match + open visit (1–2 darts) that was current when Ready was
+ * posted. Ready after a closed visit only clears hold — it must not authorize
+ * companion end-turn of the next seat, and empty end-turn must not re-arm hold.
  */
 type TakeoutReadyAck = {
   ts: number;
@@ -887,8 +897,21 @@ function clearTakeoutReady(roomId: string): void {
 }
 
 function takeoutReadyIsLive(roomId: string, ack: TakeoutReadyAck): boolean {
+  const match = getActiveByRoom(roomId);
+  if (!match || ack.matchId !== match.id) return false;
+  // Ready after a closed visit (or before the first dart) only clears hold.
+  // Companion consume must not authorize end-turn of the next empty visit.
+  if ((match.currentTurnDarts?.length ?? 0) === 0) return false;
   const live = takeoutVisitBinding(roomId);
-  return ack.matchId === live.matchId && ack.visitToken === live.visitToken;
+  return ack.visitToken === live.visitToken;
+}
+
+function expireTakeoutReadyIfVisitChanged(roomId: string): void {
+  const room = normRoom(roomId);
+  const ack = readTakeoutReady(room);
+  if (ack && !takeoutReadyIsLive(room, ack)) {
+    clearTakeoutReady(room);
+  }
 }
 
 export function requestTakeoutReady(roomId: string): {
@@ -896,11 +919,20 @@ export function requestTakeoutReady(roomId: string): {
   ts: number;
   matchId: string | null;
   visitToken: string;
+  pending: boolean;
 } {
   const room = normRoom(roomId);
   const ts = Date.now();
   const binding = takeoutVisitBinding(room);
-  writeTakeoutReady(room, { ts, ...binding });
+  const openDarts = getActiveByRoom(room)?.currentTurnDarts?.length ?? 0;
+  const pending = openDarts > 0;
+  if (pending) {
+    writeTakeoutReady(room, { ts, ...binding });
+  } else {
+    // Closed / not-yet-started visit: hold-clear only. Do not leave an ack
+    // bound to the next seat's empty visit for companion end-turn.
+    clearTakeoutReady(room);
+  }
   // Clear stuck Pull-darts banner + next-seat hold (bridge + UI must agree)
   clearTakeoutHold(room);
   const prev = getCameraHealth(room);
@@ -929,7 +961,13 @@ export function requestTakeoutReady(roomId: string): {
       visitToken: binding.visitToken,
     },
   });
-  return { roomId: room, ts, matchId: binding.matchId, visitToken: binding.visitToken };
+  return {
+    roomId: room,
+    ts,
+    matchId: binding.matchId,
+    visitToken: binding.visitToken,
+    pending,
+  };
 }
 
 export function peekTakeoutReady(roomId: string): number | null {

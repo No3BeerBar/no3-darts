@@ -180,32 +180,48 @@ describe("Board1 camera fuzz: seat lock + takeout hold + undo", () => {
 describe("Board1 takeout Ready / health", () => {
   it("takeout health freezes new visits; Ready consume clears pending ack", () => {
     const room = "Board 1 Fuzz Ready";
+    const state = board(room);
+    upsertServerMatch(state);
     clearTakeoutHold(room);
-    setCameraHealth({
-      roomId: room,
-      ok: false,
-      level: "takeout",
-      message: "Pull darts - takeout",
-      takeout: true,
-      ts: Date.now(),
-    });
-    expect(getCameraHealth(room)?.takeout).toBe(true);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: room,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
 
-    const ack = requestTakeoutReady(room);
-    expect(ack.roomId).toBe(room);
-    expect(consumeTakeoutReady(room, false).pending).toBe(true);
-    expect(consumeTakeoutReady(room, true).pending).toBe(true);
-    expect(consumeTakeoutReady(room, true).pending).toBe(false);
+      setCameraHealth({
+        roomId: room,
+        ok: false,
+        level: "takeout",
+        message: "Pull darts - takeout",
+        takeout: true,
+        ts: Date.now(),
+      });
+      expect(getCameraHealth(room)?.takeout).toBe(true);
 
-    setCameraHealth({
-      roomId: room,
-      ok: true,
-      level: "ok",
-      message: "Ready for next visit",
-      takeout: false,
-      reason: "takeout_cleared",
-      ts: Date.now(),
-    });
-    expect(getCameraHealth(room)?.takeout).toBe(false);
+      const ack = requestTakeoutReady(room);
+      expect(ack.roomId).toBe(room);
+      expect(consumeTakeoutReady(room, false).pending).toBe(true);
+      expect(consumeTakeoutReady(room, true).pending).toBe(true);
+      expect(consumeTakeoutReady(room, true).pending).toBe(false);
+
+      setCameraHealth({
+        roomId: room,
+        ok: true,
+        level: "ok",
+        message: "Ready for next visit",
+        takeout: false,
+        reason: "takeout_cleared",
+        ts: Date.now(),
+      });
+      expect(getCameraHealth(room)?.takeout).toBe(false);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
   });
 });
