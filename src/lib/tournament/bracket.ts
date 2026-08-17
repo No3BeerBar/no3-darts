@@ -192,17 +192,18 @@ function advanceWinnerInMap(
   return next;
 }
 
-/** Assert a lane is free across matches (at most one in_progress/ready assigned). */
+/**
+ * Assert a physical lane is free. There is one Board 1/2/3 in the bar, so callers
+ * must pass every non-completed match that currently holds this lane — including
+ * other tournaments. `exceptMatchId` allows re-assign / move of the same match.
+ */
 export function assertLaneUnique(
   matches: TournamentMatch[],
   lane: string,
   exceptMatchId?: string
 ): void {
   const taken = matches.find(
-    (m) =>
-      m.id !== exceptMatchId &&
-      m.lane === lane &&
-      (m.status === "ready" || m.status === "in_progress")
+    (m) => m.id !== exceptMatchId && m.lane === lane && m.status !== "complete"
   );
   if (taken) {
     throw new Error(`${lane} is already assigned to another active match`);

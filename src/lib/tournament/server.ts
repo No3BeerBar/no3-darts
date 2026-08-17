@@ -3,7 +3,7 @@
  * Returns null / throws typed errors when DB is down — callers degrade.
  */
 
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { getDb, isDatabaseConfigured, schema } from "@/db";
 import { createId } from "@/engine";
 import { advanceWinner, assertLaneUnique, generateSingleElimBracket } from "./bracket";
@@ -366,7 +366,21 @@ export async function assignMatchLane(
   }
 
   const laneId = normalizeLane(lane);
-  assertLaneUnique(t.matches, laneId, matchId);
+  // Bar-wide: leftover ready/live rows on another event still own the physical board.
+  const occupying = (
+    await db
+      .select()
+      .from(tournamentMatches)
+      .where(and(eq(tournamentMatches.lane, laneId), ne(tournamentMatches.status, "complete")))
+  ).map(mapMatch);
+  try {
+    assertLaneUnique(occupying, laneId, matchId);
+  } catch (err) {
+    throw new TournamentError(
+      err instanceof Error ? err.message : `${laneId} is already assigned to another active match`,
+      409
+    );
+  }
 
   await db
     .update(tournamentMatches)

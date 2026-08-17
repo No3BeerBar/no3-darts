@@ -26,7 +26,7 @@ Single-elimination brackets for **No. 3 Craft Beer Bar**, with **flexible match 
      - **choose_each_leg** — staff/players pick from allowed modes at the start of each leg.
      - **preset_sequence** — list modes per leg index (leg 1, leg 2, …).
 4. **Start tournament** — builds a power-of-2 bracket with **byes** as needed.
-5. **Assign matches** on the bracket view to **Board 1 / 2 / 3** (one active assignment per lane).
+5. **Assign matches** on the bracket view to **Board 1 / 2 / 3** (one live assignment per lane **across the bar** — two events cannot both claim Board 1).
 6. **Lane tablets** — set room name in Admin (or open `/?room=Board%201` / `/play?room=Board%201`). **Staff-unlock** that tablet, then idle **Play** shows **Tournament match ready** → start → score as usual → match win auto-saves and advances the bracket. Unlocked lane stations only — not the public cold kiosk.
 7. Lane frees; winner moves on; other boards poll for updates (~5s).
 
