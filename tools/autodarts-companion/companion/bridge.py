@@ -75,6 +75,37 @@ def _auth_headers(api_key: str) -> dict[str, str]:
     return headers
 
 
+def classify_no3_reject(status_code: int, error: str) -> dict[str, Any]:
+    """
+    Split No3 409s: takeout hold must not be treated as a seat mismatch.
+
+    Seat mismatch freezes the visit (wrong player). Takeout hold is
+    temporary - fail closed, retry after Ready / hold TTL. Never end-turn.
+    """
+    err = (error or "").strip()
+    low = err.lower()
+    if "takeout hold" in low or "takeout active" in low:
+        return {
+            "ok": False,
+            "error": err or "takeout hold",
+            "takeoutHold": True,
+            "seatMismatch": False,
+            "status_code": status_code,
+        }
+    if status_code == 409 or "seat mismatch" in low:
+        return {
+            "ok": False,
+            "error": err or "seat mismatch",
+            "seatMismatch": True,
+            "status_code": status_code,
+        }
+    return {
+        "ok": False,
+        "error": err,
+        "status_code": status_code,
+    }
+
+
 def _post_json(
     url: str,
     payload: dict[str, Any],
@@ -91,19 +122,14 @@ def _post_json(
         return None
     if r.status_code >= 400:
         console.print(f"[red]No3 HTTP {r.status_code}: {r.text[:240]}[/red]")
-        # Preserve seat-mismatch (409) so callers can freeze the visit lock
         err_txt = ""
         try:
             err_txt = str((r.json() or {}).get("error") or "")
         except Exception:
             err_txt = r.text[:240]
-        if r.status_code == 409 or "seat mismatch" in err_txt.lower():
-            return {
-                "ok": False,
-                "error": err_txt or "seat mismatch",
-                "seatMismatch": True,
-                "status_code": r.status_code,
-            }
+        classified = classify_no3_reject(r.status_code, err_txt)
+        if classified.get("takeoutHold") or classified.get("seatMismatch"):
+            return classified
         return None
     try:
         return r.json()
@@ -260,6 +286,8 @@ def run_bridge(
     patron_ready_at = 0.0
     # Consecutive empty polls while in_takeout (UI / diagnostics)
     empty_polls_in_takeout = 0
+    # 409 takeout hold: do not end-turn / jump seats. Retry after clear / TTL.
+    takeout_hold_block = False
     # Hard seat lock for the open AD visit (No3 currentPlayerIndex)
     locked_seat: Optional[int] = None
     # Throws mirrored/closed for this AD visit - continuation bleed guard
@@ -455,7 +483,13 @@ def run_bridge(
         )
 
     def maybe_end_turn(reason: str) -> None:
-        nonlocal end_turn_sent, locked_seat
+        nonlocal end_turn_sent, locked_seat, takeout_hold_block
+        if takeout_hold_block:
+            console.print(
+                f"[red]end-turn blocked[/red] ({reason}) - "
+                "takeout hold 409 (fail closed; retry after hold clears)"
+            )
+            return
         if not end_turn_on_takeout or end_turn_sent:
             # Still freeze even if end-turn already sent / disabled
             if end_turn_sent:
@@ -496,6 +530,13 @@ def run_bridge(
         resp = _post_json(end_url, payload, headers, dry_run)
         if resp is None:
             return
+        if resp.get("takeoutHold"):
+            takeout_hold_block = True
+            console.print(
+                f"[red]end-turn refused[/red] ({reason}) - takeout hold "
+                "(fail closed; no seat jump)"
+            )
+            return
         if resp.get("seatMismatch") or resp.get("ok") is False:
             console.print(
                 f"[red]end-turn refused[/red] ({reason}) - seat mismatch"
@@ -511,7 +552,7 @@ def run_bridge(
             console.print("[bold green]END OK[/bold green]")
 
     def post_correct(throws: list[dict[str, Any]], reason: str) -> None:
-        nonlocal end_turn_sent
+        nonlocal end_turn_sent, takeout_hold_block
         seat = ensure_visit_seat_lock()
         if seat is None:
             return
@@ -539,6 +580,14 @@ def run_bridge(
         resp = _post_json(correct_url, payload, headers, dry_run)
         if resp is None:
             return
+        if resp.get("takeoutHold"):
+            takeout_hold_block = True
+            console.print(
+                f"[yellow]correct refused[/yellow] ({reason}) - takeout hold "
+                "- retry after clear / TTL (no end-turn)"
+            )
+            return
+        takeout_hold_block = False
         if resp.get("seatMismatch") or resp.get("ok") is False:
             console.print(
                 f"[red]correct refused[/red] ({reason}) - seat mismatch"
@@ -796,6 +845,7 @@ def run_bridge(
         nonlocal visit_closed, end_turn_sent, in_takeout, prev_throws
         nonlocal closed_by_scoring, saw_takeout_after_close, empty_polls_in_takeout
         nonlocal locked_seat, patron_force_ready, closed_visit_throws
+        nonlocal takeout_hold_block
         ready = patron_force_ready
         if not should_unlock_next_visit(
             visit_closed=visit_closed,
@@ -812,6 +862,7 @@ def run_bridge(
         closed_by_scoring = False
         saw_takeout_after_close = False
         patron_force_ready = False
+        takeout_hold_block = False
         empty_polls_in_takeout = 0
         locked_seat = None
         prev_throws = []
@@ -846,7 +897,7 @@ def run_bridge(
         - Incomplete early pull ends via Next visit on /play, not Reset.
         """
         nonlocal visit_closed, saw_takeout_after_close, in_takeout, patron_force_ready
-        nonlocal patron_ready_at
+        nonlocal patron_ready_at, takeout_hold_block
         data = _get_json(
             takeout_ready_url,
             headers,
@@ -855,6 +906,7 @@ def run_bridge(
         )
         if not data or not data.get("pending"):
             return
+        takeout_hold_block = False
         start = client.try_start_detection()
         if start.get("ok"):
             console.print(
@@ -909,7 +961,7 @@ def run_bridge(
         full_throws: list[dict[str, Any]],
     ) -> None:
         """Post new AD throws to the locked No3 seat; stop if visit ends."""
-        nonlocal end_turn_sent
+        nonlocal end_turn_sent, takeout_hold_block
         seat = ensure_visit_seat_lock()
         if seat is None:
             return
@@ -948,6 +1000,13 @@ def run_bridge(
             if resp is None:
                 # Transient network / 5xx - retry next poll; do not advance seat
                 break
+            if resp.get("takeoutHold"):
+                takeout_hold_block = True
+                console.print(
+                    "[yellow]dart refused[/yellow] takeout hold - "
+                    "retry after clear / TTL (no end-turn)"
+                )
+                break
             if resp.get("seatMismatch") or resp.get("ok") is False:
                 console.print(
                     "[red]dart refused[/red] seat mismatch - "
@@ -958,6 +1017,7 @@ def run_bridge(
                     throws_snapshot=full_throws,
                 )
                 break
+            takeout_hold_block = False
             callout = resp.get("callout") if isinstance(resp, dict) else None
             if callout:
                 console.print(f"[bold green]POST OK[/bold green] {callout}")

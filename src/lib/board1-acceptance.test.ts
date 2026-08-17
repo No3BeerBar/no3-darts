@@ -9,7 +9,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGame } from "@/engine";
 import {
   applyCameraDart,
@@ -21,6 +21,7 @@ import {
   removeServerMatch,
   requestTakeoutReady,
   setCameraHealth,
+  TAKEOUT_HOLD_TTL_MS,
   upsertServerMatch,
 } from "@/lib/server-game-store";
 
@@ -850,5 +851,249 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
       removeServerMatch(state.id);
       clearTakeoutHold(room);
     }
+  });
+});
+
+describe("Board1: takeout hold self-heals after TTL", () => {
+  function x01DoubleOut(roomId: string) {
+    return createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: true },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId,
+    });
+  }
+
+  function alice180(roomId: string) {
+    for (let i = 0; i < 3; i++) {
+      const dart = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId,
+        expectedPlayerIndex: 0,
+      });
+      expect(dart.ok).toBe(true);
+    }
+  }
+
+  function expectBobTwoT20(roomId: string, matchId: string) {
+    const first = applyCameraDart({
+      kind: "triple",
+      number: 20,
+      roomId,
+      expectedPlayerIndex: 1,
+    });
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.state.currentPlayerIndex).toBe(1);
+      expect(first.state.currentTurnDarts).toHaveLength(1);
+    }
+
+    const second = applyCameraDart({
+      kind: "triple",
+      number: 20,
+      roomId,
+      expectedPlayerIndex: 1,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) {
+      expect(second.error).not.toMatch(/Takeout hold/i);
+    }
+
+    const live = getServerMatch(matchId);
+    expect(live?.currentPlayerIndex).toBe(1);
+    expect(live?.currentTurnDarts).toHaveLength(2);
+    expect(live?.playerStates[0]?.score).toBe(321);
+    expect(live?.playerStates[1]?.score).toBe(501);
+    expect(getCameraGateSnapshot(roomId).holdUntilTakeoutClear).toBe(false);
+  }
+
+  it("Alice 180, no Ready, time past TTL, Bob T20 T20 both 200", () => {
+    expect(TAKEOUT_HOLD_TTL_MS).toBeGreaterThanOrEqual(8_000);
+    expect(TAKEOUT_HOLD_TTL_MS).toBeLessThanOrEqual(15_000);
+    const room = "Board1 Hold TTL";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T20:00:00.000Z"));
+    const state = x01DoubleOut(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      alice180(room);
+      const afterAlice = getServerMatch(state.id);
+      expect(afterAlice?.currentPlayerIndex).toBe(1);
+      expect(afterAlice?.currentTurnDarts).toHaveLength(0);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(true);
+
+      const blocked = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) expect(blocked.error).toMatch(/Takeout hold/i);
+
+      vi.advanceTimersByTime(TAKEOUT_HOLD_TTL_MS + 1);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
+
+      expectBobTwoT20(room, state.id);
+    } finally {
+      vi.useRealTimers();
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("Alice 180, Ready immediately, Bob T20 T20 still 200", () => {
+    const room = "Board1 Hold Ready Still";
+    const state = x01DoubleOut(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      alice180(room);
+      const ready = requestTakeoutReady(room);
+      expect(ready.pending).toBe(false);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
+
+      const handshake = applyCameraEndTurn({
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(handshake.ok).toBe(true);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
+
+      const leftover = companionConsumeReadyThenEndTurn(room, 1);
+      expect(leftover.ack.pending).toBe(false);
+      expect(leftover.ended).toBe(false);
+
+      expectBobTwoT20(room, state.id);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("early-pull Ready on an open 1-2 dart visit still authorizes end-turn", () => {
+    const room = "Board1 Hold Early Pull";
+    const state = board1Match(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      expect(
+        applyCameraDart({
+          kind: "single",
+          number: 20,
+          roomId: room,
+          expectedPlayerIndex: 0,
+        }).ok
+      ).toBe(true);
+      requestTakeoutReady(room);
+
+      const processed = companionConsumeReadyThenEndTurn(room, 0);
+      expect(processed.ack.pending).toBe(true);
+      expect(processed.ended && processed.ended.ok).toBe(true);
+
+      const live = getServerMatch(state.id);
+      expect(live?.currentPlayerIndex).toBe(1);
+      expect(live?.currentTurnDarts).toHaveLength(0);
+      expect(live?.playerStates[0]?.score).toBe(481);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("End game / new match still clears leftover Ready", () => {
+    const room = "Board1 Hold End Game";
+    const leftover = board1Match(room);
+    upsertServerMatch(leftover);
+    requestTakeoutReady(room);
+    expect(consumeTakeoutReady(room, false).pending).toBe(false);
+    removeServerMatch(leftover.id);
+
+    const next = board1Match(room);
+    upsertServerMatch(next);
+    clearTakeoutHold(room);
+    try {
+      const dart = applyCameraDart({
+        kind: "single",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 0,
+      });
+      expect(dart.ok).toBe(true);
+
+      const processed = companionConsumeReadyThenEndTurn(room, 0);
+      expect(processed.ack.pending).toBe(false);
+      expect(processed.ended).toBe(false);
+
+      const live = getServerMatch(next.id);
+      expect(live?.currentPlayerIndex).toBe(0);
+      expect(live?.currentTurnDarts).toHaveLength(1);
+    } finally {
+      removeServerMatch(next.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("409 takeout hold plus companion end-turn does not finalize the next seat", () => {
+    const room = "Board1 Hold 409 No End";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T20:10:00.000Z"));
+    const state = x01DoubleOut(room);
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      alice180(room);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(true);
+
+      const blocked = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) expect(blocked.error).toMatch(/Takeout hold/i);
+
+      // Companion used to treat 409 as seat mismatch and POST end-turn.
+      const panic = applyCameraEndTurn({
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(panic.ok).toBe(true);
+      const afterPanic = getServerMatch(state.id);
+      expect(afterPanic?.currentPlayerIndex).toBe(1);
+      expect(afterPanic?.currentTurnDarts).toHaveLength(0);
+      expect(afterPanic?.turns ?? []).toHaveLength(1);
+      expect(afterPanic?.playerStates[1]?.score).toBe(501);
+
+      vi.advanceTimersByTime(TAKEOUT_HOLD_TTL_MS + 1);
+      expectBobTwoT20(room, state.id);
+    } finally {
+      vi.useRealTimers();
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("companion fail-closes on takeout-hold 409 (no end-turn / seat jump)", () => {
+    const bridge = readSrc("tools/autodarts-companion/companion/bridge.py");
+    expect(bridge).toMatch(/def classify_no3_reject/);
+    expect(bridge).toMatch(/takeoutHold/);
+    expect(bridge).toMatch(/takeout_hold_block/);
+    expect(bridge).toMatch(/retry after clear \/ TTL \(no end-turn\)/);
+    expect(bridge).toMatch(
+      /takeout hold 409 \(fail closed; retry after hold clears\)/
+    );
+    const maybe = bridge.slice(
+      bridge.indexOf("def maybe_end_turn"),
+      bridge.indexOf("\n    def post_correct")
+    );
+    expect(maybe).toMatch(/if takeout_hold_block:/);
+    expect(maybe).toMatch(/return/);
   });
 });

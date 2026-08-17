@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from companion.bridge import build_end_turn_payload, fetch_no3_match_allows_recal
+from companion.bridge import (
+    build_end_turn_payload,
+    classify_no3_reject,
+    fetch_no3_match_allows_recal,
+)
 from companion.health import no3_match_allows_between_games_recal
 from companion.mapping import is_takeout_status
 
@@ -40,6 +44,24 @@ def test_match_gate_table() -> None:
     ]
     for match, expected in cases:
         assert no3_match_allows_between_games_recal(match) is expected
+
+
+def test_takeout_hold_409_is_not_seat_mismatch() -> None:
+    """Companion must fail closed on takeout hold - not freeze as seat jump."""
+    hold = classify_no3_reject(
+        409, "Takeout hold - pull darts before next visit scores"
+    )
+    assert hold["takeoutHold"] is True
+    assert hold["seatMismatch"] is False
+    assert hold["ok"] is False
+
+    active = classify_no3_reject(409, "Takeout active - scoring paused until reset")
+    assert active["takeoutHold"] is True
+    assert active["seatMismatch"] is False
+
+    seat = classify_no3_reject(409, "Seat mismatch - expected player 0, current is 1")
+    assert seat["seatMismatch"] is True
+    assert seat.get("takeoutHold") is None
 
 
 def test_end_turn_payload_never_omits_expected_player_index() -> None:

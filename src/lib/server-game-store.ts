@@ -46,6 +46,13 @@ const matchWonAt = new Map<string, number>();
 export const CLEARED_MATCH_TOMBSTONE_MS = 45_000;
 /** Winner stays on GET /active for the HDMI result hold, then attract. */
 export const MATCH_WON_ACTIVE_MS = 30_000;
+/**
+ * Next-seat takeout hold / leftover Ready must not last the whole night.
+ * After a closed visit (or a stuck latch) the next thrower self-heals
+ * without a human Ready. 8–15s: late dart 3 is unlikely; walking away
+ * must not 409 the next seat forever.
+ */
+export const TAKEOUT_HOLD_TTL_MS = 12_000;
 
 type RoomTombstone = { matchId: string; updatedAt: number; removedAt: number };
 const removedRooms = new Map<string, RoomTombstone>();
@@ -170,6 +177,10 @@ export function upsertServerMatch(state: GameState): void {
     if (priorReady && priorReady.matchId !== state.id) {
       clearTakeoutReady(state.roomId);
     }
+    const gate = getCameraGate(state.roomId);
+    if (gate.holdMatchId && gate.holdMatchId !== state.id) {
+      clearTakeoutHold(state.roomId);
+    }
     indexRoom(state.roomId, state.id);
     removedRooms.delete(roomTombstoneKey(state.roomId));
   }
@@ -261,6 +272,7 @@ export function resetServerGameStore(): void {
   removedRooms.clear();
   matchWonAt.clear();
   takeoutReadyByRoom.clear();
+  cameraGateByRoom.clear();
 }
 
 function resolveMatch(opts: {
@@ -300,28 +312,91 @@ type RoomCameraGate = {
   openVisitSeat: number | null;
   /** After turn end - refuse next-seat scoring until takeout clear / Ready. */
   holdUntilTakeoutClear: boolean;
+  /** When the latch was last armed (visit close). Not refreshed on 409. */
+  holdArmedAt: number | null;
+  /** Visit identity the latch is holding (expire on match / visit change). */
+  holdVisitToken: string | null;
+  holdMatchId: string | null;
 };
 
 const cameraGateByRoom = new Map<string, RoomCameraGate>();
+
+function emptyCameraGate(): RoomCameraGate {
+  return {
+    openVisitSeat: null,
+    holdUntilTakeoutClear: false,
+    holdArmedAt: null,
+    holdVisitToken: null,
+    holdMatchId: null,
+  };
+}
 
 function getCameraGate(roomId: string): RoomCameraGate {
   const room = normRoom(roomId);
   let gate = cameraGateByRoom.get(room) ?? cameraGateByRoom.get(room.toLowerCase());
   if (!gate) {
-    gate = { openVisitSeat: null, holdUntilTakeoutClear: false };
+    gate = emptyCameraGate();
     cameraGateByRoom.set(room, gate);
     cameraGateByRoom.set(room.toLowerCase(), gate);
   }
   return gate;
 }
 
+function armTakeoutHold(roomId: string, opts?: { refresh?: boolean }): void {
+  const room = normRoom(roomId);
+  const gate = getCameraGate(room);
+  const already = gate.holdUntilTakeoutClear;
+  gate.holdUntilTakeoutClear = true;
+  if (!already || opts?.refresh) {
+    const binding = takeoutVisitBinding(room);
+    gate.holdArmedAt = Date.now();
+    gate.holdVisitToken = binding.visitToken;
+    gate.holdMatchId = binding.matchId;
+  }
+}
+
+/**
+ * Self-heal: a hold / leftover Ready cannot stay armed forever.
+ * Expires on TTL, End game (no match), new match, or visit-token change.
+ */
+function expireStuckTakeoutLatch(roomId: string, now = Date.now()): void {
+  const room = normRoom(roomId);
+  const gate = getCameraGate(room);
+  const live = takeoutVisitBinding(room);
+
+  if (gate.holdUntilTakeoutClear) {
+    const tokenChanged =
+      Boolean(gate.holdVisitToken) && gate.holdVisitToken !== live.visitToken;
+    const matchGone = live.visitToken === "none" || live.matchId == null;
+    const matchChanged =
+      Boolean(gate.holdMatchId) && gate.holdMatchId !== live.matchId;
+    const timedOut =
+      gate.holdArmedAt != null && now - gate.holdArmedAt >= TAKEOUT_HOLD_TTL_MS;
+    if (tokenChanged || matchGone || matchChanged || timedOut) {
+      clearTakeoutHold(room);
+    }
+  }
+
+  const ack = readTakeoutReady(room);
+  if (ack && !takeoutReadyIsLive(room, ack, now)) {
+    clearTakeoutReady(room);
+  }
+}
+
 export function clearTakeoutHold(roomId: string): void {
   const gate = getCameraGate(roomId);
   gate.holdUntilTakeoutClear = false;
   gate.openVisitSeat = null;
+  gate.holdArmedAt = null;
+  gate.holdVisitToken = null;
+  gate.holdMatchId = null;
 }
 
-export function getCameraGateSnapshot(roomId: string): RoomCameraGate {
+export function getCameraGateSnapshot(roomId: string): {
+  openVisitSeat: number | null;
+  holdUntilTakeoutClear: boolean;
+} {
+  expireStuckTakeoutLatch(roomId);
   const g = getCameraGate(roomId);
   return {
     openVisitSeat: g.openVisitSeat,
@@ -336,6 +411,7 @@ function seatLockRejected(
   opts?: { allowEmptyVisit?: boolean; requireExpected?: boolean }
 ): string | null {
   const room = normRoom(state.roomId || "Board 1");
+  expireStuckTakeoutLatch(room);
   const gate = getCameraGate(room);
   const visitOpen =
     state.currentTurnDarts.length > 0 || gate.openVisitSeat != null;
@@ -444,7 +520,7 @@ function markVisitClosedForTakeout(state: GameState): void {
   const room = normRoom(state.roomId || "Board 1");
   const gate = getCameraGate(room);
   gate.openVisitSeat = null;
-  gate.holdUntilTakeoutClear = true;
+  armTakeoutHold(room, { refresh: true });
   expireTakeoutReadyIfVisitChanged(room);
 }
 
@@ -499,6 +575,7 @@ function takeoutBlocksNewVisit(state: GameState, roomId?: string): string | null
   if (state.currentTurnDarts.length > 0) return null;
   const room = normRoom(roomId || state.roomId || "Board 1");
   reconcileStaleTakeout(room);
+  expireStuckTakeoutLatch(room);
   const gate = getCameraGate(room);
   if (gate.holdUntilTakeoutClear) {
     return "Takeout hold - pull darts before next visit scores";
@@ -828,7 +905,10 @@ export function setCameraHealth(health: CameraHealth): CameraHealth {
   if (offline || (!takeoutActive && rawTakeout)) {
     clearTakeoutHold(room);
   } else if (takeoutActive) {
-    gate.holdUntilTakeoutClear = true;
+    // Do not refresh holdArmedAt — live takeout heartbeats must not
+    // keep the latch armed all night. TTL still self-heals the latch;
+    // isLiveTakeoutSignal remains a separate gate while AD is in takeout.
+    armTakeoutHold(room);
   } else if (
     next.reason === "takeout_cleared" ||
     /ready for next visit/i.test(next.message || "")
@@ -896,7 +976,12 @@ function clearTakeoutReady(roomId: string): void {
   takeoutReadyByRoom.delete(room.toLowerCase());
 }
 
-function takeoutReadyIsLive(roomId: string, ack: TakeoutReadyAck): boolean {
+function takeoutReadyIsLive(
+  roomId: string,
+  ack: TakeoutReadyAck,
+  now = Date.now()
+): boolean {
+  if (now - ack.ts >= TAKEOUT_HOLD_TTL_MS) return false;
   const match = getActiveByRoom(roomId);
   if (!match || ack.matchId !== match.id) return false;
   // Ready after a closed visit (or before the first dart) only clears hold.
@@ -972,6 +1057,7 @@ export function requestTakeoutReady(roomId: string): {
 
 export function peekTakeoutReady(roomId: string): number | null {
   const room = normRoom(roomId);
+  expireStuckTakeoutLatch(room);
   const ack = readTakeoutReady(room);
   if (!ack) return null;
   if (!takeoutReadyIsLive(room, ack)) {
@@ -993,6 +1079,7 @@ export function consumeTakeoutReady(
   visitToken: string | null;
 } {
   const room = normRoom(roomId);
+  expireStuckTakeoutLatch(room);
   const ack = readTakeoutReady(room);
   if (!ack || !takeoutReadyIsLive(room, ack)) {
     if (ack) clearTakeoutReady(room);
@@ -1009,6 +1096,7 @@ export function consumeTakeoutReady(
 }
 
 function stampHoldOnHealth(health: CameraHealth, roomId: string): CameraHealth {
+  expireStuckTakeoutLatch(roomId);
   const gate = getCameraGate(roomId);
   return {
     ...health,
