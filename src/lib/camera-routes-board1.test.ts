@@ -5,6 +5,9 @@
  *   - 409 seat lock / expectedPlayerIndex / takeout hold
  *   - takeout/bleed correct reject
  *   - multi-step undo + 409 when nothing to undo
+ *
+ * Also covers POST /api/matches/:id/dart (bartender / API path): a full
+ * 3-dart visit must score even when expectedPlayerIndex is omitted.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,6 +15,8 @@ import { createGame } from "@/engine";
 import {
   applyCameraDart,
   clearTakeoutHold,
+  getCameraGateSnapshot,
+  getServerMatch,
   removeServerMatch,
   requestTakeoutReady,
   setCameraHealth,
@@ -21,6 +26,8 @@ import { POST as postDart } from "@/app/api/camera/dart/route";
 import { POST as postCorrect } from "@/app/api/camera/correct/route";
 import { POST as postEndTurn } from "@/app/api/camera/end-turn/route";
 import { POST as postUndo } from "@/app/api/camera/undo/route";
+import { POST as postMatch } from "@/app/api/matches/route";
+import { POST as postMatchDart } from "@/app/api/matches/[id]/dart/route";
 
 const alice = { id: "p1", name: "Alice", isGuest: true };
 const bob = { id: "p2", name: "Bob", isGuest: true };
@@ -31,6 +38,7 @@ const ROOMS = [
   "Board1 Route Undo",
   "Board1 Route CorrectSeat",
   "Board1 Route Takeout",
+  "Board1 Match Dart",
 ];
 
 function board(roomId: string) {
@@ -432,6 +440,113 @@ describe("camera routes: undo", () => {
     } finally {
       removeServerMatch(state.id);
       clearRoom("Board1 Route Undo");
+    }
+  });
+});
+
+async function matchDart(
+  id: string,
+  body: Record<string, unknown>
+) {
+  return postMatchDart(
+    req(`http://local/api/matches/${id}/dart`, body),
+    { params: Promise.resolve({ id }) }
+  );
+}
+
+describe("match-dart route: full visit via URL match id", () => {
+  const room = "Board1 Match Dart";
+
+  it("POST /api/matches/:id/dart scores a 3-dart visit without expectedPlayerIndex", async () => {
+    const created = await postMatch(
+      req("http://local/api/matches", {
+        modeConfig: { mode: "countup", config: { turns: 8 } },
+        players: [
+          { id: "g1", name: "Guest 1", isGuest: true },
+          { id: "g2", name: "Guest 2", isGuest: true },
+        ],
+        roomId: room,
+      })
+    );
+    expect(created.status).toBe(201);
+    const { match } = (await created.json()) as { match: { id: string } };
+    clearRoom(room);
+    try {
+      const first = await matchDart(match.id, { kind: "triple", number: 20 });
+      expect(first.status).toBe(200);
+      const after1 = getServerMatch(match.id);
+      expect(after1?.currentPlayerIndex).toBe(0);
+      expect(after1?.currentTurnDarts).toHaveLength(1);
+      expect(getCameraGateSnapshot(room).openVisitSeat).toBe(0);
+
+      const second = await matchDart(match.id, { kind: "triple", number: 20 });
+      expect(second.status).toBe(200);
+      const after2 = getServerMatch(match.id);
+      expect(after2?.currentPlayerIndex).toBe(0);
+      expect(after2?.currentTurnDarts).toHaveLength(2);
+      expect(getCameraGateSnapshot(room).openVisitSeat).toBe(0);
+
+      const third = await matchDart(match.id, { kind: "triple", number: 20 });
+      expect(third.status).toBe(200);
+      const after3 = getServerMatch(match.id);
+      expect(after3?.currentPlayerIndex).toBe(1);
+      expect(after3?.currentTurnDarts).toHaveLength(0);
+      expect(after3?.playerStates[0]?.score).toBe(180);
+    } finally {
+      removeServerMatch(match.id);
+      clearRoom(room);
+    }
+  });
+
+  it("honors expectedPlayerIndex and rejects the wrong seat honestly", async () => {
+    const created = await postMatch(
+      req("http://local/api/matches", {
+        modeConfig: { mode: "countup", config: { turns: 8 } },
+        players: [
+          { id: "g1", name: "Guest 1", isGuest: true },
+          { id: "g2", name: "Guest 2", isGuest: true },
+        ],
+        roomId: room,
+      })
+    );
+    expect(created.status).toBe(201);
+    const { match } = (await created.json()) as { match: { id: string } };
+    clearRoom(room);
+    try {
+      expect(
+        (
+          await matchDart(match.id, {
+            kind: "triple",
+            number: 20,
+            expectedPlayerIndex: 0,
+          })
+        ).status
+      ).toBe(200);
+
+      const wrong = await matchDart(match.id, {
+        kind: "single",
+        number: 5,
+        expectedPlayerIndex: 1,
+      });
+      expect(wrong.status).toBe(409);
+      expect(((await wrong.json()) as { error?: string }).error).toMatch(
+        /Seat mismatch|expectedPlayerIndex/i
+      );
+
+      const live = getServerMatch(match.id);
+      expect(live?.currentPlayerIndex).toBe(0);
+      expect(live?.currentTurnDarts).toHaveLength(1);
+
+      const sameSeat = await matchDart(match.id, {
+        kind: "single",
+        number: 5,
+        expectedPlayerIndex: 0,
+      });
+      expect(sameSeat.status).toBe(200);
+      expect(getServerMatch(match.id)?.currentTurnDarts).toHaveLength(2);
+    } finally {
+      removeServerMatch(match.id);
+      clearRoom(room);
     }
   });
 });
