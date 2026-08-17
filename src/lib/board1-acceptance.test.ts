@@ -679,7 +679,8 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
     const leftover = board1Match(room);
     upsertServerMatch(leftover);
     requestTakeoutReady(room);
-    expect(consumeTakeoutReady(room, false).pending).toBe(true);
+    // Empty leftover visit: Ready clears hold only — not consumable for end-turn.
+    expect(consumeTakeoutReady(room, false).pending).toBe(false);
     removeServerMatch(leftover.id);
 
     const next = board1Match(room);
@@ -716,7 +717,7 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
     clearTakeoutHold(room);
     try {
       requestTakeoutReady(room);
-      expect(consumeTakeoutReady(room, false).pending).toBe(true);
+      expect(consumeTakeoutReady(room, false).pending).toBe(false);
 
       const dart = applyCameraDart({
         kind: "single",
@@ -765,6 +766,86 @@ describe("Board1: stale takeout-ready must not end the next visit", () => {
       expect(live?.currentPlayerIndex).toBe(1);
       expect(live?.currentTurnDarts).toHaveLength(0);
       expect(live?.playerStates[0]?.score).toBe(481);
+    } finally {
+      removeServerMatch(state.id);
+      clearTakeoutHold(room);
+    }
+  });
+
+  it("Alice 180 + Ready must not hold Bob's next visit (both T20s score)", () => {
+    const room = "Board1 Ready Next Visit";
+    const state = createGame({
+      modeConfig: {
+        mode: "x01",
+        config: { startScore: 501, doubleIn: false, doubleOut: true },
+      },
+      players: [alice, bob],
+      matchFormat: { legsToWin: 1, setsToWin: 1 },
+      roomId: room,
+    });
+    upsertServerMatch(state);
+    clearTakeoutHold(room);
+    try {
+      for (let i = 0; i < 3; i++) {
+        const dart = applyCameraDart({
+          kind: "triple",
+          number: 20,
+          roomId: room,
+          expectedPlayerIndex: 0,
+        });
+        expect(dart.ok).toBe(true);
+      }
+      const afterAlice = getServerMatch(state.id);
+      expect(afterAlice?.currentPlayerIndex).toBe(1);
+      expect(afterAlice?.currentTurnDarts).toHaveLength(0);
+      expect(afterAlice?.playerStates[0]?.score).toBe(321);
+
+      const ready = requestTakeoutReady(room);
+      expect(ready.visitToken).toMatch(/:1:0$/);
+      expect(ready.pending).toBe(false);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
+
+      // Companion still POSTs end-turn after Alice's 3-dart auto-end.
+      // That handshake must not re-arm hold after Ready already cleared it.
+      const handshake = applyCameraEndTurn({
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(handshake.ok).toBe(true);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
+
+      // Live Board 1 companion also consumes Ready (older kits then end-turn).
+      const leftover = companionConsumeReadyThenEndTurn(room, 1);
+      expect(leftover.ack.pending).toBe(false);
+      expect(leftover.ended).toBe(false);
+
+      const first = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(first.ok).toBe(true);
+      if (first.ok) {
+        expect(first.state.currentPlayerIndex).toBe(1);
+        expect(first.state.currentTurnDarts).toHaveLength(1);
+      }
+
+      const second = applyCameraDart({
+        kind: "triple",
+        number: 20,
+        roomId: room,
+        expectedPlayerIndex: 1,
+      });
+      expect(second.ok).toBe(true);
+      if (!second.ok) {
+        expect(second.error).not.toMatch(/Takeout hold/i);
+      }
+
+      const live = getServerMatch(state.id);
+      expect(live?.currentPlayerIndex).toBe(1);
+      expect(live?.currentTurnDarts).toHaveLength(2);
+      expect(getCameraGateSnapshot(room).holdUntilTakeoutClear).toBe(false);
     } finally {
       removeServerMatch(state.id);
       clearTakeoutHold(room);

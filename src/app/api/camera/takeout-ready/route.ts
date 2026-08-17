@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const result = requestTakeoutReady(roomId);
   return NextResponse.json({
     ok: true,
-    pending: true,
+    pending: result.pending,
     roomId: result.roomId,
     ts: result.ts,
     matchId: result.matchId,
