@@ -7,7 +7,7 @@ import {
   roundNameForSize,
 } from "./bracket";
 import { parseLegModePolicy, parseTournamentFormat, resolveModeForLeg } from "./modes";
-import type { TournamentPlayer } from "./types";
+import type { TournamentMatch, TournamentPlayer } from "./types";
 
 function players(n: number): TournamentPlayer[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -138,47 +138,92 @@ describe("advanceWinner", () => {
   });
 });
 
+function match(
+  overrides: Partial<TournamentMatch> & Pick<TournamentMatch, "id" | "tournamentId">
+): TournamentMatch {
+  return {
+    roundIndex: 0,
+    roundName: "Quarterfinals",
+    bracketSlot: 0,
+    playerAId: "p1",
+    playerBId: "p2",
+    status: "ready",
+    winnerId: null,
+    lane: null,
+    liveGameId: null,
+    nextMatchId: null,
+    nextMatchSlot: null,
+    legsWonA: 0,
+    legsWonB: 0,
+    ...overrides,
+  };
+}
+
 describe("assertLaneUnique", () => {
   it("allows free lane and blocks double-book", () => {
     const matches = [
-      {
+      match({
         id: "a",
         tournamentId: "t",
-        roundIndex: 0,
-        roundName: "Final",
-        bracketSlot: 0,
-        playerAId: "p1",
-        playerBId: "p2",
-        status: "in_progress" as const,
-        winnerId: null,
-        lane: "Board 1" as const,
-        liveGameId: null,
-        nextMatchId: null,
-        nextMatchSlot: null,
-        legsWonA: 0,
-        legsWonB: 0,
-      },
-      {
+        status: "in_progress",
+        lane: "Board 1",
+      }),
+      match({
         id: "b",
         tournamentId: "t",
-        roundIndex: 0,
-        roundName: "Final",
         bracketSlot: 1,
         playerAId: "p3",
         playerBId: "p4",
-        status: "ready" as const,
-        winnerId: null,
-        lane: null,
-        liveGameId: null,
-        nextMatchId: null,
-        nextMatchSlot: null,
-        legsWonA: 0,
-        legsWonB: 0,
-      },
+        status: "ready",
+      }),
     ];
     expect(() => assertLaneUnique(matches, "Board 2")).not.toThrow();
     expect(() => assertLaneUnique(matches, "Board 1")).toThrow(/Board 1/);
     expect(() => assertLaneUnique(matches, "Board 1", "a")).not.toThrow();
+  });
+
+  it("rejects a second tournament claiming Board 1; complete or clear frees it", () => {
+    const leftover = match({
+      id: "tmatch_aug11_qf",
+      tournamentId: "tourn_aug11",
+      status: "ready",
+      lane: "Board 1",
+      liveGameId: null,
+    });
+    const throwaway = match({
+      id: "tmatch_throwaway_sf",
+      tournamentId: "tourn_throwaway",
+      status: "ready",
+    });
+
+    expect(() => assertLaneUnique([leftover, throwaway], "Board 1", throwaway.id)).toThrow(
+      /Board 1/
+    );
+
+    const cleared = { ...leftover, lane: null };
+    expect(() => assertLaneUnique([cleared, throwaway], "Board 1", throwaway.id)).not.toThrow();
+
+    const completed = { ...leftover, status: "complete" as const, lane: null };
+    expect(() => assertLaneUnique([completed, throwaway], "Board 1", throwaway.id)).not.toThrow();
+  });
+
+  it("still allows re-assign and move inside the same tournament", () => {
+    const qf = match({
+      id: "same_qf",
+      tournamentId: "tourn_live",
+      status: "ready",
+      lane: "Board 1",
+    });
+    const sf = match({
+      id: "same_sf",
+      tournamentId: "tourn_live",
+      bracketSlot: 1,
+      status: "ready",
+    });
+
+    expect(() => assertLaneUnique([qf, sf], "Board 1", qf.id)).not.toThrow();
+    expect(() => assertLaneUnique([qf, sf], "Board 2", qf.id)).not.toThrow();
+    expect(() => assertLaneUnique([qf, sf], "Board 1", sf.id)).toThrow(/Board 1/);
   });
 });
 
